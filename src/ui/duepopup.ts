@@ -1,5 +1,5 @@
 import { dayNames, monthName, t } from '../strings';
-import { popDismiss, pushDismiss } from './popup';
+import { closeToolPopup, popDismiss, pushDismiss } from './popup';
 
 export interface DueValue {
   dueAt?: number;
@@ -28,6 +28,7 @@ export function openDuePopup(opts: {
   current: DueValue;
   onCommit: (v: DueValue) => void;
 }): DuePopupHandle {
+  closeToolPopup();
   const st: PopupState = {
     day: null,
     hasTime: false,

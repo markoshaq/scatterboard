@@ -34,7 +34,13 @@ export class ColumnCard implements CardView {
     head.append(this.titleEl, this.countEl);
     this.body = document.createElement('div');
     this.body.className = 'col-body';
-    this.node.append(head, this.body);
+    const handle = document.createElement('div');
+    handle.className = 'resize-handle';
+    handle.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.ctx.events.onResizeHandle(this.id, e);
+    });
+    this.node.append(head, this.body, handle);
 
     this.titleEl.addEventListener('input', () => {
       this.lastTitle = this.readTitle();

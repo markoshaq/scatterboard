@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "private": true,
-  "author": "Marko Šekuljica",
+  "author": "Marko \u0160ekuljica",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/markoshaq/scatterboard.git"
@@ -23,7 +23,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prebuild": "npm run typecheck && npm test"
   },
   "devDependencies": {
     "typescript": "~5.9.3",

@@ -1,6 +1,7 @@
 import type { ID } from '../state/schema';
 import type { Rect } from '../canvas/viewport';
 import { ICONS } from './icons';
+import { cardBg } from './theme';
 
 // Anchored comment pins: a badge at the anchor card's top-right corner.
 // Lives in the same transformed docEl space as cards, so pins follow drags.
@@ -16,10 +17,18 @@ export class CommentPins {
   }
 
   sync(
-    items: { id: ID; rect: Rect; count: number; selected: boolean; unread?: number; seat?: HTMLElement | null }[],
+    items: {
+      id: ID;
+      rect: Rect;
+      count: number;
+      selected: boolean;
+      unread?: number;
+      color: string | undefined;
+      seat?: HTMLElement | null;
+    }[],
   ) {
     const seen = new Set<ID>();
-    for (const { id, rect, count, selected, unread, seat } of items) {
+    for (const { id, rect, count, selected, unread, color, seat } of items) {
       seen.add(id);
       let pin = this.pins.get(id);
       if (!pin) {
@@ -48,6 +57,7 @@ export class CommentPins {
       }
       pin.style.left = `${rect.x + rect.w}px`;
       pin.style.top = `${rect.y}px`;
+      pin.style.background = cardBg(color);
       pin.classList.toggle('selected', selected);
       const label = count > 1 ? String(count) : '';
       const badge = unread && unread > 0 ? String(unread) : '';

@@ -1,7 +1,7 @@
 import type { CellType, Element, TableCell, TableDoc } from '../state/schema';
 import { tableDoc } from '../state/schema';
 import { t } from '../strings';
-import { evalFormula, isFormula, FORMULA_NAMES } from './formula';
+import { evalFormula, isFormula, remapCells, FORMULA_NAMES } from './formula';
 import { openToolPopup, type ToolPopup } from '../ui/popup';
 import { ensureBlockChildren, isBlankSurface, richKeydown } from '../ui/richtext';
 import type { CardCtx } from './factory';
@@ -481,7 +481,7 @@ export class TableCard implements CardView {
     this.editingCell = false;
     if (at <= f.r) f.r += 1;
     this.wantDomFocus = true;
-    this.dispatch({ ...c, cells });
+    this.dispatch({ ...c, cells: remapCells(cells, (r, cc) => ({ r: r >= at ? r + 1 : r, c: cc })) });
   }
 
   insertColumn(at: number) {
@@ -496,7 +496,7 @@ export class TableCard implements CardView {
     this.editingCell = false;
     if (at <= f.c) f.c += 1;
     this.wantDomFocus = true;
-    const next: TableDoc = { ...c, cells };
+    const next: TableDoc = { ...c, cells: remapCells(cells, (r, cc) => ({ r, c: cc >= at ? cc + 1 : cc })) };
     if (c.widths) {
       const widths = c.widths.slice();
       widths.splice(at, 0, widths[at - 1] ?? 64);
@@ -514,7 +514,7 @@ export class TableCard implements CardView {
     this.editingCell = false;
     f.r = Math.min(f.r, cells.length - 1);
     this.wantDomFocus = true;
-    this.dispatch({ ...c, cells });
+    this.dispatch({ ...c, cells: remapCells(cells, (r, cc) => ({ r: r > f.r ? r - 1 : r, c: cc })) });
   }
 
   deleteFocusedColumn() {
@@ -529,7 +529,7 @@ export class TableCard implements CardView {
     this.editingCell = false;
     f.c = Math.min(f.c, cells[0]!.length - 1);
     this.wantDomFocus = true;
-    const next: TableDoc = { ...c, cells };
+    const next: TableDoc = { ...c, cells: remapCells(cells, (r, cc) => ({ r, c: cc > f.c ? cc - 1 : cc })) };
     if (c.widths) {
       const widths = c.widths.slice();
       widths.splice(f.c, 1);
@@ -548,7 +548,13 @@ export class TableCard implements CardView {
       next.splice(dst, 0, next.splice(src, 1)[0]!);
       return next;
     });
-    const next: TableDoc = { ...c, cells };
+    const next: TableDoc = {
+      ...c,
+      cells: remapCells(cells, (r, cc) => ({
+        r,
+        c: cc === src ? dst : src < dst ? (cc > src && cc <= dst ? cc - 1 : cc) : cc >= dst && cc < src ? cc + 1 : cc,
+      })),
+    };
     if (c.widths) {
       const widths = c.widths.slice();
       widths.splice(dst, 0, widths.splice(src, 1)[0]!);
@@ -711,7 +717,13 @@ export class TableCard implements CardView {
       else if (src > f.r && dst <= f.r) f.r += 1;
       this.wantDomFocus = true;
     }
-    this.dispatch({ ...c, cells });
+    this.dispatch({
+      ...c,
+      cells: remapCells(cells, (r, cc) => ({
+        r: r === src ? dst : src < dst ? (r > src && r <= dst ? r - 1 : r) : r >= dst && r < src ? r + 1 : r,
+        c: cc,
+      })),
+    });
   }
 
   private bindColResize(edge: HTMLElement, ci: number, w0: number) {

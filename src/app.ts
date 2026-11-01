@@ -108,7 +108,7 @@ import {
   openViewMenu,
   type MenuItem,
 } from './ui/toolpopups';
-import { closeToolPopup } from './ui/popup';
+import { closeBoardPopup, closeToolPopup } from './ui/popup';
 import { openExportMenu } from './export/menu';
 import { dedupFileName, downloadBlob, slugFileName } from './export/download';
 import { zipStore, type ZipEntry } from './export/zip';
@@ -301,6 +301,9 @@ export class App {
     document.addEventListener('selectionchange', () => this.refreshEditGate());
 
     this.vp.onchange = () => {
+      // Popups anchored to board space would float detached from their
+      // anchor once the viewport moves; chrome-anchored ones stay.
+      closeBoardPopup();
       this.applyTransform();
       this.scheduleSave();
       this.render();
@@ -820,14 +823,20 @@ export class App {
     const board = this.board();
     const outlines = [...this.sel]
       .map((id) => this.doc.elements[id])
-      .filter((e): e is Element => !!e && e.type !== 'line')
+      .filter(
+        (e): e is Element =>
+          !!e &&
+          e.type !== 'line' &&
+          !(e.type === 'comment' && e.anchorId !== undefined) &&
+          !this.trashHover,
+      )
       .map((e) => this.layer.rectOf(e));
     const lines = this.resolvedLines();
     this.renderer.setScene({
       grid: board?.grid ?? true,
       marquee: this.marquee ? normRect(this.marquee.x1, this.marquee.y1, this.marquee.x2, this.marquee.y2) : null,
       guides: this.guides,
-      guideAlpha: this.prefs.guideAlpha ?? 1,
+      guideAlpha: this.prefs.guideAlpha ?? 0,
       outlines,
       lines,
       draft: this.draft,
@@ -914,6 +923,7 @@ export class App {
     count: number;
     selected: boolean;
     unread: number;
+    color: string | undefined;
     seat: HTMLElement | null;
   }[] {
     const out: {
@@ -922,6 +932,7 @@ export class App {
       count: number;
       selected: boolean;
       unread: number;
+      color: string | undefined;
       seat: HTMLElement | null;
     }[] = [];
     for (const el of layer.elements()) {
@@ -941,6 +952,7 @@ export class App {
         count,
         selected: this.sel.has(el.id),
         unread: Math.max(0, count - seen),
+        color: el.color,
         // Seated after the anchor card so covering cards hide the pin.
         // Member anchors keep the host (same as member chip rows).
         seat: anchor.parentId ? null : (layer.view(anchor.id)?.node ?? null),
@@ -955,8 +967,8 @@ export class App {
 
   private onPinClick(id: ID, pinEl: HTMLElement) {
     this.endEdit();
-    if (this.sel.has(id)) this.openCommentThread(id, pinEl);
-    else this.selectOnly(id);
+    this.selectOnly(id);
+    this.openCommentThread(id, pinEl);
   }
 
   private annoItems() {
@@ -1192,7 +1204,7 @@ export class App {
   private syncConnectHandle() {
     const id = this.sel.size === 1 ? [...this.sel][0]! : null;
     const el = id ? this.doc.elements[id] : undefined;
-    if (!el || el.type === 'line' || this.editingId || el.locked || this.lockedView()) {
+    if (!el || el.type === 'line' || el.type === 'comment' || this.editingId || el.locked || this.lockedView()) {
       this.connectHandle.style.display = 'none';
       return;
     }
@@ -2078,6 +2090,20 @@ export class App {
     let dx = (ev.clientX - start.x) / this.vp.z;
     let dy = (ev.clientY - start.y) / this.vp.z;
 
+    // A single member dragged inside its own column re-seats by z order
+    // rather than lifting out; crossing the column edge takes the normal
+    // refile path below.
+    const soloParent = ids.length === 1 ? this.doc.elements[ids[0]!]?.parentId : null;
+    const colEl = soloParent ? this.doc.elements[soloParent] : undefined;
+    if (colEl && pointInRect(cur.x, cur.y, this.layer.rectOf(colEl))) {
+      this.reorderMember(soloParent!, ids[0]!, cur);
+      this.updateDropTarget(null, ids);
+      this.setTrashHint(this.overTrashRect(ids), ids);
+      this.guides = [];
+      this.render();
+      return;
+    }
+
     const refile = ids.filter((id) => this.doc.elements[id]?.parentId !== null);
     if (refile.length) {
       this.store.dispatch({
@@ -2108,19 +2134,40 @@ export class App {
         patch: { x: Math.round(origins.get(id)!.x + dx), y: Math.round(origins.get(id)!.y + dy) },
       })),
     });
-    const onTrash = !!document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.rail-trash');
-    this.setTrashHint(onTrash);
+    const onTrash = this.overTrashRect(ids);
+    this.setTrashHint(onTrash, ids);
     this.updateDropTarget(onTrash ? null : cur, ids);
     this.render();
   }
 
+  // The drop target is the card, not the cursor: a big card reaches the
+  // can well before the pointer does, so the hint and the drop test the
+  // dragged rects against the button's box. A parked locked card that
+  // happens to overlap it never counts (only the dragged ids are read).
+  private overTrashRect(ids: ID[]) {
+    const t = document.querySelector('.rail-trash')?.getBoundingClientRect();
+    if (!t) return false;
+    return ids.some((id) => {
+      const r = this.layer.view(id)?.node.getBoundingClientRect();
+      return !!r && r.left < t.right && r.right > t.left && r.top < t.bottom && r.bottom > t.top;
+    });
+  }
+
   // Trash affordance mirrors the column .drop-hint ring; while the
   // pointer is over rail chrome the board hit-test is suppressed too.
+  // body.over-trash lifts the viewport so the dragged cards ride above
+  // the rail wearing the danger ring instead of sliding under it.
   private trashHover = false;
-  private setTrashHint(on: boolean) {
+  private setTrashHint(on: boolean, dragged: ID[] = []) {
     if (on === this.trashHover) return;
     this.trashHover = on;
     document.querySelector('.rail-trash')?.classList.toggle('drop-hint', on);
+    document.body.classList.toggle('over-trash', on);
+    if (on) {
+      for (const id of dragged) this.layer.view(id)?.node.classList.add('over-trash');
+    } else {
+      document.querySelectorAll('.card.over-trash').forEach((n) => n.classList.remove('over-trash'));
+    }
   }
 
   private updateDropTarget(pt: { x: number; y: number } | null, dragged: ID[]) {
@@ -2144,6 +2191,31 @@ export class App {
     this.dropColId = col;
   }
 
+  // Insertion index comes from which member midpoints the pointer has
+  // passed; the dragged card keeps its slot until the index moves, then
+  // re-seats by taking a z between its new neighbours (fractional z).
+  private reorderMember(colId: ID, memberId: ID, pt: { x: number; y: number }) {
+    const members = columnMembers(this.doc, colId).filter(
+      (m) => m.type !== 'line' && m.type !== 'annotation',
+    );
+    const idx = members.findIndex((m) => m.id === memberId);
+    if (idx < 0) return;
+    const others = members.filter((m) => m.id !== memberId);
+    let insert = others.length;
+    for (let i = 0; i < others.length; i++) {
+      const r = this.layer.rectOf(others[i]!);
+      if (pt.y < r.y + r.h / 2) {
+        insert = i;
+        break;
+      }
+    }
+    if (insert === idx) return;
+    const prevZ = others[insert - 1]?.z;
+    const nextZ = others[insert]?.z;
+    const z = prevZ === undefined ? (nextZ ?? 0) - 1 : nextZ === undefined ? prevZ + 1 : (prevZ + nextZ) / 2;
+    this.store.dispatch({ type: 'element.patch', id: memberId, patch: { z } });
+  }
+
   private clearDropHint() {
     if (this.dropColId) this.layer.view(this.dropColId)?.node.classList.remove('drop-hint');
     this.dropColId = null;
@@ -2162,8 +2234,17 @@ export class App {
   endDrag(ev?: PointerEvent) {
     this.setTrashHint(false);
     if (ev) {
-      const over = document.elementFromPoint(ev.clientX, ev.clientY);
-      if (over?.closest('.rail-trash')) {
+      const dragged = [...this.sel].filter((id) => {
+        const el = this.doc.elements[id];
+        return (
+          !!el &&
+          el.type !== 'line' &&
+          !el.locked &&
+          !(el.type === 'comment' && el.anchorId !== undefined) &&
+          !!this.layer.view(id)
+        );
+      });
+      if (this.overTrashRect(dragged)) {
         this.clearDropHint();
         this.guides = [];
         this.deleteSelection();
@@ -2701,6 +2782,24 @@ export class App {
 
   private moreItems(sel: Element[]): MenuItem[] {
     const items: MenuItem[] = [];
+    // An anchored comment renders only as a pin: lock/z-order/file are
+    // no-ops, so the menu offers just the detach back to a free card.
+    if (sel.length === 1 && sel[0]!.type === 'comment' && sel[0]!.anchorId !== undefined) {
+      const el = sel[0]!;
+      return [
+        {
+          label: t('detachComment'),
+          onPick: () => {
+            const r = this.layer.rectOf(el);
+            this.store.dispatch({
+              type: 'element.patch',
+              id: el.id,
+              patch: { anchorId: undefined, x: Math.round(r.x + r.w + 12), y: Math.round(r.y) },
+            });
+          },
+        },
+      ];
+    }
     if (sel.length > 1) items.push({ label: t('connectLines'), onPick: () => this.connectSel() });
     if (sel.length === 1) {
       const el = sel[0]!;
@@ -2763,7 +2862,7 @@ export class App {
       { label: t('sendToBack'), onPick: () => this.zOrder('back') },
     );
     // Keyboard/discoverability parity for the Opt+` filing shortcut.
-    if (sel.some((e) => e.parentId === null)) {
+    if (this.movableCards().length) {
       items.push({ label: t('sendToUnsorted'), onPick: () => this.fileToUnsorted() });
     }
     return items;
@@ -3456,7 +3555,7 @@ export class App {
         },
         (ev, moved) => {
           if (!moved) return;
-          if (document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.side-panel, .rail')) return;
+          if (document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.side-panel, .rail, .rail-trash')) return;
           onDrop(this.boardPoint(ev));
         },
       );
@@ -3660,7 +3759,7 @@ export class App {
         save();
         this.render();
       },
-      guideAlpha: () => this.prefs.guideAlpha ?? 1,
+      guideAlpha: () => this.prefs.guideAlpha ?? 0,
       onGuideAlpha: (v) => {
         this.prefs.guideAlpha = v;
         save();

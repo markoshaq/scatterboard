@@ -5,7 +5,11 @@ import {
   emptyDoc, migrateDoc, UNSORTED, type Doc, type Element,
 } from '../src/state/schema';
 import { remapElements } from '../src/state/clone';
-import { evalFormula, isFormula } from '../src/cards/formula';
+import { Store } from '../src/state/store';
+import { getClipboard, setClipboard } from '../src/state/clipboard';
+import { instantiateActions, snapshotTemplate } from '../src/state/templates';
+import { searchBoard } from '../src/ui/search';
+import { evalFormula, isFormula, remapCells } from '../src/cards/formula';
 import { exportBoard, importActions, parseBoardExport } from '../src/export/jsonio';
 import type { TableCell } from '../src/state/schema';
 
@@ -179,5 +183,147 @@ describe('jsonio round trip', () => {
     const newLabel = d.labels[imported[0]!.labels[0]!];
     expect(newLabel.name).toBe('L1');
     expect(newLabel.boardId).toBe(res!.boardId);
+  });
+});
+
+describe('Store groups', () => {
+  it('coalesces same-element patches inside a group into one entry', () => {
+    const store = new Store(doc());
+    const el = createNote(store.doc, 'home', 0, 0, 'x');
+    store.dispatch({ type: 'element.create', el });
+    store.beginGroup();
+    store.dispatch({ type: 'element.patch', id: el.id, patch: { x: 100 } });
+    store.dispatch({ type: 'element.patch', id: el.id, patch: { x: 200, color: '#fff' } });
+    store.endGroup('edit');
+    expect(el.x).toBe(200);
+    store.undo();
+    expect(el.x).toBe(0);
+    expect(el.color).toBeUndefined();
+    expect(store.canUndo).toBe(true); // the create entry remains
+    store.redo();
+    expect(el.x).toBe(200);
+    expect(el.color).toBe('#fff');
+  });
+
+  it('nested begins join the outer group', () => {
+    const store = new Store(doc());
+    const el = createNote(store.doc, 'home', 0, 0, 'x');
+    store.dispatch({ type: 'element.create', el });
+    store.beginGroup();
+    store.beginGroup();
+    store.dispatch({ type: 'element.patch', id: el.id, patch: { y: 50 } });
+    store.endGroup();
+    expect(store.inGroup).toBe(true);
+    store.endGroup();
+    store.undo();
+    expect(el.y).toBe(0);
+  });
+
+  it('undo during an open group pops the previous entry', () => {
+    const store = new Store(doc());
+    const a = createNote(store.doc, 'home', 0, 0, 'a');
+    const b = createNote(store.doc, 'home', 10, 0, 'b');
+    store.dispatch({ type: 'element.create', el: a });
+    store.dispatch({ type: 'element.create', el: b });
+    store.beginGroup();
+    store.dispatch({ type: 'element.patch', id: a.id, patch: { x: 99 } });
+    store.undo();
+    expect(store.doc.elements[b.id]).toBeUndefined();
+    expect(a.x).toBe(99); // unflushed group edit survives
+    store.endGroup();
+    expect(store.doc.elements[b.id]).toBeUndefined();
+  });
+});
+
+describe('clipboard', () => {
+  it('round-trips snapshots independent of the source elements', () => {
+    const d = doc();
+    const el = createNote(d, 'home', 0, 0, 'clip');
+    setClipboard([el]);
+    el.x = 999;
+    const out = getClipboard()!;
+    expect(out).toHaveLength(1);
+    expect(out[0]!.x).toBe(0);
+    out[0]!.x = 555;
+    expect(getClipboard()![0]!.x).toBe(0);
+  });
+});
+
+describe('searchBoard', () => {
+  it('finds note text, skips other boards and unsorted, hits board titles', () => {
+    const d = doc();
+    const sub = createBoard({ id: 'sub', title: 'Garden plans', parentId: 'home' });
+    d.boards.sub = sub;
+    const hit = createNote(d, 'home', 0, 0, 'water the garden');
+    const other = createNote(d, 'sub', 0, 0, 'garden tools');
+    const filed = createNote(d, 'home', 0, 0, 'garden shed');
+    filed.parentId = UNSORTED;
+    const card = { ...createNote(d, 'home', 0, 0), type: 'board' as const, content: { boardRef: 'sub' } };
+    d.elements[hit.id] = hit;
+    d.elements[other.id] = other;
+    d.elements[filed.id] = filed;
+    d.elements[card.id] = card;
+
+    const hits = searchBoard(d, 'home', 'garden');
+    expect(hits.some((h) => h.elementId === hit.id)).toBe(true);
+    expect(hits.some((h) => h.elementId === other.id)).toBe(false);
+    expect(hits.some((h) => h.elementId === filed.id)).toBe(false);
+    expect(hits.some((h) => h.boardId === 'sub' && h.snippet.includes('Garden'))).toBe(true);
+    expect(searchBoard(d, 'home', '  ')).toEqual([]);
+  });
+});
+
+describe('templates', () => {
+  it('instantiates a fresh child board with rebound labels and a card', () => {
+    const d = doc();
+    const src = createBoard({ id: 'src', title: 'Source', parentId: 'home' });
+    d.boards.src = src;
+    const label = createLabel('src', 'Tag', '#0f0');
+    d.labels[label.id] = label;
+    const n = createNote(d, 'src', 10, 10, 'inside');
+    n.labels = [label.id];
+    d.elements[n.id] = n;
+    const tpl = snapshotTemplate(d, 'src', 'My tpl')!;
+
+    const { actions, cardId } = instantiateActions(d, tpl, 'home', { x: 300, y: 200 });
+    const change = emptyChange();
+    for (const a of actions) applyAction(d, a, change);
+
+    const card = d.elements[cardId]!;
+    expect(card.type).toBe('board');
+    const newBoardId = (card.content as { boardRef: string }).boardRef;
+    const board = d.boards[newBoardId]!;
+    expect(board.title).toBe('Source');
+    expect(board.parentId).toBe('home');
+    const clones = Object.values(d.elements).filter((e) => e.boardId === newBoardId);
+    expect(clones).toHaveLength(1);
+    expect(clones[0]!.id).not.toBe(n.id);
+    const newLabel = d.labels[clones[0]!.labels[0]!]!;
+    expect(newLabel.name).toBe('Tag');
+    expect(newLabel.boardId).toBe(newBoardId);
+    expect(newLabel.id).not.toBe(label.id);
+  });
+});
+
+describe('remapCells', () => {
+  const cells: TableCell[][] = [
+    [{ text: 'A' }, { text: '1' }, { text: '2' }],
+    [{ text: 'B' }, { text: '3' }, { text: '=SUM(B1:C1)' }],
+  ];
+  it('shifts refs on column insert', () => {
+    const out = remapCells(cells, (r, c) => ({ r, c: c >= 1 ? c + 1 : c }));
+    expect(out[1]![2]!.text).toBe('=SUM(C1:D1)');
+  });
+  it('shifts refs on row delete, boundary refs stay', () => {
+    const out = remapCells(cells, (r, c) => ({ r: r > 0 ? r - 1 : r, c }));
+    expect(out[1]![2]!.text).toBe('=SUM(B1:C1)');
+    const moved = remapCells([[{ text: '=SUM(B3:C3)' }]], (r, c) => ({ r: r > 0 ? r - 1 : r, c }));
+    expect(moved[0]![0]!.text).toBe('=SUM(B2:C2)');
+  });
+  it('leaves quoted literals and non-formulas alone', () => {
+    const src: TableCell[][] = [[{ text: '=IF(A1="B2","yes","no")' }, { text: 'plain B2' }]];
+    const out = remapCells(src, (r, c) => ({ r, c: c + 1 }));
+    expect(out[0]![0]!.text).toBe('=IF(B1="B2","yes","no")');
+    expect(out[0]![1]!.text).toBe('plain B2');
   });
 });

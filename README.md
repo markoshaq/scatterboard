@@ -44,7 +44,8 @@ TypeScript + Vite, no framework. Canvas2D for the grid, marquee, and
 selection chrome; DOM for cards and text editing. Persistence is
 SQLite WASM in OPFS behind `persist/storage.ts`, with a localStorage
 adapter as migration source and fallback. Media blobs live in
-IndexedDB.
+IndexedDB. Desktop-first: built for mouse, trackpad, and keyboard;
+touch and small screens are not a design goal yet.
 
 ## Privacy
 

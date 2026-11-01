@@ -60,6 +60,7 @@ body {
   font: 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: calc(14px * var(--ui));
   color: var(--ink);
+  background: var(--bg);
   overflow: hidden;
   overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
@@ -117,7 +118,6 @@ body.dark {
 .viewport {
   position: fixed;
   inset: 0;
-  background: var(--bg);
   touch-action: none;
 }
 
@@ -222,7 +222,9 @@ body.pan-mode .viewport {
   border: calc(1.5px * var(--iz, 1)) solid var(--accent);
 }
 
-.card.handle .resize-handle {
+/* Scoped to direct children: a selected column would otherwise light up
+   the dead .resize-handle sitting inside every member card. */
+.card.handle > .resize-handle {
   display: block;
 }
 
@@ -352,24 +354,23 @@ body.pan-mode .viewport {
   left: 0;
   top: 0;
   bottom: 0;
-  width: 58px;
+  width: 64px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding-top: 64px;
-  z-index: 15;
+  z-index: 20;
   user-select: none;
 }.rail-item {
-  width: 46px;
+  width: 48px;
   border: 1px solid var(--edge);
   background: var(--chrome);
   border-radius: 10px;
-  padding: 7px 0 5px;
+  padding: 6px 0 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   color: var(--ink-2);
   font: inherit;
   font-size: calc(10px * var(--ui));
@@ -382,11 +383,11 @@ body.pan-mode .viewport {
 }
 
 .rail-item > span {
-  max-width: 100%;
+  max-width: calc(100% + 16px);
+  margin: 0 -8px;
   text-align: center;
   line-height: 1.1;
   overflow-wrap: break-word;
-  hyphens: auto;
 }
 
 .rail-item svg {
@@ -912,7 +913,7 @@ body.pan-mode .viewport {
 /* rail: mode containers + pinned trash */
 
 .rail {
-  padding: 64px 0 12px;
+  padding: 52px 0 10px;
 }
 
 .rail-items {
@@ -921,24 +922,62 @@ body.pan-mode .viewport {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   overflow-y: auto;
   scrollbar-width: none;
+  /* Side padding lets labels bleed past the 48px buttons without the
+     scroll container clipping them. */
+  padding: 0 8px;
 }
 
 .rail-items::-webkit-scrollbar {
   display: none;
 }
 
-.rail-trash {
-  margin-top: auto;
+.rail-div {
+  width: 28px;
+  height: 1px;
+  flex: none;
+  background: var(--edge);
 }
 
-/* Drag-over feedback for the card-delete drop (same accent ring idea
-   as .card.column.drop-hint). */
+/* The can is a fixed sibling of .rail (left/bottom match the old flex
+   pin). It sits one step above the rail normally, and drops a step under
+   the lifted viewport while a card hovers it: the dragged card covers
+   only the can, never the other tools. */
+.rail-trash {
+  position: fixed;
+  left: 8px;
+  bottom: 46px;
+  z-index: 21;
+  user-select: none;
+}
+
+body.over-trash .rail-trash {
+  z-index: 14;
+}
+
+/* Drag-over feedback for the card-delete drop: the can goes danger-red
+   and the viewport lifts (staying under the rail and panels) so the
+   dragged cards ride over the can wearing the same ring. Hit-testing is
+   off so the lifted cards can't intercept pointer targets. */
 .rail-trash.drop-hint {
-  color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent);
+  color: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger);
+}
+
+body.over-trash .viewport {
+  z-index: 16;
+}
+
+body.over-trash .viewport,
+body.over-trash .viewport * {
+  pointer-events: none !important;
+}
+
+.card.over-trash {
+  outline: 2px solid var(--danger);
+  outline-offset: -2px;
 }
 
 .rail-tool,
@@ -1407,7 +1446,7 @@ body.pan-mode .viewport {
 
 .side-panel {
   position: fixed;
-  left: 58px;
+  left: 64px;
   top: 44px;
   bottom: 0;
   width: 292px;
@@ -2919,7 +2958,8 @@ body.presenting .present-stop {
 
 body.presenting .topbar,
 body.presenting .zoombar,
-body.presenting .rail {
+body.presenting .rail,
+body.presenting .rail-trash {
   display: none;
 }
 

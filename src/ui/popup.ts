@@ -4,9 +4,17 @@ export interface ToolPopup {
 }
 
 let current: ToolPopup | null = null;
+let currentBoardAnchored = false;
 
 export function closeToolPopup() {
   current?.close();
+}
+
+// Closes only popups anchored to board space (pins, chips, DOMRect
+// anchors): a viewport move would detach them. Chrome-anchored popups
+// (rail, topbar) stay open.
+export function closeBoardPopup() {
+  if (currentBoardAnchored) current?.close();
 }
 
 // Esc closes only the topmost anchored surface (stopPropagation does
@@ -39,6 +47,7 @@ function onDismissKey(e: KeyboardEvent) {
 export function openToolPopup(anchor: HTMLElement | DOMRect, content: HTMLElement): ToolPopup {
   closeToolPopup();
   const rect = anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;
+  const boardAnchored = !(anchor instanceof HTMLElement) || !!anchor.closest('.doc');
   const node = document.createElement('div');
   node.className = 'tool-pop';
   node.appendChild(content);
@@ -47,7 +56,10 @@ export function openToolPopup(anchor: HTMLElement | DOMRect, content: HTMLElemen
   const pop: ToolPopup = {
     node,
     close() {
-      if (current === pop) current = null;
+      if (current === pop) {
+        current = null;
+        currentBoardAnchored = false;
+      }
       popDismiss(pop);
       window.removeEventListener('pointerdown', onDocDown, true);
       node.remove();
@@ -66,5 +78,6 @@ export function openToolPopup(anchor: HTMLElement | DOMRect, content: HTMLElemen
   window.addEventListener('pointerdown', onDocDown, true);
   pushDismiss(pop);
   current = pop;
+  currentBoardAnchored = boardAnchored;
   return pop;
 }

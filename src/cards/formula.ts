@@ -31,6 +31,13 @@ function colOf(letters: string): number {
   return n - 1;
 }
 
+function colName(c: number): string {
+  let s = '';
+  for (let n = c + 1; n > 0; n = Math.floor((n - 1) / 26))
+    s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
+  return s;
+}
+
 function refOf(s: string): { r: number; c: number } | null {
   const m = REF.exec(s.trim());
   if (!m) return null;
@@ -176,6 +183,47 @@ function evalCall(src: string, cells: TableCell[][], st: St): Val | null {
 
 export function isFormula(text: string): boolean {
   return text.trimStart().startsWith('=');
+}
+
+// Rewrite A1 refs inside a formula string through map(r, c), leaving
+// quoted spans alone so literals like "A1" survive. Structural table
+// edits call this on every cell so formulas keep tracking moved data.
+export function remapRefs(text: string, map: (r: number, c: number) => { r: number; c: number }): string {
+  if (!isFormula(text)) return text;
+  const seg = (s: string) =>
+    s.replace(/([A-Za-z]+)([0-9]+)/g, (_m, ls: string, ds: string) => {
+      const p = map(parseInt(ds, 10) - 1, colOf(ls));
+      return `${colName(p.c)}${p.r + 1}`;
+    });
+  let out = '';
+  let quote = '';
+  let buf = '';
+  for (const ch of text) {
+    if (quote) {
+      out += ch;
+      if (ch === quote) quote = '';
+    } else if (ch === '"' || ch === "'") {
+      out += seg(buf);
+      buf = '';
+      out += ch;
+      quote = ch;
+    } else {
+      buf += ch;
+    }
+  }
+  return out + seg(buf);
+}
+
+export function remapCells(
+  cells: TableCell[][],
+  map: (r: number, c: number) => { r: number; c: number },
+): TableCell[][] {
+  return cells.map((row) =>
+    row.map((cell) => {
+      const text = remapRefs(cell.text, map);
+      return text === cell.text ? cell : { ...cell, text };
+    }),
+  );
 }
 
 // Display string for a formula cell, or null to render the raw text.
