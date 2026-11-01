@@ -1,6 +1,6 @@
 {
-  "name": "scatterboard",
-  "short_name": "scatterboard",
+  "name": "Scatterboard",
+  "short_name": "Scatterboard",
   "description": "Local-first infinite-canvas planning board",
   "start_url": "./",
   "scope": "./",

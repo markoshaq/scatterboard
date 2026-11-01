@@ -30,7 +30,7 @@ import { downloadTextFile } from '../draw/strokes';
 import { htmlToMarkdown, htmlToWordDoc, plainTextOf } from './export';
 import { openScrim, type EditorScrim } from './shell';
 
-export interface DocEditorCtx {
+interface DocEditorCtx {
   boards(): Board[];
   boardUrl(id: ID): string;
   // Live-commit a document content patch; the caller wraps the whole

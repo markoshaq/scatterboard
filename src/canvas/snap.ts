@@ -2,11 +2,11 @@ import { GRID } from '../state/schema';
 import type { Guide } from './renderer';
 import type { Rect } from './viewport';
 
-export const SNAP_TO_GRID = true;
-export const SNAP_TO_CARDS = true;
+const SNAP_TO_GRID = true;
+const SNAP_TO_CARDS = true;
 const THRESHOLD = 8;
 
-export interface SnapResult {
+interface SnapResult {
   dx: number;
   dy: number;
   guides: Guide[];

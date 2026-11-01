@@ -79,6 +79,7 @@ export class LinkCard implements CardView {
     this.emptyEl.className = 'lk-empty';
     this.urlInput = document.createElement('input');
     this.urlInput.type = 'url';
+    this.urlInput.name = 'card-link-url';
     this.urlInput.className = 'lk-url-input';
     this.urlInput.placeholder = this.kind ? PLACEHOLDER[this.kind] : t('pasteLinkPh');
     this.urlInput.dataset.noclick = '1';

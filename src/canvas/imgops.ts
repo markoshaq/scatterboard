@@ -7,7 +7,7 @@ export interface CropRect {
   h: number;
 }
 
-export type RasterSrc = ImageBitmap | HTMLCanvasElement;
+type RasterSrc = ImageBitmap | HTMLCanvasElement;
 
 export async function loadBitmap(ref: string): Promise<ImageBitmap | null> {
   const blob = await getBlob(ref).catch(() => undefined);

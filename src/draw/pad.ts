@@ -4,7 +4,7 @@ import { ICONS } from '../ui/icons';
 import { openToolPopup } from '../ui/popup';
 import { cloneStrokes, hitStroke, strokeD, strokeOutlineD, strokePathEl, translateStroke } from './strokes';
 
-export const DRAW_COLORS = [
+const DRAW_COLORS = [
   '#323b4a',
   '#d6504a',
   '#e8734a',
@@ -15,7 +15,7 @@ export const DRAW_COLORS = [
   '#d6508f',
   '#8d8d7a',
 ];
-export const DRAW_SIZES = [2, 4, 8, 14];
+const DRAW_SIZES = [2, 4, 8, 14];
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 type Tool = 'pen' | 'select' | 'eraser';
@@ -43,7 +43,7 @@ function inkWidths(s: Stroke, pressures: number[], times: number[]): number[] {
   return out;
 }
 
-export interface PadMount {
+interface PadMount {
   // Element that receives pointer input (the capture surface).
   surface: HTMLElement;
   // Element the live svg is appended to (screen- or board-space parent).
@@ -57,7 +57,7 @@ export interface PadMount {
   viewBox?: string;
 }
 
-export interface DrawPadOpts {
+interface DrawPadOpts {
   initial?: Stroke[];
   // Ink effect (pref): capture per-point widths from pointer pressure,
   // falling back to stroke speed when pressure stays flat.
@@ -255,6 +255,7 @@ export class DrawPad {
     custom.title = t('colorCustom');
     const well = document.createElement('input');
     well.type = 'color';
+    well.name = 'pen-color';
     well.value = this.color;
     well.addEventListener('input', () => this.setColor(well.value));
     custom.appendChild(well);

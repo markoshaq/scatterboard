@@ -41,12 +41,12 @@ export type ElementType =
 
 export const UNSORTED: ID = 'unsorted';
 
-export interface NoteDoc {
+interface NoteDoc {
   text: string;
   html?: string;
 }
 
-export interface ColumnDoc {
+interface ColumnDoc {
   title: string;
 }
 
@@ -65,13 +65,13 @@ export interface TodoDoc {
   items: TodoItem[];
 }
 
-export interface HeadingDoc {
+interface HeadingDoc {
   text: string;
   level: 1 | 2;
   html?: string;
 }
 
-export interface SwatchDoc {
+interface SwatchDoc {
   color: string;
   caption: string;
   showValue: boolean;
@@ -86,7 +86,7 @@ export interface LineEnd {
   y: number;
 }
 
-export interface LineDoc {
+interface LineDoc {
   from: LineEnd;
   to: LineEnd;
   fromMarker: LineMarker;
@@ -103,11 +103,11 @@ export interface CommentItem {
   editedAt?: number;
 }
 
-export interface CommentDoc {
+interface CommentDoc {
   items: CommentItem[];
 }
 
-export interface LinkDoc {
+interface LinkDoc {
   url: string;
   title: string;
   caption: string;
@@ -120,7 +120,7 @@ export interface LinkDoc {
 
 export type EmbedKind = 'audio' | 'map' | 'video';
 
-export interface EmbedDoc {
+interface EmbedDoc {
   kind: EmbedKind;
   url: string;
   title: string;
@@ -143,7 +143,7 @@ export interface ImageDoc {
   strokes?: Stroke[];
 }
 
-export interface FileDoc {
+interface FileDoc {
   blobRef: ID;
   name: string;
   size: number;
@@ -151,7 +151,7 @@ export interface FileDoc {
   ext: string;
 }
 
-export type DocDisplayMode = 'icon' | 'detail';
+type DocDisplayMode = 'icon' | 'detail';
 
 export interface DocumentDoc {
   title: string;
@@ -178,13 +178,13 @@ export interface SketchDoc {
 
 // Annotation strokes live in board space, relative to element x/y
 // (the stroke bbox origin).
-export interface AnnotationDoc {
+interface AnnotationDoc {
   strokes: Stroke[];
 }
 
 export type CellType = 'auto' | 'number' | 'currency' | 'percent' | 'text' | 'datetime' | 'checkbox';
-export type CellAlignH = 'left' | 'center' | 'right';
-export type CellAlignV = 'top' | 'middle' | 'bottom';
+type CellAlignH = 'left' | 'center' | 'right';
+type CellAlignV = 'top' | 'middle' | 'bottom';
 
 // A formula is stored as text starting with '='; the computed value
 // renders in place of the raw text outside edit mode.
@@ -294,18 +294,18 @@ export const GRID = 40;
 export const NOTE_W = 240;
 export const NOTE_MIN_W = 140;
 export const NOTE_MAX_W = 800;
-export const COLUMN_W = 280;
-export const BOARD_CARD_W = 210;
-export const SWATCH_W = 200;
+const COLUMN_W = 280;
+const BOARD_CARD_W = 210;
+const SWATCH_W = 200;
 export const LINK_W = 280;
 export const IMAGE_W = 240;
-export const FILE_W = 190;
+const FILE_W = 190;
 export const DOC_W = 280;
 export const SKETCH_W = 280;
-export const TABLE_W = 300;
+const TABLE_W = 300;
 export const SKETCH_PAD_W = 600;
 export const SKETCH_PAD_H = 450;
-export const DEFAULT_SWATCH = '#3d84e0';
+const DEFAULT_SWATCH = '#3d84e0';
 
 export function uid(): ID {
   return crypto.randomUUID().slice(0, 8) + Date.now().toString(36).slice(-4);

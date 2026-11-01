@@ -6,14 +6,14 @@ import type { CardCtx } from './factory';
 import type { CardView } from './note';
 import { cardBg } from '../ui/theme';
 
-export interface ThreadEvents {
+interface ThreadEvents {
   onAdd(text: string): void;
   onEdit(itemId: string, text: string): void;
 }
 
 // Shared thread body: item rows (text + relative time + Edit) and a send box.
 // Used by both the free comment card and the anchored pin popup.
-export class CommentThread {
+class CommentThread {
   node: HTMLElement;
   private list: HTMLElement;
   private input: HTMLTextAreaElement;
@@ -31,6 +31,7 @@ export class CommentThread {
     const foot = document.createElement('div');
     foot.className = 'ct-foot';
     this.input = document.createElement('textarea');
+    this.input.name = 'comment-text';
     this.input.className = 'ct-input';
     this.input.rows = 1;
     this.input.placeholder = t('commentPh');

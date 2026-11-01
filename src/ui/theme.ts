@@ -1,6 +1,6 @@
 // Light/dark theme state. Chrome surfaces read CSS vars flipped by
 // body.dark; canvas drawing and card-tint code paths read these helpers.
-export type ThemeMode = 'light' | 'dark';
+type ThemeMode = 'light' | 'dark';
 
 let mode: ThemeMode = 'light';
 

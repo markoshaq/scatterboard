@@ -1,4 +1,4 @@
-# scatterboard feature spec
+# Scatterboard feature spec
 
 An open-source, local-first infinite-canvas planning board for gamedev
 projects. Feature-for-feature parity with commercial visual-board

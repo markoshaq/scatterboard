@@ -1,7 +1,7 @@
 import type { Doc, Element, ID, LineEnd } from './schema';
 import { uid } from './schema';
 
-export interface RemapOpts {
+interface RemapOpts {
   // Resolved canvas point for a line end whose card was not cloned.
   // Paste resolves through the live layer; templates keep stored coords.
   resolveEnd?: (el: Element, which: 'from' | 'to') => { x: number; y: number } | null;

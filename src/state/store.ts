@@ -1,7 +1,7 @@
 import { applyAction, coalesceKey, emptyChange, mergePatch, type Action, type Change } from './actions';
 import type { Doc } from './schema';
 
-export interface HistoryEntry {
+interface HistoryEntry {
   undo: Action[];
   redo: Action[];
   label?: string;

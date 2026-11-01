@@ -428,6 +428,6 @@ void boot();
 // shell (and lazily every hashed asset) works fully offline.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    void navigator.serviceWorker.register('./sw.js').catch(() => {});
+    void navigator.serviceWorker.register(`./sw.js?v=${__BUILD_ID__}`).catch(() => {});
   });
 }

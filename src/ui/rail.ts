@@ -49,7 +49,7 @@ export type ToolId =
   | 'cell-addcol'
   | 'cell-addrow';
 
-export interface RailEvents {
+interface RailEvents {
   onDrop: (type: ElementType, at: { clientX: number; clientY: number } | null, kind?: EmbedKind) => void;
   onTool: (id: ToolId, anchor: HTMLElement) => void;
   onTrash: () => void;
@@ -67,7 +67,7 @@ interface RailItem {
   kind?: EmbedKind;
 }
 
-export interface CreateItem extends RailItem {
+interface CreateItem extends RailItem {
   // Customization key: the embed kinds get their own entries.
   key: string;
 }
@@ -97,7 +97,7 @@ const MAIN_COUNT = 8;
 
 // Ordered, visible palette items: prefs order wins, unknown keys drop,
 // missing keys append, hidden keys leave the palette entirely.
-export function paletteItems(order: string[] | undefined, hidden: string[] | undefined): CreateItem[] {
+function paletteItems(order: string[] | undefined, hidden: string[] | undefined): CreateItem[] {
   const byKey = new Map(CREATE_ITEMS.map((i) => [i.key, i]));
   const hide = new Set(hidden ?? []);
   const seen = new Set<string>();
@@ -276,6 +276,7 @@ export class Rail {
     trash.appendChild(trashLab);
     trash.addEventListener('click', () => this.events.onTrash());
     this.well = document.createElement('input');
+    this.well.name = 'board-color';
     this.well.type = 'color';
     this.well.className = 'rail-well';
     this.well.title = t('boardColor');

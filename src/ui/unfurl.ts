@@ -3,7 +3,7 @@
 // silently to the manual title offline or on failure.
 const PROXY = 'https://api.allorigins.win/raw?url=';
 
-export interface UnfurlResult {
+interface UnfurlResult {
   title?: string;
   desc?: string;
   image?: string;

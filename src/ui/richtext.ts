@@ -299,7 +299,7 @@ const MD_TRIGGERS: Record<string, BlockStyle | 'ul' | 'ol' | 'check' | 'hr'> = {
 };
 
 // Line-start markdown triggers, run on Space before the char lands.
-export function mdAutoformat(root: HTMLElement): boolean {
+function mdAutoformat(root: HTMLElement): boolean {
   const s = getSelection();
   if (!s || !s.isCollapsed || !s.rangeCount) return false;
   ensureBlockChildren(root);
@@ -338,7 +338,7 @@ export function mdAutoformat(root: HTMLElement): boolean {
   return true;
 }
 
-export interface RichKeyHandlers {
+interface RichKeyHandlers {
   openLink(): void;
 }
 

@@ -1,7 +1,7 @@
 import type { Lang } from './persist/storage';
 
 const en = {
-  appName: 'scatterboard',
+  appName: 'Scatterboard',
   homeTitle: 'Home',
   saving: 'Saving...',
   saved: 'Saved',
@@ -67,6 +67,7 @@ const en = {
   editLabel: 'Edit',
   edited: 'edited',
   unsortedTitle: 'Unsorted',
+  sendToUnsorted: 'Send to Unsorted',
   unsortedHelp: 'A place to put things while you decide where they should go',
   unsortedEmpty: 'Nothing filed here',
   trashTitle: 'Trash',
@@ -226,7 +227,7 @@ const en = {
   exJson: 'Board as JSON',
   exImport: 'Import board (.json)',
   exFail: 'Export did not finish',
-  exImportFail: 'That file is not a scatterboard export',
+  exImportFail: 'That file is not a Scatterboard export',
   toolIcon: 'Icon',
   iconSearchPh: 'Search icons...',
   iconRecommended: 'Recommended',
@@ -257,7 +258,7 @@ const en = {
   setStorage: 'Storage',
   storageLoading: 'Checking...',
   storageLine: '{doc} board data, {media} media',
-  welcomeHead: 'Welcome to scatterboard',
+  welcomeHead: 'Welcome to Scatterboard',
   welcomeNote1: 'Double-click anywhere to drop a note',
   welcomeNote2: 'Drag cards in from the left rail',
   welcomeNote3: 'Hold Space and drag to pan. Press / for every shortcut',
@@ -314,7 +315,7 @@ const en = {
   wordsMany: '{n} words',
 };
 
-export type StringKey = keyof typeof en;
+type StringKey = keyof typeof en;
 
 const es: Partial<Record<StringKey, string>> = {
   homeTitle: 'Inicio',
@@ -381,6 +382,7 @@ const es: Partial<Record<StringKey, string>> = {
   editLabel: 'Editar',
   edited: 'editado',
   unsortedTitle: 'Sin ordenar',
+  sendToUnsorted: 'Enviar a Sin ordenar',
   unsortedHelp: 'Un lugar para guardar cosas mientras decides dónde van',
   unsortedEmpty: 'Nada archivado aquí',
   trashTitle: 'Papelera',
@@ -540,7 +542,7 @@ const es: Partial<Record<StringKey, string>> = {
   exJson: 'Tablero como JSON',
   exImport: 'Importar tablero (.json)',
   exFail: 'La exportación no terminó',
-  exImportFail: 'Ese archivo no es una exportación de scatterboard',
+  exImportFail: 'Ese archivo no es una exportación de Scatterboard',
   toolIcon: 'Icono',
   iconSearchPh: 'Buscar iconos...',
   iconRecommended: 'Recomendados',
@@ -571,7 +573,7 @@ const es: Partial<Record<StringKey, string>> = {
   setStorage: 'Almacenamiento',
   storageLoading: 'Comprobando...',
   storageLine: '{doc} de tablero, {media} de medios',
-  welcomeHead: 'Bienvenido a scatterboard',
+  welcomeHead: 'Bienvenido a Scatterboard',
   welcomeNote1: 'Doble clic en cualquier parte para crear una nota',
   welcomeNote2: 'Arrastra tarjetas desde la barra izquierda',
   welcomeNote3: 'Mantén Espacio y arrastra para moverte. Pulsa / para ver los atajos',
@@ -693,6 +695,7 @@ const fr: Partial<Record<StringKey, string>> = {
   editLabel: 'Modifier',
   edited: 'modifié',
   unsortedTitle: 'Non triés',
+  sendToUnsorted: 'Envoyer vers Non triés',
   unsortedHelp: 'Un endroit où poser les choses en attendant de les classer',
   unsortedEmpty: 'Rien de rangé ici',
   trashTitle: 'Corbeille',
@@ -852,7 +855,7 @@ const fr: Partial<Record<StringKey, string>> = {
   exJson: 'Tableau en JSON',
   exImport: 'Importer un tableau (.json)',
   exFail: 'L\'export n\'a pas abouti',
-  exImportFail: 'Ce fichier n\'est pas un export scatterboard',
+  exImportFail: 'Ce fichier n\'est pas un export Scatterboard',
   toolIcon: 'Icône',
   iconSearchPh: 'Rechercher des icônes...',
   iconRecommended: 'Recommandées',
@@ -883,7 +886,7 @@ const fr: Partial<Record<StringKey, string>> = {
   setStorage: 'Stockage',
   storageLoading: 'Vérification...',
   storageLine: '{doc} de tableau, {media} de médias',
-  welcomeHead: 'Bienvenue sur scatterboard',
+  welcomeHead: 'Bienvenue sur Scatterboard',
   welcomeNote1: 'Double-cliquez n\'importe où pour poser une note',
   welcomeNote2: 'Glissez des cartes depuis la barre de gauche',
   welcomeNote3: 'Maintenez Espace et glissez pour vous déplacer. Tapez / pour tous les raccourcis',
@@ -1006,6 +1009,7 @@ const pt: Partial<Record<StringKey, string>> = {
   edited: 'editado',
   unsortedTitle: 'Sem ordem',
   unsortedHelp: 'Um lugar para guardar coisas enquanto decide onde ficam',
+  sendToUnsorted: 'Enviar para Sem ordem',
   unsortedEmpty: 'Nada arquivado aqui',
   trashTitle: 'Lixeira',
   emptyTrash: 'Esvaziar lixeira',
@@ -1164,7 +1168,7 @@ const pt: Partial<Record<StringKey, string>> = {
   exJson: 'Quadro como JSON',
   exImport: 'Importar quadro (.json)',
   exFail: 'A exportação não terminou',
-  exImportFail: 'Esse arquivo não é uma exportação do scatterboard',
+  exImportFail: 'Esse arquivo não é uma exportação do Scatterboard',
   toolIcon: 'Ícone',
   iconSearchPh: 'Buscar ícones...',
   iconRecommended: 'Recomendados',
@@ -1195,7 +1199,7 @@ const pt: Partial<Record<StringKey, string>> = {
   setStorage: 'Armazenamento',
   storageLoading: 'Verificando...',
   storageLine: '{doc} de quadro, {media} de mídia',
-  welcomeHead: 'Bem-vindo ao scatterboard',
+  welcomeHead: 'Bem-vindo ao Scatterboard',
   welcomeNote1: 'Clique duas vezes em qualquer lugar para criar uma nota',
   welcomeNote2: 'Arraste cartões da barra à esquerda',
   welcomeNote3: 'Segure Espaço e arraste para navegar. Tecle / para todos os atalhos',
@@ -1288,18 +1292,9 @@ export function lang(): Lang {
   return active;
 }
 
-export function langTag(): string {
+function langTag(): string {
   return LANG_TAGS[active];
 }
-
-// Settings language changes persist then reload; module-level label
-// tables (rail tools, palettes) are captured at boot, so a runtime swap
-// would leave half the chrome in the old language.
-export function setLang(l: Lang) {
-  active = l;
-}
-
-export const S = en;
 
 export function t(k: StringKey): string {
   return TABLES[active][k] ?? en[k];
@@ -1330,7 +1325,7 @@ export function monthName(m: number): string {
   return new Intl.DateTimeFormat(langTag(), { month: 'long' }).format(new Date(2020, m, 1));
 }
 
-export function shortDate(ts: number): string {
+function shortDate(ts: number): string {
   return new Intl.DateTimeFormat(langTag(), { month: 'short', day: 'numeric' }).format(new Date(ts));
 }
 

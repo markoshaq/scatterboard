@@ -18,9 +18,9 @@ export type ElementPatch = PatchOf<
   | 'reactions'
   | 'syncGroup'
 >;
-export type BoardPatch = PatchOf<Board, 'title' | 'icon' | 'color' | 'grid' | 'position'>;
-export type LabelPatch = PatchOf<Label, 'name' | 'color'>;
-export type TemplatePatch = PatchOf<Template, 'name'>;
+type BoardPatch = PatchOf<Board, 'title' | 'icon' | 'color' | 'grid' | 'position'>;
+type LabelPatch = PatchOf<Label, 'name' | 'color'>;
+type TemplatePatch = PatchOf<Template, 'name'>;
 
 export type Action =
   | { type: 'element.create'; el: Element }

@@ -2,12 +2,12 @@ import type { Doc, Element, ID, LineEnd } from '../state/schema';
 import { lineDoc } from '../state/schema';
 import type { Rect } from './viewport';
 
-export interface Pt {
+interface Pt {
   x: number;
   y: number;
 }
 
-export interface ResolvedLine {
+interface ResolvedLine {
   el: Element;
   x1: number;
   y1: number;
@@ -15,7 +15,7 @@ export interface ResolvedLine {
   y2: number;
 }
 
-export type RectOf = (el: Element) => Rect;
+type RectOf = (el: Element) => Rect;
 
 // Attached ends snap to the card edge midpoint nearest the other endpoint.
 // Falls back to the stored free point when the element is gone or unusable.

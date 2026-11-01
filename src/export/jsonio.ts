@@ -8,7 +8,7 @@ import { createBoardCard, uid, UNSORTED } from '../state/schema';
 // entries, so an imported image whose blob never existed here renders
 // the standard missing-image placeholder.
 
-export interface BoardExport {
+interface BoardExport {
   version: 1;
   board: ID;
   boards: Board[];

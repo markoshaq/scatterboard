@@ -4,7 +4,7 @@ import { ICONS } from './icons';
 import { closeToolPopup, openToolPopup, type ToolPopup } from './popup';
 import { HIGHLIGHTS, TEXT_COLORS, type BlockStyle } from './richtext';
 
-export const CARD_COLORS = [
+const CARD_COLORS = [
   '#fdebee',
   '#fdf2e0',
   '#fef6d0',
@@ -127,6 +127,7 @@ export function openColorPopup(anchor: HTMLElement, onPick: (color: string | und
   custom.title = t('colorCustom');
   const well = document.createElement('input');
   well.type = 'color';
+  well.name = 'custom-color';
   well.value = '#fdf2e0';
   well.addEventListener('input', () => onPick(well.value));
   custom.appendChild(well);
@@ -140,7 +141,7 @@ export function openColorPopup(anchor: HTMLElement, onPick: (color: string | und
   return openToolPopup(anchor, node);
 }
 
-export interface LabelsApi {
+interface LabelsApi {
   labels(): Label[];
   applied(id: ID): 'all' | 'some' | 'none';
   onToggle(id: ID): void;
@@ -161,6 +162,7 @@ export function openLabelsPopup(anchor: HTMLElement, api: LabelsApi): ToolPopup 
       row.className = 'lp-row';
       const box = document.createElement('input');
       box.type = 'checkbox';
+      box.name = 'label-toggle';
       const state = api.applied(label.id);
       box.checked = state === 'all';
       box.indeterminate = state === 'some';
@@ -199,6 +201,7 @@ export function openLabelsPopup(anchor: HTMLElement, api: LabelsApi): ToolPopup 
   add.className = 'lp-add';
   const input = document.createElement('input');
   input.type = 'text';
+  input.name = 'new-label';
   input.placeholder = t('labelNamePh');
   input.addEventListener('keydown', (e) => {
     e.stopPropagation();
@@ -224,6 +227,7 @@ export function openReactionsPopup(
 
   const search = document.createElement('input');
   search.type = 'text';
+  search.name = 'reaction-search';
   search.className = 'rp-search';
   search.placeholder = t('reactSearchPh');
   const toneRow = document.createElement('div');
@@ -345,7 +349,7 @@ export function openMenuPopup(anchor: HTMLElement, items: MenuItem[], keepSelect
   return pop;
 }
 
-export interface TextStyleApi {
+interface TextStyleApi {
   current(): BlockStyle | null;
   onStyle(s: BlockStyle): void;
   onColor(c: string | null): void;
@@ -416,7 +420,7 @@ export function openTextStylePopup(anchor: HTMLElement, api: TextStyleApi): Tool
   return pop;
 }
 
-export interface CellAlignApi {
+interface CellAlignApi {
   h: string | undefined;
   v: string | undefined;
   onH(h: 'left' | 'center' | 'right'): void;
@@ -475,6 +479,7 @@ export function openLinkPopup(anchor: HTMLElement | DOMRect, onCommit: (url: str
   node.className = 'lk-body';
   const input = document.createElement('input');
   input.type = 'url';
+  input.name = 'link-url';
   input.className = 'lk-input';
   input.placeholder = t('linkPh');
   node.appendChild(input);
@@ -518,7 +523,7 @@ export function openLinkInfoPopup(anchor: HTMLElement, url: string, onCopy: () =
   return pop;
 }
 
-export interface ViewMenuApi {
+interface ViewMenuApi {
   zoom(): number;
   onZoomIn(): void;
   onZoomOut(): void;

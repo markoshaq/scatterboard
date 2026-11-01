@@ -48,7 +48,7 @@ export function getBlob(id: ID): Promise<Blob | undefined> {
   return run('readonly', (s) => s.get(id) as IDBRequest<Blob | undefined>);
 }
 
-export async function deleteBlob(id: ID): Promise<void> {
+async function deleteBlob(id: ID): Promise<void> {
   const u = urls.get(id);
   if (u) {
     URL.revokeObjectURL(u);
@@ -83,7 +83,7 @@ export function blobUrl(id: ID): Promise<string | null> {
   return p;
 }
 
-export function blobRefsInDoc(doc: Doc): Set<ID> {
+function blobRefsInDoc(doc: Doc): Set<ID> {
   const out = new Set<ID>();
   for (const el of Object.values(doc.elements)) {
     const r = blobRefOf(el);
@@ -117,12 +117,6 @@ export async function purgeOrphanBlobs(doc: Doc): Promise<void> {
   } catch {
     /* best-effort */
   }
-}
-
-// Delete a blob only when no live element or trash entry still uses it.
-// Shared refs survive (duplicated image cards share a blobRef).
-export async function releaseBlobIfOrphan(doc: Doc, id: ID): Promise<void> {
-  if (!blobRefsInDoc(doc).has(id)) await deleteBlob(id).catch(() => {});
 }
 
 // Release blobs held by trash entries that are being purged, unless a live
@@ -178,6 +172,7 @@ export async function downloadBlobRef(id: ID, name: string): Promise<void> {
 export function copyTextToClipboard(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
   const ta = document.createElement('textarea');
+  ta.name = 'clipboard-helper';
   ta.value = text;
   ta.style.position = 'fixed';
   ta.style.opacity = '0';

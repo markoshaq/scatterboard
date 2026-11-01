@@ -14,9 +14,9 @@ export interface SearchHit {
   query?: string;
 }
 
-export type SearchSort = 'relevance' | 'modified' | 'viewed';
+type SearchSort = 'relevance' | 'modified' | 'viewed';
 
-export interface RecentBoard {
+interface RecentBoard {
   boardId: ID;
   title: string;
   icon?: string;
@@ -79,7 +79,7 @@ export function searchBoard(doc: Doc, boardId: ID, query: string): SearchHit[] {
   return hits;
 }
 
-export function sortHits(hits: SearchHit[], sort: SearchSort, recentIds: ID[]): SearchHit[] {
+function sortHits(hits: SearchHit[], sort: SearchSort, recentIds: ID[]): SearchHit[] {
   const rank = new Map(recentIds.map((id, i) => [id, i]));
   const byMod = (a: SearchHit, b: SearchHit) => b.modifiedAt - a.modifiedAt;
   const out = hits.slice();
@@ -111,6 +111,7 @@ export function openSearchPanel(opts: {
   const handle = openPanel({ title: t('searchTitle') });
   handle.onClose = opts.onClose;
   const input = document.createElement('input');
+  input.name = 'board-search';
   input.type = 'text';
   input.className = 'sp-search';
   input.placeholder = t('searchPh');

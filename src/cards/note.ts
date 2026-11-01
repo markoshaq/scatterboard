@@ -35,7 +35,7 @@ export interface CardView {
   destroy(): void;
 }
 
-export function noteHtml(el: Element): string | undefined {
+function noteHtml(el: Element): string | undefined {
   return 'note' in el.content ? el.content.note.html : undefined;
 }
 

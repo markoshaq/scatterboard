@@ -937,6 +937,7 @@ export class TableCard implements CardView {
         el.textContent = '';
         const input = document.createElement('input');
         input.type = 'checkbox';
+        input.name = 'cell-checkbox';
         input.dataset.noclick = '1';
         el.appendChild(input);
       }

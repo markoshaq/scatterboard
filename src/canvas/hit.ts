@@ -1,9 +1,4 @@
-import type { Element } from '../state/schema';
 import type { Rect } from './viewport';
-
-export function elRect(el: Element, h: number): Rect {
-  return { x: el.x, y: el.y, w: el.w ?? 240, h };
-}
 
 export function pointInRect(px: number, py: number, r: Rect): boolean {
   return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;

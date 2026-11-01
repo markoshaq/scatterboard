@@ -5,7 +5,7 @@ import { openScrim } from './shell';
 import type { EditorHandle } from './doceditor';
 import type { Viewport } from '../canvas/viewport';
 
-export interface SketchEditorCtx {
+interface SketchEditorCtx {
   patch(doc: SketchDoc): void;
   exit(): void;
   ink?: boolean | undefined;
@@ -53,7 +53,7 @@ export function openSketchEditor(el: Element, ctx: SketchEditorCtx): EditorHandl
   };
 }
 
-export interface BoardDrawCtx {
+interface BoardDrawCtx {
   vp: Viewport;
   ink?: boolean | undefined;
   onSave(strokes: Stroke[]): void;

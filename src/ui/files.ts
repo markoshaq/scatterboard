@@ -48,7 +48,10 @@ function toBlob(cv: HTMLCanvasElement, type: string, q?: number): Promise<Blob |
 // Downscale on ingest: cap the long edge, JPEG q0.85; keep PNG only when
 // it ends up smaller (screenshots, flat art).
 export async function prepareImage(file: Blob): Promise<PreparedImage> {
-  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  // Safari accepts createImageBitmap(blob) but not the options dict.
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() =>
+    createImageBitmap(file),
+  );
   try {
     const scale = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height));
     const w = Math.max(1, Math.round(bmp.width * scale));

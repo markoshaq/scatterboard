@@ -1,8 +1,8 @@
 # Security policy
 
-scatterboard is a local-first app: your boards live in your browser's
+Scatterboard is a local-first app: your boards live in your browser's
 storage and are never sent anywhere by default. There is no account
-system and no scatterboard server.
+system and no Scatterboard server.
 
 ## Reporting a vulnerability
 

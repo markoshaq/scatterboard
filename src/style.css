@@ -381,6 +381,14 @@ body.pan-mode .viewport {
   background: var(--card);
 }
 
+.rail-item > span {
+  max-width: 100%;
+  text-align: center;
+  line-height: 1.1;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
 .rail-item svg {
   width: 20px;
   height: 20px;

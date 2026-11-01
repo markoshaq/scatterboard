@@ -2,7 +2,7 @@ import { t } from '../strings';
 import { openToolPopup, type ToolPopup } from './popup';
 import { letterIcons, recommendedIcons, searchIcons } from './boardicons';
 
-export interface IconPickerApi {
+interface IconPickerApi {
   title(): string;
   onPick(icon: string | undefined): void;
   onUpload(): void;
@@ -15,6 +15,7 @@ export function openIconPicker(anchor: HTMLElement | DOMRect, api: IconPickerApi
   node.className = 'bip-body';
 
   const input = document.createElement('input');
+  input.name = 'icon-search';
   input.type = 'text';
   input.className = 'bip-search';
   input.placeholder = t('iconSearchPh');

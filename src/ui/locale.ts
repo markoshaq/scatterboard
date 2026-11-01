@@ -13,10 +13,6 @@ export function setFormatting(opts: { browserLang: boolean; lang: string; curren
   currency = opts.currency;
 }
 
-export function currencyOf(): Currency {
-  return currency;
-}
-
 export function localeTag(): string {
   return useBrowser ? navigator.language : uiLang;
 }

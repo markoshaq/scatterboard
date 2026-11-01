@@ -1,4 +1,8 @@
-# scatterboard architecture proposal
+# Scatterboard architecture proposal
+
+Status: original design proposal, kept for context. The shipped code
+differs in places (folder layout, stroke rendering, input patterns).
+AGENTS.md documents the current structure.
 
 Constraints: local-first, single user, extremely fast and lightweight.
 No framework lock-in, minimal dependencies, instant cold start.

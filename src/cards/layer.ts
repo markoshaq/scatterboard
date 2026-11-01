@@ -197,13 +197,16 @@ export class CardsLayer {
       view.syncInner?.(selection, editingId);
     }
     // Paint order follows el.z; column members live inside their column
-    // view, so only the layer's direct card children reorder.
+    // view, so only the layer's direct card children reorder. Seated
+    // overlays (chips, pins, anno svgs) interleave between cards, so
+    // only .card siblings count: moving a card every render would
+    // detach it and steal DOM focus from its inputs.
     let prev: Node | null = null;
     for (const el of els.filter((e) => wanted.has(e.id)).sort((a, b) => a.z - b.z)) {
       const node = this.views.get(el.id)!.node;
-      if (node.previousSibling !== prev) {
-        this.node.insertBefore(node, prev ? prev.nextSibling : this.node.firstChild);
-      }
+      let sib: Node | null = prev ? prev.nextSibling : this.node.firstChild;
+      while (sib && !(sib instanceof Element && sib.classList.contains('card'))) sib = sib.nextSibling;
+      if (sib !== node) this.node.insertBefore(node, sib);
       prev = node;
     }
   }

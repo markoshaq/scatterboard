@@ -26,7 +26,7 @@ export interface DraftLine {
   y2: number;
 }
 
-export interface Scene {
+interface Scene {
   grid: boolean;
   marquee: Rect | null;
   guides: Guide[];
@@ -36,7 +36,7 @@ export interface Scene {
   draft: DraftLine | null;
 }
 
-export const EMPTY_SCENE: Scene = { grid: true, marquee: null, guides: [], guideAlpha: 1, outlines: [], lines: [], draft: null };
+const EMPTY_SCENE: Scene = { grid: true, marquee: null, guides: [], guideAlpha: 1, outlines: [], lines: [], draft: null };
 
 const LINE_W: Record<LineWeight, number> = { thin: 1, medium: 1.8, thick: 4 };
 

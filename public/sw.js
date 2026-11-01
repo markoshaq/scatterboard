@@ -1,8 +1,9 @@
-// scatterboard service worker. Navigations go network-first so deploys
+// Scatterboard service worker. Navigations go network-first so deploys
 // propagate immediately; every same-origin GET then gets a runtime
 // cache entry so the app keeps working fully offline. Hashed Vite
-// assets are safe to cache forever. Bump CACHE on each release.
-const CACHE = 'scatterboard-v2';
+// assets are safe to cache forever. CACHE tracks the build version
+// passed on the registration URL, so each deploy busts old entries.
+const CACHE = 'scatterboard-' + (self.location.search.match(/v=([^&]+)/)?.[1] || 'v3');
 
 self.addEventListener('install', (e) => {
   e.waitUntil(self.skipWaiting());

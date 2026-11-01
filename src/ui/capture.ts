@@ -7,6 +7,7 @@ export function openCapturePopup(anchor: HTMLElement, onAdd: (text: string) => v
   const node = document.createElement('div');
   node.className = 'qc-body';
   const area = document.createElement('textarea');
+  area.name = 'quick-capture';
   area.className = 'qc-input';
   area.placeholder = t('qcPh');
   area.rows = 3;

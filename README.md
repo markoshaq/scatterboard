@@ -1,4 +1,4 @@
-# scatterboard
+# Scatterboard
 
 A local-first, infinite-canvas planning board. MIT licensed. No accounts,
 no servers: everything lives in your browser.
@@ -60,5 +60,5 @@ to the network, and only when you use them:
 ## License
 
 MIT, see LICENSE. Vendored third-party components are listed in
-NOTICE.md. scatterboard is an original work and is not affiliated with
+NOTICE.md. Scatterboard is an original work and is not affiliated with
 any commercial product.

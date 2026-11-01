@@ -24,7 +24,7 @@ export function imgModeParam(m: ImgMode): string {
   return m === 'draw' ? '?editing-drawing' : m === 'bg' ? '?editing-background' : '?editing';
 }
 
-export interface ImgEditorCtx {
+interface ImgEditorCtx {
   doc(): ImageDoc | null;
   patch(doc: ImageDoc): void;
   // Swap modes: sets the hash; hashchange drives setMode on this overlay.

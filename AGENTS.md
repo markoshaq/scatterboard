@@ -1,4 +1,4 @@
-# scatterboard
+# Scatterboard
 
 Local-first infinite-canvas planning board in the visual-board
 tradition, with original code, copy, art, and name. MIT.
@@ -10,6 +10,7 @@ calls; fully offline.
 - `npm run dev`: Vite dev server
 - `npm run build`: static build to `dist/` (deployable as-is)
 - `npm run typecheck`: `tsc --noEmit`; must pass before finishing work
+- `npm test`: `vitest run`; unit tests live in `test/`
 - `npm run preview`: serve `dist/`
 
 `window.__app` exposes the App instance on the dev page for poking

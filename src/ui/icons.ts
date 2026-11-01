@@ -1,4 +1,4 @@
-const S = (inner: string) =>
+export const S = (inner: string) =>
   `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
 
 export const ICONS = {

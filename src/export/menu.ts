@@ -2,7 +2,7 @@ import { t } from '../strings';
 import { ICONS } from '../ui/icons';
 import { openToolPopup, type ToolPopup } from '../ui/popup';
 
-export interface ExportMenuApi {
+interface ExportMenuApi {
   hasMedia(): boolean;
   subs(): boolean;
   onToggleSubs(): void;

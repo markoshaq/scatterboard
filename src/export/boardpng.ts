@@ -139,7 +139,7 @@ function loadImg(url: string): Promise<HTMLImageElement> {
 // environment refuses (image decode error or a tainted canvas). The svg
 // travels as a data: URL, not blob:: Chrome and Safari taint canvases
 // after drawing blob-URL svgs with foreignObject but not data-URL ones.
-export async function domToRaster(host: HTMLElement, w: number, h: number, scale: number): Promise<HTMLCanvasElement> {
+async function domToRaster(host: HTMLElement, w: number, h: number, scale: number): Promise<HTMLCanvasElement> {
   const xml = new XMLSerializer().serializeToString(host);
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(w * scale)}" height="${Math.round(h * scale)}" ` +

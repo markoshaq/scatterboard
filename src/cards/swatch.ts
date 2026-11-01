@@ -58,7 +58,7 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } {
   return { h, s, l };
 }
 
-export function colorName(hex: string): string {
+function colorName(hex: string): string {
   const { h, s, l } = hexToHsl(hex);
   if (s < 0.16) {
     let best = ACHROMATIC[0]!;
@@ -154,6 +154,7 @@ export class SwatchCard implements CardView {
     if (!this.picker) {
       const input = document.createElement('input');
       input.type = 'color';
+      input.name = 'swatch-color';
       input.className = 'sw-picker';
       input.addEventListener('input', () => {
         this.block.style.background = input.value;

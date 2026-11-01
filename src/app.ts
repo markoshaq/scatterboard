@@ -783,6 +783,7 @@ export class App {
     if (this.lockedView()) return;
     const input = document.createElement('input');
     input.type = 'file';
+    input.name = 'import-json';
     input.accept = '.json,application/json';
     input.addEventListener('change', () => {
       const file = input.files?.[0];
@@ -2761,6 +2762,10 @@ export class App {
       { label: t('bringToFront'), onPick: () => this.zOrder('front') },
       { label: t('sendToBack'), onPick: () => this.zOrder('back') },
     );
+    // Keyboard/discoverability parity for the Opt+` filing shortcut.
+    if (sel.some((e) => e.parentId === null)) {
+      items.push({ label: t('sendToUnsorted'), onPick: () => this.fileToUnsorted() });
+    }
     return items;
   }
 
@@ -3098,6 +3103,7 @@ export class App {
   private pickFiles(accept: string) {
     const input = document.createElement('input');
     input.type = 'file';
+    input.name = 'file-upload';
     input.accept = accept;
     input.multiple = true;
     input.addEventListener('change', () => {
@@ -3113,6 +3119,7 @@ export class App {
     if (!c) return;
     const input = document.createElement('input');
     input.type = 'file';
+    input.name = 'image-replace';
     input.accept = 'image/*';
     input.addEventListener('change', () => {
       const file = input.files?.[0];
@@ -3333,11 +3340,11 @@ export class App {
   // Deep-link params: #/b/<id>?filter_query=<q>&filter_ids=<elementId>.
   // Selects matched cards and centres the first; highlight only.
   applyRouteFilter() {
+    if (!this.boardId) return;
     const m = location.hash.match(/^#\/b\/[^?#]+\?([^#]*)$/);
-    if (!m || !this.boardId) return;
-    const params = new URLSearchParams(m[1]!);
-    const fid = params.get('filter_ids');
-    const q = params.get('filter_query') ?? '';
+    const params = m ? new URLSearchParams(m[1]!) : null;
+    const fid = params?.get('filter_ids');
+    const q = params?.get('filter_query') ?? '';
     let hits: Element[] = [];
     if (fid) {
       const el = this.doc.elements[fid];
@@ -3347,7 +3354,16 @@ export class App {
         .map((h) => (h.elementId ? this.doc.elements[h.elementId] : undefined))
         .filter((e): e is Element => !!e);
     }
-    if (!hits.length) return;
+    if (!hits.length) {
+      // No usable filter params: drop any stale highlight (e.g. after
+      // Back navigation stripped the query from a filtered URL).
+      if (this.filterIds.size) {
+        this.filterIds.clear();
+        this.sel.clear();
+        this.render();
+      }
+      return;
+    }
     // Filtered mode: matched cards stay lit, the rest of the board dims
     // until the user selects something else.
     this.filterIds = new Set(hits.map((e) => e.id));
@@ -3549,6 +3565,7 @@ export class App {
   private uploadBoardIcon(boardId: ID) {
     const input = document.createElement('input');
     input.type = 'file';
+    input.name = 'board-icon-upload';
     input.accept = 'image/*';
     input.addEventListener('change', () => {
       const file = input.files?.[0];

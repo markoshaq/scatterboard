@@ -3,7 +3,7 @@ import { LANGS, t } from '../strings';
 import { ICONS } from './icons';
 import { openToolPopup, type ToolPopup } from './popup';
 
-export interface SettingsApi {
+interface SettingsApi {
   theme(): 'light' | 'dark';
   onTheme(mode: 'light' | 'dark'): void;
   scale(): number;

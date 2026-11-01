@@ -1,13 +1,12 @@
 import { iconBlobRef } from '../state/schema';
 import { blobUrl } from '../persist/blobs';
+import { S } from './icons';
 
 // Board icon set: our own glyphs in the same stroke style as the rail
 // icons, each with keyword tags for picker search and Recommended
 // matching against board title words.
-const S = (inner: string) =>
-  `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
 
-export interface BoardIcon {
+interface BoardIcon {
   id: string;
   svg: string;
   kw: string[];
@@ -15,7 +14,7 @@ export interface BoardIcon {
 
 const B = (id: string, svg: string, kw: string[]): BoardIcon => ({ id, svg: S(svg), kw: [id, ...kw] });
 
-export const BOARD_ICONS: BoardIcon[] = [
+const BOARD_ICONS: BoardIcon[] = [
   B('flag', `<path d="M5 17V3.5"/><path d="M5 4c2-1.5 4-1.5 6 0s4 1.5 5 .5V11c-1 1-3 .5-5-.5s-4-1.5-6 0"/>`, ['goal', 'milestone', 'start', 'ship', 'launch', 'mark']),
   B('target', `<circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="3.5"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/>`, ['goal', 'aim', 'focus', 'objective']),
   B('rocket', `<path d="M10 3c3 1.5 4.5 5 4.5 8.5l-3 2h-3l-3-2C5.5 8 7 4.5 10 3z"/><circle cx="10" cy="8.5" r="1.6"/><path d="M6.5 13.5 5 17l3.5-1.5M13.5 13.5 15 17l-3.5-1.5"/>`, ['launch', 'ship', 'release', 'space', 'fast']),
@@ -80,7 +79,7 @@ export const BOARD_ICONS: BoardIcon[] = [
 
 const BY_ID = new Map(BOARD_ICONS.map((i) => [i.id, i]));
 
-export function boardIcon(id: string): BoardIcon | undefined {
+function boardIcon(id: string): BoardIcon | undefined {
   return BY_ID.get(id);
 }
 
@@ -163,5 +162,3 @@ export function mountBoardIcon(host: HTMLElement, icon: string | undefined, titl
   }
   host.textContent = title.trim().charAt(0).toUpperCase() || '?';
 }
-
-export type BoardIconPick = { icon: string | undefined };

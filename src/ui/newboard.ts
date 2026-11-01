@@ -3,7 +3,7 @@ import { t } from '../strings';
 import { ICONS } from './icons';
 import { openToolPopup, type ToolPopup } from './popup';
 
-export interface NewBoardApi {
+interface NewBoardApi {
   builtins(): Template[];
   customs(): Template[];
   onPick(template: Template | null): void;
@@ -72,6 +72,7 @@ export function openNewBoardPicker(anchor: HTMLElement | DOMRect, api: NewBoardA
         edit.addEventListener('click', (e) => {
           e.stopPropagation();
           const input = document.createElement('input');
+          input.name = 'template-rename';
           input.className = 'nbp-rename';
           input.value = tp.name;
           pick.replaceWith(input);

@@ -80,7 +80,7 @@ function segDist(px: number, py: number, ax: number, ay: number, bx: number, by:
 }
 
 // Distance from a point to the stroke polyline; Infinity for empty strokes.
-export function strokeDist(s: Stroke, x: number, y: number): number {
+function strokeDist(s: Stroke, x: number, y: number): number {
   if (!s.pts.length) return Infinity;
   if (s.pts.length === 1) return Math.hypot(x - s.pts[0]![0], y - s.pts[0]![1]);
   let best = Infinity;

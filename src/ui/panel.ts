@@ -9,7 +9,7 @@ export interface PanelHandle {
   onClose?: () => void;
 }
 
-export interface PanelOpts {
+interface PanelOpts {
   title: string;
   helper?: string;
   actionLabel?: string;
