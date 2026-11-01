@@ -1,0 +1,10 @@
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  // PLANBOARD_BASE kept for existing deploy scripts.
+  base: process.env.SCATTERBOARD_BASE ?? process.env.PLANBOARD_BASE ?? './',
+  build: {
+    target: 'es2022',
+    sourcemap: false,
+  },
+});

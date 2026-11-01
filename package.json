@@ -1,0 +1,31 @@
+{
+  "name": "scatterboard",
+  "version": "0.1.0",
+  "description": "Local-first infinite-canvas planning board",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "author": "Marko Šekuljica",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/markoshaq/scatterboard.git"
+  },
+  "keywords": [
+    "moodboard",
+    "infinite-canvas",
+    "planning",
+    "local-first",
+    "offline",
+    "pwa"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vite": "^7.1.7"
+  }
+}
