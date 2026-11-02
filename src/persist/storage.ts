@@ -1,6 +1,6 @@
 import type { Doc, ID } from '../state/schema';
 
-export type Lang = 'en' | 'es' | 'fr' | 'pt';
+export type Lang = 'en' | 'es' | 'fr' | 'pt' | 'de';
 export type Currency = 'USD' | 'EUR' | 'GBP' | 'JPY';
 
 // Local preferences ride on the workspace record; additive since

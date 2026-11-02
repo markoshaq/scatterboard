@@ -332,6 +332,7 @@ export type StringKey = keyof typeof en;
 const TABLES: Partial<Record<Lang, Partial<Record<StringKey, string>>>> = { en };
 
 const LOADERS: Record<Exclude<Lang, 'en'>, () => Promise<{ default: Partial<Record<StringKey, string>> }>> = {
+  de: () => import('./lang/de'),
   es: () => import('./lang/es'),
   fr: () => import('./lang/fr'),
   pt: () => import('./lang/pt'),
@@ -348,12 +349,13 @@ export async function loadLang(l: Lang) {
 
 export const LANGS: { id: Lang; label: string }[] = [
   { id: 'en', label: 'English' },
+  { id: 'de', label: 'Deutsch' },
   { id: 'es', label: 'Español' },
   { id: 'fr', label: 'Français' },
   { id: 'pt', label: 'Português' },
 ];
 
-const LANG_TAGS: Record<Lang, string> = { en: 'en', es: 'es', fr: 'fr', pt: 'pt' };
+const LANG_TAGS: Record<Lang, string> = { en: 'en', de: 'de', es: 'es', fr: 'fr', pt: 'pt' };
 
 export function bootLang(): Lang {
   try {
@@ -368,7 +370,7 @@ export function bootLang(): Lang {
         const raw = localStorage.getItem('planboard:v1');
         return raw ? (JSON.parse(raw) as { prefs?: { lang?: Lang } }).prefs?.lang : undefined;
       })();
-    return l === 'es' || l === 'fr' || l === 'pt' ? l : 'en';
+    return l === 'de' || l === 'es' || l === 'fr' || l === 'pt' ? l : 'en';
   } catch {
     return 'en';
   }
