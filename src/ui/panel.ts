@@ -57,10 +57,8 @@ export function openPanel(opts: PanelOpts): PanelHandle {
       if (node.classList.contains('out')) return;
       popDismiss(handle);
       node.classList.add('out');
-      setTimeout(() => {
-        node.remove();
-        handle.onClose?.();
-      }, 170);
+      node.remove();
+      handle.onClose?.();
     },
   };
   closeBtn.addEventListener('click', () => handle.close());

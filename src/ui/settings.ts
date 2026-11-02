@@ -141,7 +141,7 @@ function openToolbarEditor(anchor: HTMLElement, api: SettingsApi) {
 export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   const node = document.createElement('div');
   node.className = 'stp-body';
-  const pop = openToolPopup(anchor, node);
+  const pop = openToolPopup(anchor, node, true);
 
   const group = (label: string) => node.appendChild(head(label));
 

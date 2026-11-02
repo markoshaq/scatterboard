@@ -535,7 +535,7 @@ interface ViewMenuApi {
 export function openViewMenu(anchor: HTMLElement, api: ViewMenuApi): ToolPopup {
   const node = document.createElement('div');
   node.className = 'menu-body';
-  const pop = openToolPopup(anchor, node);
+  const pop = openToolPopup(anchor, node, true);
 
   const toggleRow = (label: string, key: keyof PresentOpts) => {
     const row = document.createElement('button');

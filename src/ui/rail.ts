@@ -291,9 +291,6 @@ export class Rail {
     // The can sits outside .rail: during a card-over-trash drag it drops
     // under the lifted viewport while the rest of the rail stays on top.
     root.append(rail, trash);
-    // Overflow padding clears the pinned trash, so re-check on resize.
-    new ResizeObserver(() => this.syncScrolls()).observe(this.itemsEl);
-    this.itemsEl.addEventListener('scroll', () => this.syncScrolls());
     this.sync([], null);
   }
 
@@ -319,10 +316,7 @@ export class Rail {
         : sel.length === 1
           ? `t:${sel[0]!.type}${sigFor(sel)}`
           : `m:${toolsFor(sel).join('.')}`;
-    if (sig === this.signature) {
-      this.syncScrolls();
-      return;
-    }
+    if (sig === this.signature) return;
     this.signature = sig;
     this.itemsEl.textContent = '';
     this.toolBtns.clear();
@@ -330,9 +324,6 @@ export class Rail {
       for (const id of EDIT_TOOLS[edit.type]!) this.itemsEl.appendChild(this.toolButton(id));
     } else if (items) {
       for (const item of items) this.itemsEl.appendChild(this.paletteButton(item));
-      const div = document.createElement('div');
-      div.className = 'rail-div';
-      this.itemsEl.appendChild(div);
       this.itemsEl.appendChild(this.actionButton(ICONS.image, t('addImage'), () => this.events.onAddImage()));
       this.itemsEl.appendChild(this.actionButton(ICONS.upload, t('uploadFile'), () => this.events.onUpload()));
       this.itemsEl.appendChild(this.actionButton(ICONS.draw, t('railDraw'), () => this.events.onDraw()));
@@ -343,15 +334,6 @@ export class Rail {
       for (const id of toolsFor(sel)) this.itemsEl.appendChild(this.toolButton(id));
     }
     this.applyDisabled();
-    this.syncScrolls();
-  }
-
-  // Faded edges tell the user the list scrolls: top once scrolled,
-  // bottom whenever more items sit below the fold.
-  private syncScrolls() {
-    const el = this.itemsEl;
-    el.classList.toggle('scrolled-top', el.scrollTop > 0);
-    el.classList.toggle('scrolled-bottom', el.scrollTop + el.clientHeight < el.scrollHeight - 1);
   }
 
   // Grey-out tools that need context (e.g. Link/Comment need a text

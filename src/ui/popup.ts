@@ -59,7 +59,9 @@ function onDismissKey(e: KeyboardEvent) {
 
 // Anchored popup in screen space. One at a time; Esc and outside
 // pointerdown close it (same dismiss pattern as the due popup).
-export function openToolPopup(anchor: HTMLElement | DOMRect, content: HTMLElement): ToolPopup {
+// `below` drops the popup under the anchor instead of level with it,
+// so topbar menus do not cover the buttons that opened them.
+export function openToolPopup(anchor: HTMLElement | DOMRect, content: HTMLElement, below = false): ToolPopup {
   closeToolPopup();
   const rect = anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;
   const boardAnchored = !(anchor instanceof HTMLElement) || !!anchor.closest('.doc');
@@ -90,7 +92,8 @@ export function openToolPopup(anchor: HTMLElement | DOMRect, content: HTMLElemen
     const w = node.offsetWidth;
     const h = node.offsetHeight;
     node.style.left = `${Math.max(8, Math.min(rect.right + 8, innerWidth - w - 8))}px`;
-    node.style.top = `${Math.max(8, Math.min(rect.top, innerHeight - h - 8))}px`;
+    const top = below ? rect.bottom + 6 : rect.top;
+    node.style.top = `${Math.max(8, Math.min(top, innerHeight - h - 8))}px`;
   };
   document.body.appendChild(node);
   place();

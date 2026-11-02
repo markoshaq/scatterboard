@@ -19,7 +19,7 @@ interface ExportMenuApi {
 export function openExportMenu(anchor: HTMLElement, api: ExportMenuApi): ToolPopup {
   const node = document.createElement('div');
   node.className = 'menu-body';
-  const pop = openToolPopup(anchor, node);
+  const pop = openToolPopup(anchor, node, true);
 
   const head = (text: string) => {
     const h = document.createElement('div');
