@@ -171,7 +171,7 @@ npm run lint       # biome lint src test
 npm run preview    # serve the build
 ```
 
-`window.__app` exposes the App instance for poking:
+On the dev server, `window.__app` exposes the App instance for poking:
 `__app.selectOnly(id)`, `__app.store.doc`, `__app.vp`.
 
 Deploy `dist/` to any static host as-is.
@@ -183,7 +183,8 @@ Deploy `dist/` to any static host as-is.
 ## Architecture
 
 Vanilla TypeScript + Vite, zero runtime dependencies; the production JS
-bundle is ~115 KB gzipped against a 150 KB budget. Two render layers:
+ships in lazy chunks with the largest at ~85 KB gzipped against a 150 KB
+budget. Two render layers:
 Canvas2D draws the dot grid, connectors, marquee, and selection chrome;
 plain DOM renders cards and editing so text stays crisp at any zoom.
 Every mutation is a typed action through one store with an
