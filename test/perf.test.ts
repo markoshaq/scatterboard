@@ -49,6 +49,21 @@ describe('card update() structural invariants', () => {
   }
 });
 
+describe('member layout guards', () => {
+  // .col-body members must stay in flex flow: any card-root rule that
+  // re-declares position after .col-body > .card wins equal specificity
+  // and pins the member absolutely over its siblings (the .card.table
+  // regression). The base .card rule is fine - it sits earlier.
+  it('no card-type rule declares position', () => {
+    const css = readFileSync(join(__dirname, '..', 'src', 'style.css'), 'utf8');
+    const colBody = css.indexOf('.col-body > .card');
+    expect(colBody).toBeGreaterThan(-1);
+    for (const m of css.matchAll(/\.card\.[\w-]+\s*\{[^}]*\}/g)) {
+      expect(m[0]).not.toMatch(/position\s*:/);
+    }
+  });
+});
+
 describe('BoardIndex structural guards', () => {
   it('members returns the cached byParent list, not a rescan', () => {
     const d = perfDoc(2000);

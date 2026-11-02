@@ -289,7 +289,8 @@ describe('templates', () => {
     const change = emptyChange();
     for (const a of actions) applyAction(d, a, change);
 
-    const card = d.elements[cardId]!;
+    expect(cardId).toBeTruthy();
+    const card = d.elements[cardId!]!;
     expect(card.type).toBe('board');
     const newBoardId = (card.content as { boardRef: string }).boardRef;
     const board = d.boards[newBoardId]!;

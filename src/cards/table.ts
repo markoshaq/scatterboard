@@ -1,5 +1,5 @@
 import type { CellType, Element, TableCell, TableDoc } from '../state/schema';
-import { tableDoc } from '../state/schema';
+import { tableDoc, UNSORTED } from '../state/schema';
 import { t } from '../strings';
 import { evalFormula, isFormula, remapCells, FORMULA_NAMES } from './formula';
 import { openToolPopup, type ToolPopup } from '../ui/popup';
@@ -8,6 +8,11 @@ import type { CardCtx } from './factory';
 import type { CardView } from './note';
 import { cardBg } from '../ui/theme';
 import { fmtCurrency, fmtDate, fmtNumber } from '../ui/locale';
+import { COL_PAD } from './measure';
+
+// .card.table padding is 10px per side; column resize clamps at 40px.
+const TB_PAD = 10;
+const MIN_COL_W = 40;
 
 // Display text for a non-editing cell: formulas evaluate, typed cells
 // format their stored text, auto/text render raw. Number/currency/date
@@ -589,11 +594,21 @@ export class TableCard implements CardView {
     return out;
   }
 
+  // The width the card actually renders at: members ignore el.w and
+  // take the column's inner width.
+  private renderedW(el: Element): number {
+    if (el.parentId && el.parentId !== UNSORTED) {
+      const pw = this.ctx.doc.elements[el.parentId]?.w;
+      if (pw) return pw - COL_PAD * 2;
+    }
+    return el.w ?? 300;
+  }
+
   private setColWidth(ci: number, w: number) {
     const c = this.content();
     if (!c) return;
     const widths = this.materializeWidths();
-    widths[ci] = Math.max(40, Math.round(w));
+    widths[ci] = Math.max(MIN_COL_W, Math.round(w));
     this.dispatch({ ...c, widths });
   }
 
@@ -622,7 +637,7 @@ export class TableCard implements CardView {
     // and buildGrid call with force since they keep the same sig.
     const el = this.ctx.doc.elements[this.id];
     const zb = Math.round((this.ctx.zoom?.() ?? 1) * 50);
-    const sig = `${c.cells.length}|${cols}|${(c.widths ?? []).join(',')}|${el?.w ?? 0}|${zb}`;
+    const sig = `${c.cells.length}|${cols}|${(c.widths ?? []).join(',')}|${el ? this.renderedW(el) : 0}|${zb}`;
     if (!force && this.grips && sig === this.gripSig) return;
     this.gripSig = sig;
     if (!this.grips) {
@@ -913,11 +928,20 @@ export class TableCard implements CardView {
     if (rows !== this.cellEls.length || cols !== (this.cellEls[0]?.length ?? 0)) {
       this.buildGrid(rows, cols);
     }
-    const csig = `${cols}:${(c.widths ?? []).join(',')}`;
+    // Members render at column width, not el.w: scale stored column
+    // widths to fit so a resized table cannot clip sideways.
+    const memberW =
+      c.widths && el.parentId && el.parentId !== UNSORTED ? this.renderedW(el) - TB_PAD * 2 : 0;
+    const csig = `${cols}:${memberW}:${(c.widths ?? []).join(',')}`;
     if (csig !== this.colSig) {
       this.colSig = csig;
-      this.gridEl.style.gridTemplateColumns = c.widths
-        ? c.widths.map((w) => `${w}px`).join(' ')
+      let widths = c.widths;
+      if (widths && memberW > 0) {
+        const sum = widths.reduce((a, b) => a + b, 0);
+        if (sum > memberW) widths = widths.map((w) => Math.max(MIN_COL_W, Math.round((w * memberW) / sum)));
+      }
+      this.gridEl.style.gridTemplateColumns = widths
+        ? widths.map((w) => `${w}px`).join(' ')
         : `repeat(${cols}, 1fr)`;
     }
     for (let r = 0; r < rows; r++) {

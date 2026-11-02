@@ -128,19 +128,19 @@ export class CardsLayer {
   // Column-space y where the member stack starts: the mounted column
   // reports its real .col-body offset (measured post-layout inside the
   // RO callback), everything else falls back to the head estimate.
-  private colTop(col: El): number {
+  private colTop(col: El, w?: number): number {
     const v = this.views.get(col.id);
     if (v instanceof ColumnCard) {
       const t = v.bodyTop();
       if (t >= 0) return t;
     }
-    return colBodyTop(col);
+    return colBodyTop(col, w);
   }
 
-  heightOf(el: El): number {
+  heightOf(el: El, w?: number): number {
     const cached = this.heights.get(el.id);
     if (cached !== undefined) return cached;
-    return fallbackHeight(el, (m) => this.heightOf(m), (id) => this.members(id));
+    return fallbackHeight(el, (m, mw) => this.heightOf(m, mw), (id) => this.members(id), w);
   }
 
   rectOf(el: El): Rect {
@@ -173,14 +173,14 @@ export class CardsLayer {
       if (col) {
         const cr = this.rectOf(col);
         const w = cr.w - COL_PAD * 2;
-        let y = cr.y + this.colTop(col);
+        let y = cr.y + this.colTop(col, cr.w);
         for (const m of this.index.members(col.id)) {
           if (m.type === 'line' || m.type === 'annotation') continue;
-          const mh = this.heightOf(m);
+          const mh = this.heightOf(m, w);
           if (m.id === el.id) return { x: cr.x + COL_PAD, y, w, h: mh };
           y += mh + COL_GAP;
         }
-        return { x: cr.x + COL_PAD, y, w, h: this.heightOf(el) };
+        return { x: cr.x + COL_PAD, y, w, h: this.heightOf(el, w) };
       }
     }
     return { x: el.x, y: el.y, w: el.w ?? defaultWidth(el), h: this.heightOf(el) };

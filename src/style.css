@@ -3408,10 +3408,6 @@ svg.anno.present-dim {
   pointer-events: none;
 }
 
-.card.table {
-  position: absolute;
-}
-
 .card.table .tb-grid {
   position: relative;
 }

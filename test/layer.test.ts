@@ -5,6 +5,7 @@ import {
   createColumn,
   createComment,
   createNote,
+  createTable,
   emptyDoc,
   type Doc,
 } from '../src/state/schema';
@@ -143,6 +144,58 @@ describe('CardsLayer dirty gating', () => {
     layer.sync(new Set(), null, false, new Set([member.id]));
     expect(layer.view(member.id)).toBeTruthy();
     expect(layer.view(member.id)!.node.parentElement).toBe(layer.node);
+  });
+});
+
+describe('column members', () => {
+  it('clears inline geometry and gives members the column inner width', () => {
+    const d = doc();
+    const col = createColumn(d, 'home', 0, 0, 'col');
+    col.w = 300;
+    const member = createNote(d, 'home', 9000, 9000, 'm');
+    member.w = 700;
+    member.parentId = col.id;
+    d.elements[col.id] = col;
+    d.elements[member.id] = member;
+    const { layer, bump } = harness(d);
+    bump();
+    layer.sync(new Set(), null, false);
+    const node = layer.view(member.id)!.node;
+    expect(node.style.left).toBe('');
+    expect(node.style.top).toBe('');
+    expect(node.style.width).toBe('');
+    // rectOf derives member geometry from the column, ignoring stale
+    // pre-filing x/y/w.
+    const r = layer.rectOf(member);
+    expect(r.x).toBe(10);
+    expect(r.w).toBe(280);
+  });
+
+  it('scales table column widths to the member width', () => {
+    const d = doc();
+    const col = createColumn(d, 'home', 0, 0, 'col');
+    col.w = 300;
+    const tb = createTable(d, 'home', 0, 0);
+    tb.parentId = col.id;
+    tb.content = {
+      table: {
+        title: '',
+        caption: '',
+        cells: [
+          [{ text: 'a' }, { text: 'b' }],
+          [{ text: 'c' }, { text: 'd' }],
+        ],
+        widths: [600, 600],
+      },
+    };
+    d.elements[col.id] = col;
+    d.elements[tb.id] = tb;
+    const { layer, bump } = harness(d);
+    bump();
+    layer.sync(new Set(), null, false);
+    const grid = layer.view(tb.id)!.node.querySelector('.tb-grid') as HTMLElement;
+    // member width = 300 - 20 col pad; grid space = that - 20 table pad.
+    expect(grid.style.gridTemplateColumns).toBe('130px 130px');
   });
 });
 
