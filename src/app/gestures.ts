@@ -2,6 +2,7 @@ import type { App } from '../app';
 import { defaultWidth, type Element, type ID } from '../state/schema';
 import type { Action } from '../state/actions';
 import { pointInRect, unionRect } from '../canvas/hit';
+import type { Rect } from '../canvas/viewport';
 import { snapDelta } from '../canvas/snap';
 import { NOTE_MAX_W, NOTE_MIN_W } from '../state/schema';
 export class Gestures {
@@ -14,13 +15,18 @@ export class Gestures {
 
   // --- drag gestures ---
 
-  // `start` is the pointerdown CLIENT point; deltas ride in screen
-  // space so a ctrl+wheel zoom mid-drag does not move the cards.
+  // `start` is the pointerdown BOARD point: subtracting board points
+  // keeps the grab under the cursor even across a ctrl+wheel zoom
+  // mid-drag (a client delta re-scaled by the new z would jump).
   dragMove(ids: ID[], origins: Map<ID, { x: number; y: number }>, start: { x: number; y: number }, ev: PointerEvent) {
     if (this.a.lockedView()) return;
+    // A mid-gesture delete (shortcut undo, Backspace) drops elements
+    // out from under the drag; skip them instead of crashing on x/y.
+    ids = ids.filter((id) => this.a.doc.elements[id] && origins.has(id));
+    if (!ids.length) return;
     const cur = this.a.boardPoint(ev);
-    let dx = (ev.clientX - start.x) / this.a.vp.z;
-    let dy = (ev.clientY - start.y) / this.a.vp.z;
+    let dx = cur.x - start.x;
+    let dy = cur.y - start.y;
 
     // A single member dragged inside its own column re-seats by z order
     // rather than lifting out; crossing the column edge takes the normal
@@ -200,7 +206,12 @@ export class Gestures {
         .map((id) => this.a.doc.elements[id])
         .filter(
           (e): e is Element =>
-            !!e && e.type !== 'line' && e.type !== 'annotation' && e.parentId !== colId,
+            !!e &&
+            e.type !== 'line' &&
+            e.type !== 'annotation' &&
+            e.parentId !== colId &&
+            !e.locked &&
+            !(e.type === 'comment' && e.anchorId !== undefined),
         )
         .map((e) => ({ type: 'element.patch', id: e.id, patch: { parentId: colId, z: ++this.a.doc.seq } }));
       if (actions.length) this.a.store.dispatch({ type: 'batch', actions });
@@ -238,20 +249,24 @@ export class Gestures {
     if (!anchors.length) return;
     const pos = new Map<ID, { x: number; y: number }>();
     const others = this.a.layer.elements().filter((e) => movable(e) && !this.a.sel.has(e.id));
+    // Virtual positions bypass rectOf: its id-keyed cache would return
+    // the unpushed rect (or cache the virtual one under the real id).
+    const rectAt = (e: Element): Rect => {
+      const p = pos.get(e.id);
+      return p ? { x: p.x, y: p.y, w: e.w ?? defaultWidth(e), h: this.a.layer.heightOf(e) } : this.a.layer.rectOf(e);
+    };
     for (let pass = 0; pass < 6; pass++) {
       let pushed = false;
       for (const a of anchors) {
         const ae = this.a.doc.elements[a.id]!;
-        const pa = pos.get(ae.id);
-        const ra = this.a.layer.rectOf(pa ? { ...ae, ...pa } : ae);
+        const ra = rectAt(ae);
         for (const o of others) {
           const oe = this.a.doc.elements[o.id]!;
-          const po = pos.get(oe.id);
-          const ro = this.a.layer.rectOf(po ? { ...oe, ...po } : oe);
+          const ro = rectAt(oe);
           const ox = Math.min(ra.x + ra.w, ro.x + ro.w) - Math.max(ra.x, ro.x);
           const oy = Math.min(ra.y + ra.h, ro.y + ro.h) - Math.max(ra.y, ro.y);
           if (ox <= 0 || oy <= 0) continue;
-          const cur = po ?? { x: oe.x, y: oe.y };
+          const cur = pos.get(oe.id) ?? { x: oe.x, y: oe.y };
           const next =
             ox < oy
               ? { x: cur.x + (ro.x + ro.w / 2 < ra.x + ra.w / 2 ? -ox - 8 : ox + 8), y: cur.y }

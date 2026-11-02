@@ -213,6 +213,7 @@ export class App {
     });
     this.rail = new Rail(root, {
       onDrop: (type, at, kind) => this.createFromRail(type, at, kind),
+      onDropHint: (ev, type) => this.paletteDropHint(ev, type),
       onTool: (id, anchor) => this.tools.onTool(id, anchor),
       onAddImage: () => this.pickFiles('image/*'),
       onUpload: () => this.pickFiles('*/*'),
@@ -374,7 +375,8 @@ export class App {
         boards: () => Object.values(this.doc.boards).sort((a, b) => a.title.localeCompare(b.title)),
         boardUrl: (id) => this.boardUrl(id),
         patch: (doc) => {
-          if (documentDoc(this.doc.elements[el.id]!)) {
+          const cur = this.doc.elements[el.id];
+          if (cur && documentDoc(cur)) {
             this.store.dispatch({ type: 'element.patch', id: el.id, patch: { content: { document: doc } } });
           }
         },
@@ -383,16 +385,22 @@ export class App {
       });
       handle = {
         close: () => {
-          ed.close();
-          this.store.endGroup('edit');
+          // A throw inside ed.close() must not leak the undo group: a
+          // stuck group silently swallows every later dispatch.
+          try {
+            ed.close();
+          } finally {
+            this.store.endGroup('edit');
+          }
         },
       };
     } else if (el.type === 'sketch') {
       handle = openSketchEditor(el, {
         ink: this.prefs.ink,
         patch: (doc) => {
-          const cur = sketchDoc(this.doc.elements[el.id]!);
-          if (cur && JSON.stringify(cur.strokes) !== JSON.stringify(doc.strokes)) {
+          const cur = this.doc.elements[el.id];
+          const cd = cur ? sketchDoc(cur) : null;
+          if (cd && JSON.stringify(cd.strokes) !== JSON.stringify(doc.strokes)) {
             this.store.dispatch({ type: 'element.patch', id: el.id, patch: { content: { sketch: doc } } });
           }
         },
@@ -992,7 +1000,7 @@ export class App {
 
 
   private onRailTrash() {
-    if (this.editingId) this.deleteSelection();
+    if (this.editingId || this.sel.size) this.deleteSelection();
     else this.panels.openTrash();
   }
 
@@ -1429,6 +1437,7 @@ export class App {
     closeToolPopup();
     const actions: Action[] = [];
     const deleting = new Set<ID>();
+    const deadBoards = new Set<ID>();
     for (const id of this.sel) {
       const el = this.doc.elements[id];
       if (!el) continue;
@@ -1447,7 +1456,18 @@ export class App {
         for (const a of this.cascadeActions(ref)) {
           actions.push(a);
           if (a.type === 'element.delete') deleting.add(a.el.id);
+          else if (a.type === 'board.delete') deadBoards.add(a.board.id);
         }
+      }
+    }
+    // Board cards/shortcuts elsewhere that point at the deleted subtree
+    // would dangle (same sweep deleteBoardCascade does).
+    for (const el of Object.values(this.doc.elements)) {
+      if (deleting.has(el.id)) continue;
+      const ref = boardRefOf(el);
+      if (ref && deadBoards.has(ref)) {
+        deleting.add(el.id);
+        actions.push({ type: 'element.delete', el });
       }
     }
     actions.unshift(...this.detachCommentActions(deleting));
@@ -1740,6 +1760,17 @@ export class App {
 
   private pastePoint() {
     return this.pointer ?? this.viewCenter();
+  }
+
+
+  // Palette drags share the card-drag drop ring so a new card can be seen
+  // filing into the column under the pointer. updateDropTarget runs with
+  // no dragged ids to exclude (the ghost is not an element); lines never
+  // file, and rail chrome is not a target, matching the drop-time guard.
+  paletteDropHint(ev: PointerEvent | null, type: ElementType) {
+    const over = ev ? document.elementFromPoint(ev.clientX, ev.clientY) : null;
+    const ok = !!ev && type !== 'line' && !this.lockedView() && !over?.closest('.rail, .rail-trash');
+    this.gestures.updateDropTarget(ok ? this.boardPoint(ev) : null, []);
   }
 
 

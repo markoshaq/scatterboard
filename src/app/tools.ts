@@ -701,12 +701,33 @@ export class RailTools {
   convertColumn(el: Element) {
     if (el.type !== 'column' || !this.a.boardId) return;
     const members = this.a.layer.members(el.id);
+    // Nested members (a column inside the column) ride along: their
+    // boardId has to move with the parent or they vanish from both boards.
+    const memberIds = new Set(members.map((m) => m.id));
+    const nested: Element[] = [];
+    const collect = (id: ID) => {
+      for (const m of this.a.layer.members(id)) {
+        memberIds.add(m.id);
+        nested.push(m);
+        collect(m.id);
+      }
+    };
+    for (const m of members) collect(m.id);
+    // Lines pinned to members would point into the child board: detach
+    // to their resolved spot. Comment pins follow their member instead.
+    const memberPins = Object.values(this.a.doc.elements).filter(
+      (e) => e.type === 'comment' && e.anchorId !== undefined && memberIds.has(e.anchorId),
+    );
     const board = createBoard({ parentId: this.a.boardId, title: columnTitle(el) || t('untitled') });
     const card = createBoardCard(this.a.doc, this.a.boardId, board.id, el.x, el.y);
     const actions: Action[] = [
       { type: 'board.create', board },
       { type: 'element.create', el: card },
       ...this.a.retargetAttachActions(el.id, card.id),
+      ...this.a.detachLineActions(memberIds),
+      ...memberPins.map(
+        (c): Action => ({ type: 'element.patch', id: c.id, patch: { boardId: board.id } }),
+      ),
       ...members.map(
         (m, i): Action => ({
           type: 'element.patch',
@@ -714,6 +735,7 @@ export class RailTools {
           patch: { boardId: board.id, parentId: null, x: 80 + (i % 4) * 280, y: 80 + Math.floor(i / 4) * 200 },
         }),
       ),
+      ...nested.map((m): Action => ({ type: 'element.patch', id: m.id, patch: { boardId: board.id } })),
       { type: 'element.delete', el },
     ];
     this.a.store.dispatch({ type: 'batch', actions });

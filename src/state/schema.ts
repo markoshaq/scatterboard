@@ -326,14 +326,21 @@ export function migrateDoc(doc: Doc): Doc {
   let maxZ = 0;
   for (const el of Object.values(doc.elements)) {
     el.labels ??= [];
+    // Canvas membership is parentId === null: an undefined parentId
+    // would silently vanish the element into a bucket nobody renders.
+    el.parentId ??= null;
     if (el.z > maxZ) maxZ = el.z;
   }
   for (const t of Object.values(doc.trash)) {
     t.el.labels ??= [];
+    t.el.parentId ??= null;
     if (t.el.z > maxZ) maxZ = t.el.z;
   }
   for (const tpl of Object.values(doc.templates)) {
-    for (const el of tpl.elements) el.labels ??= [];
+    for (const el of tpl.elements) {
+      el.labels ??= [];
+      el.parentId ??= null;
+    }
   }
   doc.seq = Math.max(doc.seq ?? 0, maxZ);
   return doc;

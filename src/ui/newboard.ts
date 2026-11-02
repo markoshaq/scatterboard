@@ -88,7 +88,11 @@ export function openNewBoardPicker(anchor: HTMLElement | DOMRect, api: NewBoardA
             if (ev.key === 'Enter') commit();
             if (ev.key === 'Escape') render();
           });
-          input.addEventListener('blur', commit);
+          // Popup close detaches the input before blur: cancel, don't
+          // commit the half-typed name.
+          input.addEventListener('blur', () => {
+            if (input.isConnected) commit();
+          });
         });
         del.addEventListener('click', (e) => {
           e.stopPropagation();

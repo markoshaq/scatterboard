@@ -50,6 +50,7 @@ export type ToolId =
 
 interface RailEvents {
   onDrop: (type: ElementType, at: { clientX: number; clientY: number } | null, kind?: EmbedKind) => void;
+  onDropHint: (ev: PointerEvent | null, type: ElementType) => void;
   onTool: (id: ToolId, anchor: HTMLElement) => void;
   onTrash: () => void;
   onBoardColor: (hex: string) => void;
@@ -279,7 +280,14 @@ export class Rail {
     this.well.title = t('boardColor');    this.well.setAttribute('aria-label', t('boardColor'));
     this.well.value = DEFAULT_WELL;
     this.well.addEventListener('input', () => this.events.onBoardColor(this.well.value));
-    rail.append(this.itemsEl, this.well);
+    // Label the well: a bare colour input reads as decoration, not as
+    // the accent-colour picker for new cards.
+    const wellWrap = document.createElement('div');
+    wellWrap.className = 'rail-wellwrap';
+    const wellLab = document.createElement('span');
+    wellLab.textContent = t('boardColor');
+    wellWrap.append(this.well, wellLab);
+    rail.append(this.itemsEl, wellWrap);
     // The can sits outside .rail: during a card-over-trash drag it drops
     // under the lifted viewport while the rest of the rail stays on top.
     root.append(rail, trash);
@@ -338,9 +346,12 @@ export class Rail {
     this.syncScrolls();
   }
 
-  // The top-edge fade shows only while the list is actually scrolled.
+  // Faded edges tell the user the list scrolls: top once scrolled,
+  // bottom whenever more items sit below the fold.
   private syncScrolls() {
-    this.itemsEl.classList.toggle('scrolled', this.itemsEl.scrollTop > 0);
+    const el = this.itemsEl;
+    el.classList.toggle('scrolled-top', el.scrollTop > 0);
+    el.classList.toggle('scrolled-bottom', el.scrollTop + el.clientHeight < el.scrollHeight - 1);
   }
 
   // Grey-out tools that need context (e.g. Link/Comment need a text
@@ -376,12 +387,24 @@ export class Rail {
           g.querySelector('span')!.textContent = item.label;
           return g;
         },
-        (ev) => {
+        (ev, moved) => {
+          // A click (no drag) spawns the card at view center: drag is
+          // not the only create gesture a first-time user will try.
+          if (!moved) {
+            this.events.onDrop(item.type, null, item.kind);
+            return;
+          }
           const over = document.elementFromPoint(ev.clientX, ev.clientY);
           if (over?.closest('.rail, .rail-trash')) return;
           this.events.onDrop(item.type, ev, item.kind);
         },
+        (ev) => this.events.onDropHint(ev, item.type),
       );
+    });
+    // Keyboard activation arrives as a click with detail 0; pointer
+    // clicks already ran through the pointerup path above.
+    btn.addEventListener('click', (e) => {
+      if (e.detail === 0) this.events.onDrop(item.type, null, item.kind);
     });
     return btn;
   }

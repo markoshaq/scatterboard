@@ -77,13 +77,17 @@ export class DocumentCard implements CardView {
     this.titleEl.addEventListener('click', fieldClick('title'));
     this.capEl.addEventListener('click', fieldClick('caption'));
 
+    const docContent = () => {
+      const el = this.ctx.doc.elements[this.id];
+      return el ? documentDoc(el) : null;
+    };
     this.titleEl.addEventListener('input', () => {
-      const c = documentDoc(this.ctx.doc.elements[this.id]!);
+      const c = docContent();
       if (!c) return;
       this.dispatch({ ...c, title: this.titleEl.innerText.replace(/\n/g, '') });
     });
     this.capEl.addEventListener('input', () => {
-      const c = documentDoc(this.ctx.doc.elements[this.id]!);
+      const c = docContent();
       if (!c) return;
       this.dispatch({ ...c, caption: this.capEl.innerText.replace(/\n/g, '') });
     });
@@ -147,7 +151,8 @@ export class DocumentCard implements CardView {
   beginEdit(_pos?: { x: number; y: number }, field?: string) {
     this.editing = true;
     this.node.classList.add('editing');
-    const c = documentDoc(this.ctx.doc.elements[this.id]!);
+    const el = this.ctx.doc.elements[this.id];
+    const c = el ? documentDoc(el) : null;
     const target = field === 'caption' && c?.displayMode === 'detail' ? this.capEl : this.titleEl;
     target.contentEditable = 'true';
     target.focus();

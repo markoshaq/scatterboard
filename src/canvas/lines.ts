@@ -1,5 +1,6 @@
 import type { Doc, Element, ID, LineEnd } from '../state/schema';
 import { lineDoc } from '../state/schema';
+import { LINE_W } from './renderer';
 import type { Rect } from './viewport';
 
 interface Pt {
@@ -107,10 +108,14 @@ export function hitLines(
     if (Math.hypot(pt.x - l.x1, pt.y - l.y1) <= endR) return { kind: 'end', id: l.el.id, which: 'from' };
     if (Math.hypot(pt.x - l.x2, pt.y - l.y2) <= endR) return { kind: 'end', id: l.el.id, which: 'to' };
   }
-  const bodyR = 6 / zoom;
+  // A thick stroke's visible edge beats the pointer tolerance: at high
+  // zoom 6/z shrinks below the half-width and the rim becomes a dead zone.
   const sorted = [...lines].sort((a, b) => b.el.z - a.el.z);
   for (const l of sorted) {
-    if (segDist(pt.x, pt.y, l.x1, l.y1, l.x2, l.y2) <= bodyR) return { kind: 'body', id: l.el.id };
+    const w = LINE_W[lineDoc(l.el)?.weight ?? 'thin'];
+    if (segDist(pt.x, pt.y, l.x1, l.y1, l.x2, l.y2) <= Math.max(6 / zoom, w / 2)) {
+      return { kind: 'body', id: l.el.id };
+    }
   }
   return null;
 }

@@ -164,7 +164,7 @@ export function openSearchPanel(opts: {
     }
     const count = document.createElement('div');
     count.className = 'sp-group';
-    count.textContent = t('matchCount').replace('{n}', String(hits.length));
+    count.textContent = hits.length === 1 ? t('matchOne') : t('matchCount').replace('{n}', String(hits.length));
     results.appendChild(count);
     for (const h of hits) {
       const row = panelRow(h.icon, h.snippet);

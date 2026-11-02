@@ -68,10 +68,18 @@ export class Editing {
     this.a.editingId = id;
     if (!this.a.sel.has(id)) this.a.sel = new Set([id]);
     this.a.store.beginGroup();
-    // Render first so an offscreen card mounts before beginEdit runs.
-    this.a.render();
-    this.a.layer.view(id)?.beginEdit(pos, field);
-    this.a.render();
+    try {
+      // Render first so an offscreen card mounts before beginEdit runs.
+      this.a.render();
+      this.a.layer.view(id)?.beginEdit(pos, field);
+      this.a.render();
+    } catch (err) {
+      // A thrown mount must not leak the group: later dispatches would
+      // be silently absorbed into it and undo would stop working.
+      this.a.editingId = null;
+      this.a.store.endGroup();
+      throw err;
+    }
   }
 
 

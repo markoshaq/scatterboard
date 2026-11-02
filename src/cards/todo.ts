@@ -241,7 +241,7 @@ export class TodoCard implements CardView {
     if (e.key === 'Backspace' && this.readItemText(target) === '' && c.items.length > 1) {
       e.preventDefault();
       const idx = c.items.findIndex((i) => i.id === iid);
-      this.pendingFocus = c.items[idx - 1]?.id ?? 'title';
+      this.pendingFocus = c.items[idx - 1]?.id ?? c.items[idx + 1]?.id ?? 'title';
       this.dispatch({ ...c, items: c.items.filter((i) => i.id !== iid) });
       return;
     }

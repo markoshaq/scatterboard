@@ -1,6 +1,6 @@
 import type { App } from '../app';
 import { boardRefOf, createBoard, createBoardCard, uid, UNSORTED, type Board, type Element, type ID } from '../state/schema';
-import { putBlob, releaseTrashBlobs } from '../persist/blobs';
+import { putBlob } from '../persist/blobs';
 import { prepareImage } from '../ui/files';
 import type { Rect } from '../canvas/viewport';
 import { toast } from '../ui/toast';
@@ -156,11 +156,20 @@ export class Panels {
       kids.set(b.parentId, list);
     }
     for (const list of kids.values()) list.sort((a, b) => a.createdAt - b.createdAt);
-    const subs = (bid: ID): number => (kids.get(bid) ?? []).reduce((n, k) => n + 1 + subs(k.id), 0);
+    // A corrupted parent graph (JSON import) must not recurse forever.
+    const subsSeen = new Set<ID>();
+    const subs = (bid: ID): number => {
+      if (subsSeen.has(bid)) return 0;
+      subsSeen.add(bid);
+      return (kids.get(bid) ?? []).reduce((n, k) => n + 1 + subs(k.id), 0);
+    };
     const total = Object.keys(this.a.doc.boards).length;
     const locked = this.a.lockedView();
     const out: BoardRow[] = [];
+    const visited = new Set<ID>();
     const visit = (b: Board, depth: number) => {
+      if (visited.has(b.id)) return;
+      visited.add(b.id);
       const subCount = subs(b.id);
       out.push({
         id: b.id,
@@ -211,7 +220,11 @@ export class Panels {
     let target: ID | null = null;
     if (this.a.boardId && deadBoards.has(this.a.boardId)) {
       let p = board.parentId;
-      while (p && deadBoards.has(p)) p = this.a.doc.boards[p]?.parentId ?? null;
+      const seen = new Set<ID>();
+      while (p && deadBoards.has(p) && !seen.has(p)) {
+        seen.add(p);
+        p = this.a.doc.boards[p]?.parentId ?? null;
+      }
       target = p ?? this.fallbackBoard(deadBoards);
     }
     this.a.store.dispatch({ type: 'batch', actions });
@@ -329,7 +342,9 @@ export class Panels {
   emptyTrash() {
     const ids = Object.keys(this.a.doc.trash);
     if (!ids.length) return;
-    void releaseTrashBlobs(this.a.doc, ids);
+    // Blobs are NOT released here: the trash.remove batch is undoable,
+    // and an undo must restore entries with their media intact. The
+    // boot-time orphan purge reclaims refs that stay dead.
     this.a.store.dispatch({ type: 'batch', actions: ids.map((id) => ({ type: 'trash.remove' as const, id })) });
   }
 

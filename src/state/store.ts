@@ -134,8 +134,11 @@ export class Store {
     if (!entry) return;
     const change: Change = emptyChange();
     for (const a of entry.undo) applyAction(this.doc, a, change);
-    this.future.push(entry);
+    // Push AFTER emit: listeners may flush an open edit group during the
+    // emit (endEdit -> endGroup -> future = []), which would wipe the
+    // redo entry we just queued.
     this.emit(change);
+    this.future.push(entry);
   }
 
   redo() {
@@ -143,7 +146,7 @@ export class Store {
     if (!entry) return;
     const change: Change = emptyChange();
     for (const a of entry.redo) applyAction(this.doc, a, change);
-    this.past.push(entry);
     this.emit(change);
+    this.past.push(entry);
   }
 }

@@ -38,7 +38,7 @@ interface Scene {
 
 const EMPTY_SCENE: Scene = { grid: true, marquee: null, guides: [], guideAlpha: 1, outlines: [], lines: [], draft: null };
 
-const LINE_W: Record<LineWeight, number> = { thin: 1, medium: 1.8, thick: 4 };
+export const LINE_W: Record<LineWeight, number> = { thin: 1, medium: 1.8, thick: 4 };
 
 export class Renderer {
   private canvas: HTMLCanvasElement;
@@ -237,7 +237,7 @@ export class Renderer {
     ctx.lineWidth = 1.5 / vp.z;
     ctx.beginPath();
     // Concentric with the card's own corner: radius + pad, in board units.
-    ctx.roundRect(r.x - pad, r.y - pad, r.w + pad * 2, r.h + pad * 2, (radius + 3) / vp.z);
+    ctx.roundRect(r.x - pad, r.y - pad, r.w + pad * 2, r.h + pad * 2, radius + pad);
     ctx.stroke();
   }
 

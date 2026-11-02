@@ -1099,6 +1099,7 @@ export function letterIcons(title: string): string[] {
 export function mountBoardIcon(host: HTMLElement, icon: string | undefined, title: string) {
   host.textContent = '';
   host.classList.remove('bicon-img');
+  host.dataset.icon = icon ?? '';
   if (icon?.startsWith('g:')) {
     const ic = boardIcon(icon.slice(2));
     if (ic) {
@@ -1114,7 +1115,9 @@ export function mountBoardIcon(host: HTMLElement, icon: string | undefined, titl
   if (ref) {
     host.classList.add('bicon-img');
     void blobUrl(ref).then((u) => {
-      if (!u || !host.isConnected) return;
+      // A re-mount may have swapped this host to a different icon while
+      // the blob resolved; only attach if the value still matches.
+      if (!u || !host.isConnected || host.dataset.icon !== icon) return;
       const img = document.createElement('img');
       img.src = u;
       img.alt = '';

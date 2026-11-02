@@ -25,6 +25,7 @@ const MIGRATED = 'migrated';
 const POS_PREFIX = 'pos:';
 const LS_KEY = 'planboard:v1';
 const LS_LAST = 'planboard:last-board';
+const LS_POS = 'planboard:pos:';
 
 // JSON stringify/parse off the main thread: the doc travels by
 // structured clone, so the slow codec work never blocks the UI.
@@ -193,6 +194,21 @@ export class SqliteAdapter implements DocStorage {
     }
     const last = localStorage.getItem(LS_LAST);
     if (last) await this.put(LAST_KEY, last);
+    // Per-board viewport rows postdate the doc serialize; without them
+    // every board reopens at a stale position after the first sqlite boot.
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(LS_POS)) continue;
+      const v = localStorage.getItem(k);
+      if (v === null) continue;
+      const bid = k.slice(LS_POS.length);
+      await this.put(`${POS_PREFIX}${bid}`, v);
+      try {
+        this.pos.set(bid, JSON.parse(v) as { x: number; y: number; z: number });
+      } catch {
+        // Bad row: ignored, next save rewrites it.
+      }
+    }
     await this.put(MIGRATED, '1');
   }
 

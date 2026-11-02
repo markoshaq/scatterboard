@@ -145,7 +145,8 @@ export class SwatchCard implements CardView {
   }
 
   private openPicker() {
-    const c = swatchDoc(this.ctx.doc.elements[this.id]!);
+    const el = this.ctx.doc.elements[this.id];
+    const c = el ? swatchDoc(el) : null;
     if (!c) return;
     if (!this.picker) {
       const input = document.createElement('input');
@@ -156,7 +157,8 @@ export class SwatchCard implements CardView {
         this.block.style.background = input.value;
       });
       input.addEventListener('change', () => {
-        const cur = swatchDoc(this.ctx.doc.elements[this.id]!);
+        const curEl = this.ctx.doc.elements[this.id];
+        const cur = curEl ? swatchDoc(curEl) : null;
         if (!cur || cur.color === input.value) return;
         this.ctx.events.onContent(this.id, { swatch: { ...cur, color: input.value } });
       });
@@ -174,8 +176,10 @@ export class SwatchCard implements CardView {
     s.width = `${el.w ?? 200}px`;
     const c = swatchDoc(el);
     if (!c) return;
+    // Always re-apply: the picker's live 'input' preview writes this
+    // style without committing, and a cancelled picker fires no event.
+    this.block.style.background = c.color;
     if (c.color !== this.lastColor) {
-      this.block.style.background = c.color;
       this.lastColor = c.color;
       this.renderValue();
     }
@@ -190,7 +194,8 @@ export class SwatchCard implements CardView {
   }
 
   private renderValue() {
-    const c = swatchDoc(this.ctx.doc.elements[this.id]!);
+    const el = this.ctx.doc.elements[this.id];
+    const c = el ? swatchDoc(el) : null;
     if (!c) return;
     this.valueEl.textContent = c.showValue ? `${c.color.toUpperCase()} ${colorName(c.color)}` : '';
   }

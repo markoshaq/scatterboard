@@ -97,6 +97,10 @@ export class ColumnCard implements CardView {
       }
       prev = v.node;
       v.update(m);
+      // update() writes the member's stale pre-filing x/y/w inline;
+      // clear them so the .col-body rules (relative, width:100%) apply.
+      const ms = v.node.style;
+      ms.left = ms.top = ms.width = '';
     }
     const docs = list.filter((m) => m.type === 'document').length;
     this.countEl.textContent = memberCount(list.length - docs, docs);

@@ -10,6 +10,21 @@ export function closeToolPopup() {
   current?.close();
 }
 
+// Popups with their own chrome (the due picker) still register as the
+// current tool popup so board switches and editor mounts can close them.
+export function claimToolPopup(pop: ToolPopup, boardAnchored = false) {
+  closeToolPopup();
+  current = pop;
+  currentBoardAnchored = boardAnchored;
+}
+
+export function releaseToolPopup(pop: ToolPopup) {
+  if (current === pop) {
+    current = null;
+    currentBoardAnchored = false;
+  }
+}
+
 // Closes only popups anchored to board space (pins, chips, DOMRect
 // anchors): a viewport move would detach them. Chrome-anchored popups
 // (rail, topbar) stay open.
@@ -60,6 +75,7 @@ export function openToolPopup(anchor: HTMLElement | DOMRect, content: HTMLElemen
         current = null;
         currentBoardAnchored = false;
       }
+      releaseToolPopup(pop);
       popDismiss(pop);
       window.removeEventListener('pointerdown', onDocDown, true);
       node.remove();
@@ -70,11 +86,17 @@ export function openToolPopup(anchor: HTMLElement | DOMRect, content: HTMLElemen
     if (!node.contains(e.target as Node)) pop.close();
   }
 
+  const place = () => {
+    const w = node.offsetWidth;
+    const h = node.offsetHeight;
+    node.style.left = `${Math.max(8, Math.min(rect.right + 8, innerWidth - w - 8))}px`;
+    node.style.top = `${Math.max(8, Math.min(rect.top, innerHeight - h - 8))}px`;
+  };
   document.body.appendChild(node);
-  const w = node.offsetWidth;
-  const h = node.offsetHeight;
-  node.style.left = `${Math.max(8, Math.min(rect.right + 8, innerWidth - w - 8))}px`;
-  node.style.top = `${Math.max(8, Math.min(rect.top, innerHeight - h - 8))}px`;
+  place();
+  // Callers fill `content` after openToolPopup returns: re-measure before
+  // paint so the clamp sees the real size, not the empty box.
+  queueMicrotask(place);
   window.addEventListener('pointerdown', onDocDown, true);
   pushDismiss(pop);
   current = pop;

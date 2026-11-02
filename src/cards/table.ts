@@ -367,7 +367,12 @@ export class TableCard implements CardView {
       e.stopPropagation();
       this.focusCell(r, c, true);
       const el = this.cellEls[r]?.[c];
-      if (el) document.execCommand('insertText', false, e.key);
+      if (el) {
+        // Type-to-overwrite: keep the cell fully selected so the first
+        // char replaces its contents instead of appending.
+        getSelection()!.selectAllChildren(el);
+        document.execCommand('insertText', false, e.key);
+      }
     }
   }
 
@@ -505,30 +510,34 @@ export class TableCard implements CardView {
     const c = this.content();
     const f = this.focus;
     if (!c || !f || c.cells.length <= 1) return;
+    const d = f.r;
     const cells = c.cells.map((row) => row.slice());
-    cells.splice(f.r, 1);
+    cells.splice(d, 1);
     this.editingCell = false;
-    f.r = Math.min(f.r, cells.length - 1);
+    f.r = Math.min(d, cells.length - 1);
     this.wantDomFocus = true;
-    this.dispatch({ ...c, cells: remapCells(cells, (r, cc) => ({ r: r > f.r ? r - 1 : r, c: cc })) });
+    // Refs into the deleted row fall out of range; clamping d first
+    // would silently retarget them onto the row above.
+    this.dispatch({ ...c, cells: remapCells(cells, (r, cc) => ({ r: r > d ? r - 1 : r, c: cc })) });
   }
 
   deleteFocusedColumn() {
     const c = this.content();
     const f = this.focus;
     if (!c || !f || (c.cells[0]?.length ?? 0) <= 1) return;
+    const d = f.c;
     const cells = c.cells.map((row) => {
       const next = row.slice();
-      next.splice(f.c, 1);
+      next.splice(d, 1);
       return next;
     });
     this.editingCell = false;
-    f.c = Math.min(f.c, cells[0]!.length - 1);
+    f.c = Math.min(d, cells[0]!.length - 1);
     this.wantDomFocus = true;
-    const next: TableDoc = { ...c, cells: remapCells(cells, (r, cc) => ({ r, c: cc > f.c ? cc - 1 : cc })) };
+    const next: TableDoc = { ...c, cells: remapCells(cells, (r, cc) => ({ r, c: cc > d ? cc - 1 : cc })) };
     if (c.widths) {
       const widths = c.widths.slice();
-      widths.splice(f.c, 1);
+      widths.splice(d, 1);
       next.widths = widths;
     }
     this.dispatch(next);

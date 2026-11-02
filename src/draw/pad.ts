@@ -86,6 +86,9 @@ export class DrawPad {
   private tol = 6;
   private live: SVGPathElement | null = null;
   private gesturePid: number | null = null;
+  // The in-flight pointer gesture's listeners: destroy() must detach
+  // them too or a torn-down pad keeps mutating on pointer events.
+  private gesture: { move: (e: PointerEvent) => void; up: (e: PointerEvent) => void } | null = null;
   private toolBtns = new Map<Tool, HTMLButtonElement>();
   private sizeBtns: HTMLButtonElement[] = [];
   private undoBtn!: HTMLButtonElement;
@@ -119,7 +122,16 @@ export class DrawPad {
 
   destroy() {
     window.removeEventListener('keydown', this.onKey, true);
-    this.surface?.removeEventListener('pointerdown', this.onDown);
+    if (this.surface) {
+      this.surface.removeEventListener('pointerdown', this.onDown);
+      if (this.gesture) {
+        this.surface.removeEventListener('pointermove', this.gesture.move);
+        this.surface.removeEventListener('pointerup', this.gesture.up);
+        this.surface.removeEventListener('pointercancel', this.gesture.up);
+      }
+    }
+    this.gesture = null;
+    this.gesturePid = null;
     this.svg?.remove();
     this.tools.remove();
   }
@@ -367,6 +379,7 @@ export class DrawPad {
       this.surface!.removeEventListener('pointerup', up);
       this.surface!.removeEventListener('pointercancel', up);
       this.gesturePid = null;
+      this.gesture = null;
       this.live = null;
       if (ink) stroke.widths = inkWidths(stroke, pressures, times);
       this.strokes.push(stroke);
@@ -376,6 +389,7 @@ export class DrawPad {
     this.surface!.addEventListener('pointermove', move);
     this.surface!.addEventListener('pointerup', up);
     this.surface!.addEventListener('pointercancel', up);
+    this.gesture = { move, up };
   }
 
   private eraseDown(p: { x: number; y: number }, pid: number) {
@@ -400,12 +414,14 @@ export class DrawPad {
       this.surface!.removeEventListener('pointerup', up);
       this.surface!.removeEventListener('pointercancel', up);
       this.gesturePid = null;
+      this.gesture = null;
       if (hit) this.pushUndo(before);
       this.syncFoot();
     };
     this.surface!.addEventListener('pointermove', move);
     this.surface!.addEventListener('pointerup', up);
     this.surface!.addEventListener('pointercancel', up);
+    this.gesture = { move, up };
   }
 
   private selDown(p: { x: number; y: number }, pid: number) {
@@ -439,11 +455,13 @@ export class DrawPad {
       this.surface!.removeEventListener('pointerup', up);
       this.surface!.removeEventListener('pointercancel', up);
       this.gesturePid = null;
+      this.gesture = null;
       if (moved) this.pushUndo(before);
     };
     this.surface!.addEventListener('pointermove', move);
     this.surface!.addEventListener('pointerup', up);
     this.surface!.addEventListener('pointercancel', up);
+    this.gesture = { move, up };
   }
 
   private save() {

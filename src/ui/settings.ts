@@ -109,7 +109,8 @@ function openToolbarEditor(anchor: HTMLElement, api: SettingsApi) {
       hide.type = 'button';
       hide.className = 'tbe-mini tbe-hide';
       hide.innerHTML = ICONS.close;
-      hide.title = t('deleteLabel');      hide.setAttribute('aria-label', t('deleteLabel'));
+      const hideLbl = it.hidden ? t('toolShow') : t('toolHide');
+      hide.title = hideLbl;      hide.setAttribute('aria-label', hideLbl);
       hide.addEventListener('click', () => {
         api.onRailHide(it.key, !it.hidden);
         render();
@@ -222,9 +223,14 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   meter.className = 'stp-meter';
   meter.textContent = t('storageLoading');
   node.appendChild(meter);
-  void api.storage().then(({ doc, blobs }) => {
-    meter.textContent = t('storageLine').replace('{doc}', fmtBytes(doc)).replace('{media}', fmtBytes(blobs));
-  });
+  void api
+    .storage()
+    .then(({ doc, blobs }) => {
+      meter.textContent = t('storageLine').replace('{doc}', fmtBytes(doc)).replace('{media}', fmtBytes(blobs));
+    })
+    .catch(() => {
+      meter.textContent = '';
+    });
 
   const resetRow = document.createElement('button');
   resetRow.type = 'button';

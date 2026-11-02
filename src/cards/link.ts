@@ -220,6 +220,7 @@ export class LinkCard implements CardView {
     const url = c?.url ?? '';
     const src = this.kind && url ? embedSrc(this.kind, url) : null;
     this.noPreview = !!this.kind && !!url && !src;
+    this.node.classList.toggle('no-preview', this.noPreview);
     // Embeds need the network: offline shows a placeholder instead of
     // the play affordance or a mounting iframe.
     if (this.kind && url && !navigator.onLine) {
@@ -270,10 +271,12 @@ export class LinkCard implements CardView {
       this.playBtn.style.display = 'none';
       return;
     }
+    // Not playing (or src lost while playing): clear the flag so the
+    // layer can cull this card again.
     this.frame?.remove();
     this.frame = null;
+    this.playing = false;
     if (!img) this.glyphEl.style.display = '';
-    this.node.classList.toggle('no-preview', this.noPreview);
     this.playBtn.style.display = this.kind && url && src ? '' : 'none';
   }
 

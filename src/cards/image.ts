@@ -70,7 +70,8 @@ export class ImageCard implements CardView {
       if (this.downSelected && !this.editing && !moved) this.ctx.events.onEditField(this.id, 'caption');
     });
     this.capEl.addEventListener('input', () => {
-      const c = imageDoc(this.ctx.doc.elements[this.id]!);
+      const el = this.ctx.doc.elements[this.id];
+      const c = el ? imageDoc(el) : null;
       if (!c) return;
       const caption = this.capEl.innerText.replace(/\n/g, '');
       if (caption !== c.caption) this.ctx.events.onContent(this.id, { image: { ...c, caption } });

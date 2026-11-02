@@ -1,5 +1,5 @@
 import { dayNames, monthName, t } from '../strings';
-import { closeToolPopup, popDismiss, pushDismiss } from './popup';
+import { claimToolPopup, closeToolPopup, popDismiss, pushDismiss, releaseToolPopup } from './popup';
 
 export interface DueValue {
   dueAt?: number;
@@ -44,7 +44,7 @@ export function openDuePopup(opts: {
     st.hasTime = true;
     const h24 = d.getHours();
     st.hour = h24 % 12 === 0 ? 12 : h24 % 12;
-    st.minute = d.getMinutes() - (d.getMinutes() % 5);
+    st.minute = d.getMinutes();
     st.pm = h24 >= 12;
   }
   const base = st.day ?? new Date();
@@ -188,8 +188,10 @@ export function openDuePopup(opts: {
       row.appendChild(
         timeSelect(HOURS, st.hour, (v) => String(v).padStart(2, '0'), (v) => (st.hour = v)),
       );
+      // A stored off-step minute keeps its exact value as an extra option.
+      const mins = MINUTES.includes(st.minute) ? MINUTES : [...MINUTES, st.minute].sort((a, b) => a - b);
       row.appendChild(
-        timeSelect(MINUTES, st.minute, (v) => String(v).padStart(2, '0'), (v) => (st.minute = v)),
+        timeSelect(mins, st.minute, (v) => String(v).padStart(2, '0'), (v) => (st.minute = v)),
       );
       const ap = document.createElement('select');
       for (const [v, label] of [
@@ -223,6 +225,7 @@ export function openDuePopup(opts: {
   }
 
   function close() {
+    releaseToolPopup(handle);
     popDismiss(handle);
     window.removeEventListener('pointerdown', onDocDown, true);
     node.remove();
@@ -243,5 +246,8 @@ export function openDuePopup(opts: {
 
   const handle: DuePopupHandle = { node, close };
   pushDismiss(handle);
+  // Same lifecycle as tool popups: closeToolPopup must reach it on board
+  // switches and editor mounts, and a card-anchored picker closes on pan.
+  claimToolPopup(handle, !!opts.anchor.closest('.doc'));
   return handle;
 }

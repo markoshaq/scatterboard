@@ -114,7 +114,7 @@ function onCardDown(e: PointerEvent, app: App, cardId: ID) {
   let moved = false;
   let grouped = false;
   let wantClone = e.altKey;
-  const start = { x: e.clientX, y: e.clientY };
+  const start = app.boardPoint(e);
 
   const move = (ev: PointerEvent) => {
     if (ev.pointerId !== pid) return;

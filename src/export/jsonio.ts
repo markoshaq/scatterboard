@@ -98,10 +98,21 @@ export function importActions(
     parentId: b.id === data.board ? hostId : (b.parentId && bmap.get(b.parentId)) || hostId,
   }));
 
+  // Which source elements actually land: a board missing from the file
+  // or a boardRef pointing outside the export drops the clone. parentId,
+  // anchorId and line ends may only remap into this set or they produce
+  // zombies (pins no card owns, members of nonexistent columns).
+  const created = new Set<ID>();
+  for (const e of data.elements) {
+    if (!bmap.has(e.boardId)) continue;
+    if ('boardRef' in e.content && !bmap.has(e.content.boardRef)) continue;
+    created.add(e.id);
+  }
+
   const els: Element[] = [];
   for (const e of data.elements) {
     const bid = bmap.get(e.boardId);
-    if (!bid) continue;
+    if (!bid || !created.has(e.id)) continue;
     const clone = structuredClone(e);
     // Richtext html renders via innerHTML: scrub it to the whitelist
     // the editor can produce. An empty result is dropped so cards fall
@@ -119,25 +130,21 @@ export function importActions(
     clone.id = emap.get(e.id)!;
     clone.boardId = bid;
     clone.z = ++doc.seq;
-    if (e.parentId === null || e.parentId === UNSORTED) {
-      clone.parentId = e.parentId;
+    if (e.parentId === UNSORTED) {
+      clone.parentId = UNSORTED;
     } else {
-      clone.parentId = emap.get(e.parentId) ?? null;
+      clone.parentId = e.parentId !== null && created.has(e.parentId) ? emap.get(e.parentId)! : null;
     }
     if (e.anchorId !== undefined) {
-      const m = emap.get(e.anchorId);
+      const m = created.has(e.anchorId) ? emap.get(e.anchorId) : undefined;
       if (m) clone.anchorId = m;
       else delete clone.anchorId;
     }
     clone.labels = e.labels.map((l) => lmap.get(l)).filter((l): l is ID => !!l);
-    if ('boardRef' in clone.content) {
-      const target = bmap.get(clone.content.boardRef);
-      if (!target) continue; // card pointed outside the export: drop it
-      clone.content.boardRef = target;
-    }
+    if ('boardRef' in clone.content) clone.content.boardRef = bmap.get(clone.content.boardRef)!;
     if ('line' in clone.content) {
       const remap = (end: LineEnd): LineEnd =>
-        end.el !== undefined && emap.has(end.el) ? { ...end, el: emap.get(end.el)! } : { x: end.x, y: end.y };
+        end.el !== undefined && created.has(end.el) ? { ...end, el: emap.get(end.el)! } : { x: end.x, y: end.y };
       clone.content.line = { ...clone.content.line, from: remap(clone.content.line.from), to: remap(clone.content.line.to) };
     }
     els.push(clone);

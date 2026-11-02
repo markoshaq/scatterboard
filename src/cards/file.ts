@@ -49,9 +49,10 @@ export class FileCard implements CardView {
       this.downAt = { x: e.clientX, y: e.clientY };
     });
     this.node.addEventListener('click', (e) => {
-      if (!this.downSelected) return;
+      if (!this.downSelected || e.detail > 1) return;
       if (Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 4) return;
-      const c = fileDoc(this.ctx.doc.elements[this.id]!);
+      const el = this.ctx.doc.elements[this.id];
+      const c = el ? fileDoc(el) : null;
       if (c) void downloadBlobRef(c.blobRef, c.name);
     });
 

@@ -91,7 +91,9 @@ export function openBoardsPanel(api: BoardsApi): BoardsPanel {
       if (e.key === 'Enter') finish(true);
       if (e.key === 'Escape') finish(false);
     });
-    input.addEventListener('blur', () => finish(true));
+    // Panel close (Esc, outside click) detaches the input before blur
+    // fires: treat that as cancel, not a commit of the partial name.
+    input.addEventListener('blur', () => finish(input.isConnected));
     input.addEventListener('click', (e) => e.stopPropagation());
   }
 

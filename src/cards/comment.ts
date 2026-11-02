@@ -21,6 +21,7 @@ class CommentThread {
   private send: HTMLButtonElement;
   private events: ThreadEvents;
   private editingItem: string | null = null;
+  private cancelItem: string | null = null;
 
   constructor(events: ThreadEvents) {
     this.events = events;
@@ -116,6 +117,7 @@ class CommentThread {
         e.stopPropagation();
         if (e.key === 'Enter' || e.key === 'Escape') {
           e.preventDefault();
+          if (e.key === 'Escape') this.cancelItem = item.id;
           text.blur();
         }
       });
@@ -124,9 +126,11 @@ class CommentThread {
         this.editingItem = null;
         text.contentEditable = 'false';
         text.classList.remove('editing');
+        const cancelled = this.cancelItem === item.id;
+        this.cancelItem = null;
         const next = text.innerText.replace(/\n$/, '');
         // Blank comments are not allowed: an emptied edit reverts.
-        if (!next.trim()) text.textContent = item.text;
+        if (cancelled || !next.trim()) text.textContent = item.text;
         else if (next !== item.text) this.events.onEdit(item.id, next);
       });
       this.list.appendChild(row);

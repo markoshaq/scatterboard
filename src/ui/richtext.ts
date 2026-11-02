@@ -105,7 +105,9 @@ function selectedBlocks(root: HTMLElement): HTMLElement[] {
   };
   add(range.startContainer, range.startOffset);
   add(range.endContainer, range.endOffset);
-  if (out.size <= 1) {
+  // A multi-block selection only names its endpoints: scan the range so
+  // blocks sandwiched between them get styled/centered too.
+  if (!range.collapsed) {
     for (const el of root.children) {
       if (range.intersectsNode(el)) add(el);
     }
@@ -263,12 +265,28 @@ export function applyHighlight(root: HTMLElement, color: string | null) {
   touched(root);
 }
 
+// Only browser-safe schemes ever become anchors: the popup input lands
+// here raw, and the html is later rendered back through innerHTML.
+function safeHref(url: string): string | null {
+  const v = url.trim();
+  if (!v) return null;
+  const href = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(v) ? v : `https://${v}`;
+  try {
+    const p = new URL(href).protocol;
+    return p === 'http:' || p === 'https:' || p === 'mailto:' ? href : null;
+  } catch {
+    return null;
+  }
+}
+
 export function applyLink(root: HTMLElement, url: string, range: Range) {
+  const href = safeHref(url);
+  if (!href) return;
   ensureCssMode();
   const s = getSelection()!;
   s.removeAllRanges();
   s.addRange(range);
-  document.execCommand('createLink', false, url);
+  document.execCommand('createLink', false, href);
   touched(root);
 }
 
