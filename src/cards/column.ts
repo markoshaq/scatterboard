@@ -75,7 +75,9 @@ export class ColumnCard implements CardView {
       this.lastTitle = title;
     }
 
-    const list = columnMembers(this.ctx.doc, el.id).filter((m) => m.type !== 'line' && m.type !== 'annotation');
+    const list = (this.ctx.members?.(el.id) ?? columnMembers(this.ctx.doc, el.id)).filter(
+      (m) => m.type !== 'line' && m.type !== 'annotation',
+    );
     const seen = new Set(list.map((m) => m.id));
     for (const [mid, v] of this.members) {
       if (!seen.has(mid)) {

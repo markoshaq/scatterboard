@@ -80,7 +80,8 @@ export class BoardCard implements CardView {
       this.lastIcon = iconKey;
       mountBoardIcon(this.tileEl, board?.icon, title);
     }
-    this.countEl.textContent = this.ref ? cardsCount(boardCardCount(this.ctx.doc, this.ref)) : '';
+    const count = this.ref ? (this.ctx.cardCount?.(this.ref) ?? boardCardCount(this.ctx.doc, this.ref)) : 0;
+    this.countEl.textContent = this.ref ? cardsCount(count) : '';
   }
 
   setSelected(on: boolean) {

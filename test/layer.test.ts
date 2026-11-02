@@ -1,0 +1,164 @@
+// @vitest-environment happy-dom
+import { describe, expect, it } from 'vitest';
+import {
+  createBoard,
+  createColumn,
+  createComment,
+  createNote,
+  emptyDoc,
+  type Doc,
+} from '../src/state/schema';
+import { CardsLayer } from '../src/cards/layer';
+import { Viewport } from '../src/canvas/viewport';
+import type { CardEvents } from '../src/cards/note';
+
+function doc(): Doc {
+  const d = emptyDoc();
+  d.boards.home = createBoard({ id: 'home', title: 'Home' });
+  return d;
+}
+
+const events: CardEvents = {
+  onTextInput: () => {},
+  onContent: () => {},
+  onMeasure: () => {},
+  onResizeHandle: () => {},
+  onEditEnd: () => {},
+  onLinkPopup: () => {},
+  onEditField: () => {},
+  onCellFocus: () => {},
+};
+
+function harness(d: Doc) {
+  let rev = 0;
+  const vp = new Viewport();
+  vp.vw = 800;
+  vp.vh = 600;
+  const layer = new CardsLayer(d, vp, events, () => rev);
+  layer.boardId = 'home';
+  document.body.appendChild(layer.node);
+  return { layer, vp, bump: () => ++rev };
+}
+
+describe('CardsLayer culling', () => {
+  it('mounts only cards inside the padded view', () => {
+    const d = doc();
+    const near = createNote(d, 'home', 100, 100, 'near');
+    const far = createNote(d, 'home', 50000, 50000, 'far');
+    d.elements[near.id] = near;
+    d.elements[far.id] = far;
+    const { layer, bump } = harness(d);
+    bump();
+    layer.sync(new Set(), null, false);
+    expect(layer.view(near.id)).toBeTruthy();
+    expect(layer.view(far.id)).toBeUndefined();
+    expect(layer.node.querySelectorAll('.card').length).toBe(1);
+  });
+
+  it('skips lines, annotations and anchored comments entirely', () => {
+    const d = doc();
+    const anchor = createNote(d, 'home', 0, 0);
+    const pin = createComment(d, 'home', 0, 0, anchor.id);
+    const free = createComment(d, 'home', 30, 30);
+    free.parentId = null;
+    d.elements[anchor.id] = anchor;
+    d.elements[pin.id] = pin;
+    d.elements[free.id] = free;
+    const { layer, bump } = harness(d);
+    bump();
+    layer.sync(new Set(), null, false);
+    expect(layer.view(pin.id)).toBeUndefined();
+    expect(layer.view(free.id)).toBeTruthy();
+  });
+
+  it('mounts a culled card once it pans back in', () => {
+    const d = doc();
+    const far = createNote(d, 'home', 50000, 50000, 'far');
+    d.elements[far.id] = far;
+    const { layer, vp, bump } = harness(d);
+    bump();
+    layer.sync(new Set(), null, false);
+    expect(layer.view(far.id)).toBeUndefined();
+    vp.x = -50000;
+    vp.y = -50000;
+    layer.sync(new Set(), null, false);
+    expect(layer.view(far.id)).toBeTruthy();
+  });
+});
+
+describe('CardsLayer dirty gating', () => {
+  it('skips update() for untouched elements and honours the dirty set', () => {
+    const d = doc();
+    const a = createNote(d, 'home', 0, 0, 'aaa');
+    const b = createNote(d, 'home', 300, 0, 'bbb');
+    d.elements[a.id] = a;
+    d.elements[b.id] = b;
+    const { layer, bump } = harness(d);
+    bump();
+    layer.sync(new Set(), null, false);
+
+    // Mutate the doc without flagging it dirty: the DOM keeps the
+    // stale text, proving no update() ran.
+    a.content = { note: { text: 'changed' } };
+    bump();
+    layer.sync(new Set(), null, false, new Set());
+    expect(layer.view(a.id)!.node.querySelector('.note-text')!.textContent).toBe('aaa');
+    layer.sync(new Set(), null, false, new Set([a.id]));
+    expect(layer.view(a.id)!.node.querySelector('.note-text')!.textContent).toBe('changed');
+  });
+
+  it('updates a column when only a member element is dirty', () => {
+    const d = doc();
+    const col = createColumn(d, 'home', 0, 0, 'col');
+    const member = createNote(d, 'home', 0, 0, 'inside');
+    member.parentId = col.id;
+    d.elements[col.id] = col;
+    d.elements[member.id] = member;
+    const { layer, bump } = harness(d);
+    bump();
+    layer.sync(new Set(), null, false);
+
+    member.content = { note: { text: 'edited member' } };
+    bump();
+    layer.sync(new Set(), null, false, new Set([member.id]));
+    expect(layer.view(member.id)!.node.querySelector('.note-text')!.textContent).toBe('edited member');
+  });
+
+  it('re-mounts members when the member set changes', () => {
+    const d = doc();
+    const col = createColumn(d, 'home', 0, 0, 'col');
+    const member = createNote(d, 'home', 0, 0, 'm');
+    member.parentId = col.id;
+    d.elements[col.id] = col;
+    d.elements[member.id] = member;
+    const { layer, bump } = harness(d);
+    bump();
+    layer.sync(new Set(), null, false);
+    expect(layer.view(member.id)).toBeTruthy();
+
+    // Unfiling: parentId flips to null, the card leaves the column and
+    // becomes a top-level view.
+    member.parentId = null;
+    bump();
+    layer.sync(new Set(), null, false, new Set([member.id]));
+    expect(layer.view(member.id)).toBeTruthy();
+    expect(layer.view(member.id)!.node.parentElement).toBe(layer.node);
+  });
+});
+
+describe('CardsLayer ordering', () => {
+  it('seats card nodes in el.z order', () => {
+    const d = doc();
+    const a = createNote(d, 'home', 0, 0, 'a');
+    const b = createNote(d, 'home', 300, 0, 'b');
+    a.z = 2;
+    b.z = 1;
+    d.elements[a.id] = a;
+    d.elements[b.id] = b;
+    const { layer, bump } = harness(d);
+    bump();
+    layer.sync(new Set(), null, false);
+    const cards = [...layer.node.querySelectorAll('.card')].map((n) => (n as HTMLElement).dataset.id);
+    expect(cards).toEqual([b.id, a.id]);
+  });
+});

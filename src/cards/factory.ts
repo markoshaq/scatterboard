@@ -1,4 +1,4 @@
-import type { Doc, Element } from '../state/schema';
+import type { Doc, Element, ID } from '../state/schema';
 import { NoteCard, type CardEvents, type CardView } from './note';
 import { ColumnCard } from './column';
 import { BoardCard } from './board';
@@ -20,6 +20,12 @@ export interface CardCtx {
   // view map; absent in standalone contexts.
   registerView?: (v: CardView) => void;
   unregisterView?: (v: CardView) => void;
+  // BoardIndex-backed lookups: keep update() off the O(doc) scans.
+  members?: (id: ID) => Element[];
+  cardCount?: (boardId: ID) => number;
+  // Viewport zoom, for counter-scale buckets that would otherwise need
+  // a layout read inside update().
+  zoom?: () => number;
 }
 
 export function createCard(el: Element, ctx: CardCtx): CardView {

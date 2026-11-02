@@ -174,7 +174,14 @@ export function openSearchPanel(opts: {
     }
   };
 
-  input.addEventListener('input', render);
+  // Board search scans every element: debounce the re-scan per
+  // keystroke; sort flips re-render instantly against cached hits.
+  const DEBOUNCE_MS = 120;
+  let timer = 0;
+  input.addEventListener('input', () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(render, DEBOUNCE_MS);
+  });
   input.addEventListener('keydown', (e) => {
     e.stopPropagation();
     if (e.key === 'Escape') handle.close();

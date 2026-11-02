@@ -27,8 +27,10 @@ const LS_KEY = 'planboard:v1';
 const LS_LAST = 'planboard:last-board';
 const LS_POS = 'planboard:pos:';
 
-// JSON stringify/parse off the main thread: the doc travels by
-// structured clone, so the slow codec work never blocks the UI.
+// JSON parse off the main thread on load only. Saves stringify on the
+// main thread: cloning a 550KB workspace object into the worker cost
+// ~20ms, more than the ~9ms stringify itself. The save text travels as
+// a plain string, which clones near-free.
 class JsonCodec {
   private worker = new Worker(new URL('./json.worker.ts', import.meta.url), { type: 'module' });
   private nextId = 1;
@@ -46,10 +48,6 @@ class JsonCodec {
       for (const p of this.pending.values()) p.reject(new Error('json worker failed'));
       this.pending.clear();
     };
-  }
-
-  stringify(v: unknown): Promise<string> {
-    return this.call('stringify', v) as Promise<string>;
   }
 
   parse(s: string): Promise<unknown> {
@@ -246,8 +244,7 @@ export class SqliteAdapter implements DocStorage {
       await this.local.save(w);
       return;
     }
-    const c = this.json();
-    const json = c ? await c.stringify(w) : JSON.stringify(w);
+    const json = JSON.stringify(w);
     this.bytes = new Blob([json]).size;
     await this.put(WS_KEY, json);
   }

@@ -51,6 +51,10 @@ export class Renderer {
   private scene: Scene = EMPTY_SCENE;
   private queued = false;
   private cc: CanvasColors = canvasColors();
+  // One-tile dot-grid pattern cache keyed on (tile px, radius, theme);
+  // the grid paints as a single pattern fill instead of per-dot rects
+  // at deep zoom-out.
+  private gridTile: { key: string; canvas: HTMLCanvasElement; scale: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement, chromeEl: HTMLCanvasElement, vp: Viewport) {
     this.canvas = canvas;
@@ -89,8 +93,8 @@ export class Renderer {
     const dpr = devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, vp.vw, vp.vh);
-    if (scene.grid) this.drawGrid();
     ctx.setTransform(dpr * vp.z, 0, 0, dpr * vp.z, dpr * vp.x, dpr * vp.y);
+    if (scene.grid) this.drawGrid();
     // Skip lines whose bounding box misses the view: hundreds of
     // off-canvas lines should cost a compare, not a stroke.
     const vr = vp.viewRect(0);
@@ -122,21 +126,44 @@ export class Renderer {
     this.ctx = ctx;
   }
 
+  // Runs in board space: the pattern anchors at board (0,0) so dots
+  // land on step multiples with no phase term. Quarter-dots at the
+  // tile's corners let neighbours complete each dot.
   private drawGrid() {
     const { ctx, vp } = this;
     let step = GRID;
     while (step * vp.z < 16) step *= 2;
     const r = Math.max(0.8, Math.min(1.6, 1.6 * vp.z));
-    const x0 = Math.floor(-vp.x / (step * vp.z)) * step;
-    const y0 = Math.floor(-vp.y / (step * vp.z)) * step;
-    ctx.fillStyle = this.cc.grid;
-    // Dots are <=1.6px: a fillRect reads identical and skips ~1300 arc
-    // calls per frame.
-    for (let bx = x0; bx * vp.z + vp.x < vp.vw + step; bx += step) {
-      for (let by = y0; by * vp.z + vp.y < vp.vh + step; by += step) {
-        ctx.fillRect(bx * vp.z + vp.x - r, by * vp.z + vp.y - r, r * 2, r * 2);
+    const dpr = devicePixelRatio || 1;
+    const w = Math.max(8, Math.round(step * vp.z * dpr));
+    const key = `${w}|${r.toFixed(2)}|${this.cc.grid}`;
+    if (this.gridTile?.key !== key) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = w;
+      const tc = canvas.getContext('2d');
+      if (!tc) return;
+      const rr = r * dpr;
+      tc.fillStyle = this.cc.grid;
+      for (const [cx, cy] of [
+        [0, 0],
+        [w, 0],
+        [0, w],
+        [w, w],
+      ] as const) {
+        tc.beginPath();
+        tc.arc(cx, cy, rr, 0, Math.PI * 2);
+        tc.fill();
       }
+      this.gridTile = { key, canvas, scale: w / step };
     }
+    const pat = ctx.createPattern(this.gridTile.canvas, 'repeat');
+    if (!pat) return;
+    // Tile px -> board units, so the period is exactly `step` even at
+    // fractional zooms.
+    pat.setTransform(new DOMMatrix().scale(1 / this.gridTile.scale));
+    ctx.fillStyle = pat;
+    const vr = vp.viewRect(0);
+    ctx.fillRect(vr.x, vr.y, vr.w, vr.h);
   }
 
   private drawLine(l: SceneLine) {

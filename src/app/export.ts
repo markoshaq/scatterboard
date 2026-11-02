@@ -11,11 +11,8 @@ import { ChipsLayer } from '../ui/chips';
 import { downloadTextFile } from '../draw/strokes';
 import { openExportMenu } from '../export/menu';
 import { dedupFileName, downloadBlob, slugFileName } from '../export/download';
-import { zipStore, type ZipEntry } from '../export/zip';
-import { jpegToPdf } from '../export/pdf';
-import { buildShotDom, inlineBlobImages, renderBoardShot, settleImages, toBlob, type FallbackCard, type ShotSpec } from '../export/boardpng';
-import { boardItems, toMarkdown, toPlain, toWordHtml } from '../export/linear';
-import { exportBoard, importActions, parseBoardExport } from '../export/jsonio';
+import type { ZipEntry } from '../export/zip';
+import type { FallbackCard, ShotSpec } from '../export/boardpng';
 // Card events for the offscreen CardsLayer used by board raster export:
 // real handlers all reach back into the live layer/app, so exports use
 // silent stubs instead.
@@ -100,6 +97,7 @@ export class BoardExport {
     stage.appendChild(off.node);
     document.body.appendChild(stage);
     off.sync(new Set(), null, true);
+    const { buildShotDom, inlineBlobImages, renderBoardShot, settleImages } = await import('../export/boardpng');
     await settleImages(off.node);
 
     // Live overlays are already synced for the whole board (labels,
@@ -108,15 +106,15 @@ export class BoardExport {
     // live inside .cards: park them in their hosts so the clone sees
     // them, then re-seat after the snapshot.
     const chips = new ChipsLayer(this.a.doc);
-    chips.sync(this.a.chipTargets(true, off));
-    this.a.anno.sync(this.a.annoItems());
-    this.a.pins.sync(this.a.pinItems(off).map((p) => ({ ...p, seat: null })));
-    const dom = buildShotDom(off.node, [this.a.anno.node, this.a.pins.node, this.a.labelHost, chips.node], bounds);
+    chips.sync(this.a.overlays.chipTargets(true, off));
+    this.a.overlays.anno.sync(this.a.overlays.annoItems(true));
+    this.a.overlays.pins.sync(this.a.overlays.pinItems(off, true).map((p) => ({ ...p, seat: null })));
+    const dom = buildShotDom(off.node, [this.a.overlays.anno.node, this.a.overlays.pins.node, this.a.overlays.labelHost, chips.node], bounds);
     await inlineBlobImages(dom);
     off.destroy();
     stage.remove();
-    this.a.syncAnno();
-    this.a.syncPins();
+    this.a.overlays.syncAnno();
+    this.a.overlays.syncPins();
 
     const spec: ShotSpec = {
       bounds,
@@ -143,6 +141,7 @@ export class BoardExport {
 
   async exportPng() {
     const cv = await this.boardRaster(2);
+    const { toBlob } = await import('../export/boardpng');
     const blob = cv && (await toBlob(cv, 'image/png'));
     if (!blob) {
       toast(t('exFail'));
@@ -155,21 +154,24 @@ export class BoardExport {
   async exportPdf(hi: boolean) {
     const scale = hi ? 2 : 1;
     const cv = await this.boardRaster(scale);
+    const { toBlob } = await import('../export/boardpng');
     const blob = cv && (await toBlob(cv, 'image/jpeg', hi ? 0.95 : 0.8));
     if (!cv || !blob) {
       toast(t('exFail'));
       return;
     }
     const jpeg = new Uint8Array(await blob.arrayBuffer());
+    const { jpegToPdf } = await import('../export/pdf');
     // Page sized to the raster's aspect: board units at 96dpi -> pt.
     const pdf = jpegToPdf(jpeg, cv.width, cv.height, (cv.width / scale) * 0.75, (cv.height / scale) * 0.75);
     downloadBlob(`${this.exportFileBase()}.pdf`, pdf);
   }
 
 
-  exportLinear(kind: 'doc' | 'md' | 'txt') {
+  async exportLinear(kind: 'doc' | 'md' | 'txt') {
     if (!this.a.boardId) return;
     this.a.editing.endEdit();
+    const { boardItems, toMarkdown, toPlain, toWordHtml } = await import('../export/linear');
     const title = this.a.board()?.title ?? '';
     const items = boardItems(this.a.doc, this.a.boardId, this.exportSubs);
     const base = this.exportFileBase();
@@ -198,12 +200,14 @@ export class BoardExport {
       toast(t('exFail'));
       return;
     }
+    const { zipStore } = await import('../export/zip');
     downloadBlob(`${this.exportFileBase()}-files.zip`, zipStore(entries));
   }
 
 
-  exportJson() {
+  async exportJson() {
     if (!this.a.boardId) return;
+    const { exportBoard } = await import('../export/jsonio');
     const text = exportBoard(this.a.doc, this.a.boardId);
     if (!text) {
       toast(t('exFail'));
@@ -223,6 +227,7 @@ export class BoardExport {
       const file = input.files?.[0];
       if (!file) return;
       void (async () => {
+        const { importActions, parseBoardExport } = await import('../export/jsonio');
         const data = parseBoardExport(await file.text());
         // Imported boards attach under Home; fall back to the doc root
         // or the current board when no 'home' id exists.

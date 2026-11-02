@@ -6,7 +6,7 @@ import type { DocStorage } from './persist/storage';
 import { blobTotalSize, clearBlobs, putBlob } from './persist/blobs';
 import { ingestFiles, ingestPaste, prepareImage, type IngestApi } from './ui/files';
 import { hostOf } from './ui/embeds';
-import { Viewport, type Rect } from './canvas/viewport';
+import { Viewport } from './canvas/viewport';
 import { Renderer, type DraftLine, type Guide, type SceneLine } from './canvas/renderer';
 import { CardsLayer } from './cards/layer';
 import { openThreadPopup } from './cards/comment';
@@ -15,16 +15,12 @@ import { Rail } from './ui/rail';
 import { attachPointer } from './canvas/input';
 import { attachShortcuts } from './ui/shortcuts';
 import { normRect, pointInRect, rectsIntersect, unionRect } from './canvas/hit';
-import { hitLines, midpoint, resolveLine, type LineHit } from './canvas/lines';
+import { hitLines, resolveLine, type LineHit } from './canvas/lines';
 import { t } from './strings';
 import { choice, hint, toast } from './ui/toast';
-import { ChipsLayer } from './ui/chips';
-import { CommentPins } from './ui/pins';
-import { AnnotationLayer } from './ui/annotations';
-import { openDocumentEditor } from './editor/doceditor';
-import { openBoardDraw, openSketchEditor } from './editor/draweditors';
-import { imgModeFromHash, imgModeParam, openImageEditor, type ImgEditorHandle, type ImgMode } from './editor/imgeditor';
-import { canvasBlob, cropImage, loadBitmap } from './canvas/imgops';
+import type { EditorHandle } from './editor/doceditor';
+import { imgModeFromHash, imgModeParam, type ImgMode } from './editor/imgmode';
+import type { ImgEditorHandle } from './editor/imgeditor';
 import { openShortcutsPanel } from './ui/shortcutpanel';
 import { openCapturePopup } from './ui/capture';
 import { setFormatting } from './ui/locale';
@@ -43,6 +39,7 @@ import { Editing } from './app/editing';
 import { RailTools } from './app/tools';
 import { Panels } from './app/panels';
 import { Gestures } from './app/gestures';
+import { Overlays } from './app/overlays';
 const SAVE_DEBOUNCE = 700;
 const DRAG_SLOP = 3;
 
@@ -76,7 +73,7 @@ export class App {
   spaceDown = false;
 
 
-  private docEl: HTMLElement;
+  docEl: HTMLElement;
 
   private canvasEl: HTMLCanvasElement;
 
@@ -94,29 +91,26 @@ export class App {
 
   private renderQueued = false;
 
+  // Elements touched by store changes since the last layer.sync; the
+  // layer skips update() on untouched cards. refreshCards forces a
+  // full pass for non-element inputs (theme, board meta, locale).
+  private dirtyEls = new Set<ID>();
+
+  private refreshCards = true;
+
   private lastIz = 1;
 
   private wasDimming = false;
+
+  private wasFiltering = false;
 
   private draft: DraftLine | null = null;
 
   private endDraft: { id: ID; which: 'from' | 'to'; x: number; y: number } | null = null;
 
-  private editingLabelId: ID | null = null;
-
-  private connectHandle: HTMLElement;
-
-  labelHost: HTMLElement;
-
-  private labelPills = new Map<ID, HTMLElement>();
+  readonly overlays: Overlays;
 
   rail: Rail;
-
-  private chips: ChipsLayer;
-
-  pins: CommentPins;
-
-  anno: AnnotationLayer;
 
   private overlay: { close(): void } | null = null;
 
@@ -171,26 +165,7 @@ export class App {
       () => this.store.rev,
     );
     this.docEl.appendChild(this.layer.node);
-    this.anno = new AnnotationLayer((id, e) => this.onAnnoPick(id, e));
-    this.docEl.appendChild(this.anno.node);
-    this.labelHost = document.createElement('div');
-    this.labelHost.className = 'line-labels';
-    this.docEl.appendChild(this.labelHost);
-    this.connectHandle = document.createElement('div');
-    this.connectHandle.className = 'connect-handle';
-    this.connectHandle.innerHTML = `<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 5h5M5.5 2.8 7.7 5 5.5 7.2"/></svg>`;
-    this.connectHandle.style.display = 'none';
-    this.connectHandle.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      const id = this.connectHandle.dataset.id;
-      if (id) this.startConnect(id, e);
-    });
-    this.docEl.appendChild(this.connectHandle);
-    this.chips = new ChipsLayer(store.doc);
-    this.docEl.appendChild(this.chips.node);
-    this.pins = new CommentPins((id, pinEl) => this.onPinClick(id, pinEl));
-    this.docEl.appendChild(this.pins.node);
+    this.overlays = new Overlays(this);
     this.renderer = new Renderer(this.canvasEl, this.chromeEl, this.vp);
     this.topbar = new Topbar(root, {
       onZoomIn: () => this.vp.zoomStep(1),
@@ -246,12 +221,17 @@ export class App {
       this.requestRender();
     };
     this.store.onChange((c) => {
+      for (const id of c.elements) this.dirtyEls.add(id);
       for (const id of c.deleted) {
+        this.dirtyEls.add(id);
         this.sel.delete(id);
         // Ending the session is what closes the undo group; dropping
         // editingId alone would leak it and swallow history.
         if (this.editingId === id) this.editing.endEdit();
       }
+      // Board patches (title/icon/color) are read by card views but
+      // carry no element id, so they force a full view pass.
+      if (c.boards.size) this.refreshCards = true;
       this.scheduleSave();
       this.requestRender();
     });
@@ -260,8 +240,14 @@ export class App {
     attachShortcuts(this);
 
     window.addEventListener('resize', () => this.layout());
-    window.addEventListener('online', () => this.requestRender());
-    window.addEventListener('offline', () => this.requestRender());
+    window.addEventListener('online', () => {
+      this.refreshCards = true;
+      this.requestRender();
+    });
+    window.addEventListener('offline', () => {
+      this.refreshCards = true;
+      this.requestRender();
+    });
     this.layout();
   }
 
@@ -290,7 +276,7 @@ export class App {
     this.editing.endEdit();
     this.draft = null;
     this.endDraft = null;
-    if (this.editingLabelId) this.commitLabelEdit(this.editingLabelId);
+    this.overlays.commitLabelEdit();
     const prev = this.board();
     if (prev) {
       prev.position = this.vp.snapshot();
@@ -338,7 +324,7 @@ export class App {
     if (em) {
       const el = this.doc.elements[em[1]!];
       if (el && (el.type === 'document' || el.type === 'sketch' || el.type === 'image')) {
-        this.openElementEditor(el);
+        void this.openElementEditor(el);
         return;
       }
     }
@@ -353,7 +339,9 @@ export class App {
   }
 
 
-  private openElementEditor(el: Element) {
+  private editorSeq = 0;
+
+  private async openElementEditor(el: Element) {
     if (this.overlayId === el.id) {
       // Same overlay re-used: the image editor's mode chips swap the
       // hash and hashchange lands here.
@@ -367,9 +355,14 @@ export class App {
     this.panels.closePanel();
     closeToolPopup();
     this.sel = new Set([el.id]);
-    let handle: { close(): void } | null = null;
+    // Editor modules are lazy chunks; the seq guard drops a stale open
+    // if the route moved on while the chunk was loading.
+    const seq = ++this.editorSeq;
+    let handle: EditorHandle | null = null;
     if (el.type === 'document') {
       if (!documentDoc(el)) return;
+      const { openDocumentEditor } = await import('./editor/doceditor');
+      if (seq !== this.editorSeq) return;
       this.store.beginGroup();
       const ed = openDocumentEditor(el, {
         boards: () => Object.values(this.doc.boards).sort((a, b) => a.title.localeCompare(b.title)),
@@ -395,6 +388,8 @@ export class App {
         },
       };
     } else if (el.type === 'sketch') {
+      const { openSketchEditor } = await import('./editor/draweditors');
+      if (seq !== this.editorSeq) return;
       handle = openSketchEditor(el, {
         ink: this.prefs.ink,
         patch: (doc) => {
@@ -408,6 +403,8 @@ export class App {
       });
     } else if (el.type === 'image') {
       if (!imageDoc(el)) return;
+      const { openImageEditor } = await import('./editor/imgeditor');
+      if (seq !== this.editorSeq) return;
       const ed = openImageEditor(el, imgModeFromHash(), {
         doc: () => {
           const cur = this.doc.elements[el.id];
@@ -448,6 +445,7 @@ export class App {
 
 
   private closeElementEditor() {
+    this.editorSeq++;
     this.imgEditor = null;
     this.overlay?.close();
     this.overlay = null;
@@ -458,12 +456,16 @@ export class App {
 
   // Board draw mode (rail Draw / Shift+D): strokes land as one
   // annotation element. Esc saves, Discard backs out.
-  enterDrawMode() {
+  async enterDrawMode() {
     if (this.boardDraw || this.overlay || !this.boardId || this.lockedView()) return;
     this.editing.endEdit();
     this.panels.closePanel();
     closeToolPopup();
     this.clearSelection();
+    const { openBoardDraw } = await import('./editor/draweditors');
+    // The lazy editor chunk may race a route change that opened an
+    // editor or re-entered draw mode in the meantime.
+    if (this.boardDraw || this.overlay) return;
     this.boardDraw = openBoardDraw({
       vp: this.vp,
       ink: this.prefs.ink,
@@ -517,7 +519,7 @@ export class App {
   enterPresent() {
     if (this.presenting || this.overlayOpen || !this.boardId) return;
     this.editing.endEdit();
-    if (this.editingLabelId) this.commitLabelEdit(this.editingLabelId);
+    this.overlays.commitLabelEdit();
     this.panels.closePanel();
     closeToolPopup();
     this.presenting = true;
@@ -560,7 +562,7 @@ export class App {
 
   // 'Focus on selected cards': non-selected canvas items dim. Re-checked
   // in render() so the focus set follows live selection changes.
-  private dims(id: ID): boolean {
+  dims(id: ID): boolean {
     return this.presenting && this.sel.size > 0 && !this.sel.has(id) && !!this.board()?.presentOpts?.focus;
   }
 
@@ -600,7 +602,10 @@ export class App {
   }
 
 
-  render() {
+  // Canvas-only scene push used by the light render path (marquee
+  // drags): outlines and lines are cheap to recompute, everything
+  // downstream of setScene stays untouched.
+  private pushScene() {
     const board = this.board();
     const outlines = [...this.sel]
       .map((id) => this.doc.elements[id])
@@ -627,25 +632,41 @@ export class App {
       lines,
       draft: this.draft,
     });
-    this.layer.sync(this.sel, this.editingId, this.lockedView());
-    this.syncConnectHandle();
-    this.syncLabelPills(lines);
-    this.syncChips();
-    this.syncPins();
-    this.syncAnno();
+    return lines;
+  }
+
+  renderScene() {
+    this.pushScene();
+  }
+
+  render() {
+    const board = this.board();
+    const lines = this.pushScene();
+    const dirty = this.refreshCards ? undefined : this.dirtyEls;
+    this.dirtyEls = new Set();
+    this.refreshCards = false;
+    this.layer.sync(this.sel, this.editingId, this.lockedView(), dirty);
+    this.overlays.sync(lines);
     // The class-toggle pass only matters while presenting (focus dim)
     // or while a search filter is lit; run it then, plus once on the
-    // way out to strip stale classes.
+    // way out to strip stale classes. filter-hit writes only run while
+    // a filter is active or just got stripped, so present-only frames
+    // do one class write per node.
     const dimming = this.presenting || this.filterIds.size > 0;
+    const filtering = this.filterIds.size > 0;
     if (dimming || this.wasDimming) {
+      const stripFilter = this.wasFiltering && !filtering;
       for (const node of this.docEl.querySelectorAll<HTMLElement>(
         '.card, .chip-row, .comment-pin, .line-label, svg.anno',
       )) {
         node.classList.toggle('present-dim', !!node.dataset.id && this.dims(node.dataset.id));
-        node.classList.toggle('filter-hit', !node.dataset.id || this.filterIds.has(node.dataset.id));
+        if (filtering || stripFilter) {
+          node.classList.toggle('filter-hit', !node.dataset.id || this.filterIds.has(node.dataset.id));
+        }
       }
     }
     this.wasDimming = dimming;
+    this.wasFiltering = filtering;
     this.docEl.classList.toggle('filtering', this.filterIds.size > 0);
     this.topbar.setUndoArrows(this.prefs.undoArrows !== false, this.store.canUndo, this.store.canRedo);
     this.rail.setPalette(this.prefs.railOrder, this.prefs.railHidden);
@@ -675,141 +696,6 @@ export class App {
   }
 
 
-  // Cards the chips overlay can sit under: canvas cards + column members
-  // on this board, minus anchored comments (those render as pins).
-  // all=true skips the viewport cull for the export snapshot (pass the
-  // staging layer so member rects come from its mounted views).
-  chipTargets(all = false, layer = this.layer): { el: Element; rect: Rect; dim?: boolean }[] {
-    const visible = all ? null : this.vp.viewRect(120);
-    const out: { el: Element; rect: Rect; dim?: boolean }[] = [];
-    const hideComments = this.presenting && !!this.board()?.presentOpts?.comments;
-    const push = (el: Element) => {
-      if (el.type === 'line') return;
-      if (el.type === 'comment' && (el.anchorId !== undefined || hideComments)) return;
-      const rect = layer.rectOf(el);
-      if (!visible || rectsIntersect(rect, visible)) out.push({ el, rect, dim: this.dims(el.id) });
-    };
-    for (const el of layer.elements()) {
-      push(el);
-      // Culled-column members report a stale pre-filing x/y; skip them.
-      if (el.type === 'column')
-        for (const m of layer.members(el.id)) {
-          if (all || layer.view(m.id)) push(m);
-        }
-    }
-    return out;
-  }
-
-
-  private syncChips() {
-    this.chips.sync(this.chipTargets(), (id) => {
-      const el = this.doc.elements[id];
-      // Member rows stay in the host: inside .col-body their board-space
-      // coords land in card-local space and get clipped by contain:paint.
-      if (!el || el.parentId) return null;
-      return this.layer.view(id)?.node ?? null;
-    });
-  }
-
-
-  pinItems(layer = this.layer): {
-    id: ID;
-    rect: Rect;
-    count: number;
-    selected: boolean;
-    unread: number;
-    color: string | undefined;
-    seat: HTMLElement | null;
-  }[] {
-    const out: {
-      id: ID;
-      rect: Rect;
-      count: number;
-      selected: boolean;
-      unread: number;
-      color: string | undefined;
-      seat: HTMLElement | null;
-    }[] = [];
-    for (const el of layer.elements()) {
-      if (el.type !== 'comment' || el.anchorId === undefined) continue;
-      const anchor = this.doc.elements[el.anchorId];
-      if (!anchor || anchor.parentId === UNSORTED) continue;
-      // Member anchors use a DOM rect: an unmounted column member would
-      // report its stale pre-filing x/y and leave an orphan pin.
-      if (anchor.parentId && !layer.view(anchor.id)) continue;
-      const rect = layer.rectOf(anchor);
-      const c = commentDoc(el);
-      const count = c?.items.length ?? 0;
-      const seen = this.prefs.commentSeen?.[el.id] ?? 0;
-      out.push({
-        id: el.id,
-        rect,
-        count,
-        selected: this.sel.has(el.id),
-        unread: Math.max(0, count - seen),
-        color: el.color,
-        // Seated after the anchor card so covering cards hide the pin.
-        // Member anchors keep the host (same as member chip rows).
-        seat: anchor.parentId ? null : (layer.view(anchor.id)?.node ?? null),
-      });
-    }
-    return out;
-  }
-
-
-  syncPins() {
-    this.pins.sync(this.pinItems());
-  }
-
-
-  private onPinClick(id: ID, pinEl: HTMLElement) {
-    this.editing.endEdit();
-    this.selectOnly(id);
-    this.openCommentThread(id, pinEl);
-  }
-
-
-  annoItems() {
-    return this.layer
-      .elements()
-      .filter((e) => e.type === 'annotation')
-      .map((el) => ({ el, selected: this.sel.has(el.id), dim: this.dims(el.id) }));
-  }
-
-
-  syncAnno() {
-    // Seat each svg before the lowest card above it so ink honours el.z;
-    // the host fallback paints above all cards (topmost annotation).
-    const els = this.layer.elements();
-    this.anno.sync(this.annoItems(), (el) => {
-      // els is z-ascending: binary-search the first element above el.z,
-      // then scan up for the first mounted card.
-      let lo = 0;
-      let hi = els.length;
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (els[mid]!.z <= el.z) lo = mid + 1;
-        else hi = mid;
-      }
-      for (let i = lo; i < els.length; i++) {
-        const e = els[i]!;
-        if (e.type === 'line' || e.type === 'annotation') continue;
-        if (e.type === 'comment' && e.anchorId !== undefined) continue;
-        const v = this.layer.view(e.id);
-        if (v) return v.node;
-      }
-      return null;
-    });
-  }
-
-
-  private onAnnoPick(id: ID, e: PointerEvent) {
-    this.editing.endEdit();
-    if (e.shiftKey) this.toggleSelect(id);
-    else this.selectOnly(id);
-  }
-
-
   openCommentThread(id: ID, anchor: HTMLElement | DOMRect) {
     const el = this.doc.elements[id];
     if (el?.type !== 'comment') return;
@@ -818,7 +704,7 @@ export class App {
       const n = commentDoc(this.doc.elements[id]!)?.items.length ?? 0;
       this.prefs.commentSeen = { ...(this.prefs.commentSeen ?? {}), [id]: n };
       this.scheduleSave();
-      this.syncPins();
+      this.overlays.syncPins();
     };
     const items = () => {
       const cur = this.doc.elements[id];
@@ -904,7 +790,9 @@ export class App {
 
   setMarquee(m: { x1: number; y1: number; x2: number; y2: number } | null) {
     this.marquee = m;
-    this.requestRender();
+    // Marquee is canvas-only state: repaint the scene directly instead
+    // of running the full card/overlay pass per pointermove.
+    this.renderScene();
   }
 
 
@@ -939,23 +827,6 @@ export class App {
   private hintNode(id: ID): HTMLElement | null {
     // The flat view map resolves member views directly.
     return this.layer.view(id)?.node ?? null;
-  }
-
-
-  // Whether a card covers a board point. Lines/labels/handles use it to
-  // hide affordances whose anchor is occluded (they draw under or over
-  // the card layer). `excludeId`'s own ancestors don't count as cover.
-  private coveredByCard(x: number, y: number, excludeId?: ID): boolean {
-    // Only mounted cards can occlude on-screen: unmounted ones are
-    // off-canvas or nested inside a column (which covers them anyway).
-    for (const v of this.layer.mounted()) {
-      const e = this.doc.elements[v.id];
-      if (!e || e.id === excludeId) continue;
-      if (e.type === 'comment' && e.anchorId !== undefined) continue;
-      if (excludeId && this.hasAncestor(excludeId, e.id)) continue;
-      if (pointInRect(x, y, this.layer.rectOf(e))) return true;
-    }
-    return false;
   }
 
 
@@ -1005,126 +876,7 @@ export class App {
   }
 
 
-  // --- lines: handles, label pills, gestures ---
-
-  private syncConnectHandle() {
-    const id = this.sel.size === 1 ? [...this.sel][0]! : null;
-    const el = id ? this.doc.elements[id] : undefined;
-    if (!el || el.type === 'line' || el.type === 'comment' || this.editingId || el.locked || this.lockedView()) {
-      this.connectHandle.style.display = 'none';
-      return;
-    }
-    const r = this.layer.rectOf(el);
-    // The handle is counter-scaled (~16 screen px, offset 2px right of
-    // the edge); hide it when a covering card would make it float.
-    if (this.coveredByCard(r.x + r.w + 10 / this.vp.z, r.y + r.h / 2, el.id)) {
-      this.connectHandle.style.display = 'none';
-      return;
-    }
-    this.connectHandle.style.display = 'flex';
-    this.connectHandle.style.left = `${r.x + r.w}px`;
-    this.connectHandle.style.top = `${r.y + r.h / 2}px`;
-    this.connectHandle.dataset.id = el.id;
-  }
-
-
-  private syncLabelPills(lines: SceneLine[]) {
-    const seen = new Set<ID>();
-    for (const l of lines) {
-      const c = lineDoc(l.el);
-      if (!c) continue;
-      const editing = this.editingLabelId === l.el.id;
-      if (!c.label && !editing) continue;
-      seen.add(l.el.id);
-      let pill = this.labelPills.get(l.el.id);
-      if (!pill) {
-        pill = document.createElement('div');
-        pill.className = 'line-label';
-        pill.dataset.ph = t('lineLabelPlaceholder');
-        const lid = l.el.id;
-        pill.dataset.id = lid;
-        pill.addEventListener('pointerdown', (e) => {
-          e.stopPropagation();
-          this.editing.endEdit();
-          this.selectOnly(lid);
-        });
-        pill.addEventListener('dblclick', (e) => {
-          e.stopPropagation();
-          this.startLabelEdit(lid);
-        });
-        pill.addEventListener('keydown', (e) => {
-          e.stopPropagation();
-          if (e.key === 'Enter' || e.key === 'Escape') {
-            e.preventDefault();
-            (e.target as HTMLElement).blur();
-          }
-        });
-        pill.addEventListener('blur', () => this.commitLabelEdit(lid));
-        this.labelPills.set(l.el.id, pill);
-        this.labelHost.appendChild(pill);
-      }
-      const m = midpoint(l);
-      pill.style.left = `${m.x}px`;
-      pill.style.top = `${m.y}px`;
-      pill.classList.toggle('present-dim', !!l.dim);
-      // Lines paint under cards; a label whose midpoint is card-covered
-      // floats detached on the covering card and steals its clicks.
-      pill.classList.toggle('covered', !editing && this.coveredByCard(m.x, m.y));
-      if (editing) {
-        if (pill.contentEditable !== 'true') {
-          pill.contentEditable = 'true';
-          pill.classList.add('editing');
-          pill.focus();
-          const sel = getSelection()!;
-          sel.selectAllChildren(pill);
-          sel.collapseToEnd();
-        }
-      } else {
-        if (pill.contentEditable === 'true') {
-          pill.contentEditable = 'false';
-          pill.classList.remove('editing');
-        }
-        // dataset.shown skips the innerText layout read per pill.
-        if (pill.dataset.shown !== c.label) {
-          pill.dataset.shown = c.label;
-          pill.innerText = c.label;
-        }
-      }
-    }
-    for (const [id, pill] of this.labelPills) {
-      if (!seen.has(id)) {
-        if (this.editingLabelId === id) this.commitLabelEdit(id);
-        pill.remove();
-        this.labelPills.delete(id);
-      }
-    }
-  }
-
-
-  startLabelEdit(id: ID) {
-    if (this.lockedView()) return;
-    const el = this.doc.elements[id];
-    if (el?.type !== 'line') return;
-    this.editing.endEdit();
-    this.selectOnly(id);
-    this.editingLabelId = id;
-    this.requestRender();
-  }
-
-
-  private commitLabelEdit(id: ID) {
-    const pill = this.labelPills.get(id);
-    const el = this.doc.elements[id];
-    this.editingLabelId = null;
-    if (!pill || !el || this.lockedView()) return;
-    const c = lineDoc(el);
-    const text = pill.innerText.replace(/\n/g, ' ').trim();
-    if (c && c.label !== text) {
-      this.store.dispatch({ type: 'element.patch', id, patch: { content: { line: { ...c, label: text } } } });
-    }
-    this.requestRender();
-  }
-
+  // --- line endpoint gestures ---
 
   startEndpointGesture(id: ID, which: 'from' | 'to', e: PointerEvent) {
     if (this.lockedView()) return;
@@ -1323,6 +1075,9 @@ export class App {
     const next = additive ? new Set(this.sel) : new Set<ID>();
     for (const e of hits) next.add(e.id);
     this.sel = next;
+    // setMarquee only repaints the canvas now; selection still wants
+    // the full pass for card classes and the rail.
+    this.requestRender();
   }
 
   beginEdit(id: ID, pos?: { x: number; y: number }, field?: string) {
@@ -1873,6 +1628,7 @@ export class App {
     const aspect = w / h;
     const patch: ElementPatch = { x, y, w };
     if (Math.abs(aspect - c.aspect) > 0.001) {
+      const { loadBitmap, cropImage, canvasBlob } = await import('./canvas/imgops');
       const bmp = await loadBitmap(c.blobRef);
       if (!bmp) {
         toast(t('imageMissing'));
@@ -1973,6 +1729,9 @@ export class App {
       lang: this.prefs.lang ?? 'en',
       currency: this.prefs.currency ?? 'USD',
     });
+    // Theme/scale change every card's colours and counter-scale, none
+    // of which shows up as an element patch.
+    this.refreshCards = true;
     this.renderer.invalidate();
     this.requestRender();
   }

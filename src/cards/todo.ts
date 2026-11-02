@@ -18,6 +18,8 @@ interface Row {
   reacts: HTMLElement;
   reactBtn: HTMLButtonElement;
   due: HTMLButtonElement;
+  // Last text written to `text`; reading innerText would force layout.
+  shown: string;
 }
 
 export class TodoCard implements CardView {
@@ -285,7 +287,7 @@ export class TodoCard implements CardView {
     due.className = 'todo-due';
     due.dataset.noclick = '1';
     row.append(check, text, you, reacts, reactBtn, due);
-    return { row, check, text, you, reacts, reactBtn, due };
+    return { row, check, text, you, reacts, reactBtn, due, shown: '' };
   }
 
   update(el: Element) {
@@ -330,8 +332,9 @@ export class TodoCard implements CardView {
       r.you.hidden = item.assignee !== 'self';
       if (this.editing && r.text.contentEditable !== 'true') r.text.contentEditable = 'true';
       if (!this.editing && r.text.contentEditable === 'true') r.text.contentEditable = 'false';
-      if (document.activeElement !== r.text && r.text.innerText !== item.text) {
+      if (document.activeElement !== r.text && r.shown !== item.text) {
         r.text.innerText = item.text;
+        r.shown = item.text;
       }
       const reacts = item.reactions ?? [];
       const rkey = reacts.join(',');

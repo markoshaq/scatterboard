@@ -450,7 +450,13 @@ export class Panels {
       }
       sig = `t:${n}:${m}`;
     } else {
-      sig = `b:${this.a.store.rev}:${[...this.collapsedBoards].join(',')}:${this.collapsedBoards.size}`;
+      // Data sig, not rev: card drags bump the rev every frame while
+      // the board list only changes with board meta or card counts.
+      const boards = Object.values(this.a.doc.boards)
+        .map((b) => `${b.id}:${b.title}:${b.icon ?? ''}:${b.parentId ?? ''}:${b.createdAt}`)
+        .join('|');
+      const counts = [...this.a.layer.canvasCounts()].map(([k, v]) => `${k}=${v}`).join(',');
+      sig = `b:${boards}|${counts}|${[...this.collapsedBoards].join(',')}`;
     }
     if (sig === this.lastPanelSig) return;
     this.lastPanelSig = sig;

@@ -46,8 +46,10 @@ reactions, comments, unsorted, and trash.
   (Canvas2D: grid, lines, marquee, selection outlines, guides), `input`
   (pointer gestures), `lines` (resolve/hit/midpoint), `snap`, `hit`.
 - `src/cards/`: `layer.ts` (view registry, `rectOf`/`heightOf`,
-  viewport culling), `factory.ts` (type -> CardView), one file per card
-  type. `CardView`/`CardEvents` interfaces live in `note.ts`.
+  viewport culling), `factory.ts` (type -> CardView), `measure.ts`
+  (pre-mount height estimates per type, co-located with the card DOM
+  they approximate), `boardindex.ts` (rev-keyed member/count index),
+  one file per card type. `CardView`/`CardEvents` interfaces live in `note.ts`.
   `beginEdit(pos?, field?)` takes a field name ('title'/'caption'/'url')
   on multi-field cards; `onEditField` requests a session. `link.ts`
   covers both 'link' and 'embed' (audio/map/video) elements.
@@ -143,7 +145,9 @@ reactions, comments, unsorted, and trash.
   `panels.ts` (side panels: unsorted/trash/search/boards, board ops,
   icons, templates, route filters), `gestures.ts` (drag/drop, trash +
   column drop hints, resize, pan, overlap push), `export.ts` (PNG/PDF/
-  linear/zip/JSON export + import). Delegates reach App internals via
+  linear/zip/JSON export + import), `overlays.ts` (label pills, chips,
+  pins, annotation seating, connect handle, coveredByCard). Delegates
+  reach App internals via
   an `App` back-reference; App keeps public shims for outside callers.
 - `src/state/seed.ts`: first-run welcome board + test-harness seed
   (was main.ts).
@@ -188,6 +192,23 @@ reactions, comments, unsorted, and trash.
   intentionally inert. Cmd+Opt+V (paste styles) does not fire it.
 - Debounced autosave via `App.scheduleSave`; hash routing `#/b/<id>`.
 - No right-click menus anywhere; the rail is the only menu surface.
+- Perf invariants, guarded by test/perf.test.ts:
+  - `CardView.update()` is O(card), never O(doc): member lists and
+    board counts come from `CardCtx.members`/`cardCount` (BoardIndex),
+    not `doc.elements` scans.
+  - No layout reads inside `update()`/`sync()`: no `innerText`,
+    `offset*` or `getBoundingClientRect`; cache displayed values like
+    `dataset.shown`/`Row.shown` and write them from input handlers.
+    Table grips rebuild only on a geometry signature.
+  - Overlays cull like cards: pins, annotation svgs and label pills
+    skip offscreen items against `vp.viewRect`; `coveredByCard` runs
+    only for in-view candidates. Stroke bboxes are memoized via
+    `strokesBBoxCached` (strokes swap identity on patch).
+  - `App.render()` may run per frame and per keystroke: the layer's
+    `sync(dirty)` updates only elements touched since the last pass
+    (`App.dirtyEls` from store.onChange; `refreshCards` for non-element
+    inputs like theme/board meta). Canvas-only changes (marquee) go
+    through `renderScene()` and skip the DOM pass entirely.
 - Table cells: `TableCell {text, html?, type?, alignH?, alignV?,
   color?}`; display formatting applies to text (number/currency/
   percent/datetime), checkbox cells bind a 0/1 text value. Cell rail
@@ -202,7 +223,9 @@ reactions, comments, unsorted, and trash.
   comparable visual-board tools; never copy a third party's assets or
   text.
 - Compact idiomatic TS; no comments unless the code is non-obvious.
-- Budget: under 150KB JS gzip (currently ~113KB).
+- Budget: under 150KB JS gzip per chunk (currently ~90KB initial;
+  largest ~85KB). `npm run sizecheck` gates it after `vite build`;
+  editors, export writers, seed and non-en locales are lazy chunks.
 - Dark mode: CSS vars on `body` flipped by `body.dark`; canvas colors
   from `theme.ts canvasColors()`; user card colours darken via
   `cardBg()` color-mix. UI scale is `--ui` on body; chrome font sizes

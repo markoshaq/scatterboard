@@ -7,7 +7,7 @@ import { TableCard } from '../cards/table';
 import type { ToolId } from '../ui/rail';
 import { unionRect } from '../canvas/hit';
 import { t } from '../strings';
-import { imgModeParam, type ImgMode } from '../editor/imgeditor';
+import { imgModeParam, type ImgMode } from '../editor/imgmode';
 import { downloadTextFile, strokesToSvgFile } from '../draw/strokes';
 import { LABEL_COLORS, openColorPopup, openLabelsPopup, openLinkInfoPopup, openCellAlignPopup, openMenuPopup, openReactionsPopup, openTextStylePopup, type MenuItem } from '../ui/toolpopups';
 import { applyBlockStyle, applyHighlight, applyTextColor, blockStyleAt, execMark, toggleCenter, toggleInlineCode, toggleList } from '../ui/richtext';
@@ -152,7 +152,7 @@ export class RailTools {
         this.cycleMarker(sel[0]!, id === 'line-start' ? 'from' : 'to');
         break;
       case 'line-label':
-        this.a.startLabelEdit(sel[0]!.id);
+        this.a.overlays.startLabelEdit(sel[0]!.id);
         break;
       case 'line-dashed':
         this.toggleDashed(sel[0]!);

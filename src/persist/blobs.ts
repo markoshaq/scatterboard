@@ -51,6 +51,10 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
 
 const urls = new Map<ID, string>();
 const inflight = new Map<ID, Promise<string | null>>();
+// Object URLs pin whole blobs in memory: cap the cache and evict
+// least-recently-used. An evicted URL stays valid for already-loaded
+// images; a later ask just re-reads IndexedDB.
+const URL_CAP = 64;
 
 export async function putBlob(id: ID, blob: Blob): Promise<void> {
   await run('readwrite', (s) => s.put(blob, id));
@@ -78,7 +82,11 @@ async function listBlobIds(): Promise<ID[]> {
 // Concurrent calls share one in-flight lookup so only one URL is made.
 export function blobUrl(id: ID): Promise<string | null> {
   const hit = urls.get(id);
-  if (hit) return Promise.resolve(hit);
+  if (hit) {
+    urls.delete(id);
+    urls.set(id, hit);
+    return Promise.resolve(hit);
+  }
   let p = inflight.get(id);
   if (!p) {
     p = (async () => {
@@ -86,6 +94,11 @@ export function blobUrl(id: ID): Promise<string | null> {
       if (!b) return null;
       const u = URL.createObjectURL(b);
       urls.set(id, u);
+      if (urls.size > URL_CAP) {
+        const [oldest, ou] = urls.entries().next().value!;
+        urls.delete(oldest);
+        URL.revokeObjectURL(ou);
+      }
       return u;
     })().finally(() => {
       inflight.delete(id);

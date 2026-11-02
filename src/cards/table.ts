@@ -58,6 +58,7 @@ export class TableCard implements CardView {
   private grips: HTMLElement | null = null;
   private gripDrag = false;
   private colSig = '';
+  private gripSig = '';
 
   constructor(el: Element, ctx: CardCtx) {
     this.id = el.id;
@@ -598,7 +599,7 @@ export class TableCard implements CardView {
 
   // Column edge resize + header-strip reorder grips, mounted only while
   // editing. Positions come from the first-row cell offsets.
-  private syncGrips() {
+  private syncGrips(force = false) {
     // A resize/reorder drag owns the grips: rebuilding mid-gesture would
     // remove the captured element and kill the in-flight pointer stream.
     if (this.gripDrag) return;
@@ -615,6 +616,15 @@ export class TableCard implements CardView {
       this.grips = null;
       return;
     }
+    // Grips rebind per rebuild and read cell offsets, so they only
+    // rebuild when geometry can have moved: structure, widths, card
+    // width or the zoom bucket (edge offsets counter-scale). Row moves
+    // and buildGrid call with force since they keep the same sig.
+    const el = this.ctx.doc.elements[this.id];
+    const zb = Math.round((this.ctx.zoom?.() ?? 1) * 50);
+    const sig = `${c.cells.length}|${cols}|${(c.widths ?? []).join(',')}|${el?.w ?? 0}|${zb}`;
+    if (!force && this.grips && sig === this.gripSig) return;
+    this.gripSig = sig;
     if (!this.grips) {
       this.grips = document.createElement('div');
       this.grips.className = 'tb-grips';
@@ -702,7 +712,7 @@ export class TableCard implements CardView {
         grip.classList.remove('tb-grip-drag');
         this.gripDrag = false;
         if (ev.type === 'pointerup' && moved && Math.abs(ev.clientY - e.clientY) > 4) this.moveRow(ri, dst);
-        this.syncGrips();
+        this.syncGrips(true);
       };
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);
@@ -746,7 +756,7 @@ export class TableCard implements CardView {
         window.removeEventListener('pointerup', up);
         window.removeEventListener('pointercancel', up);
         this.gripDrag = false;
-        this.syncGrips();
+        this.syncGrips(true);
       };
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);
@@ -783,7 +793,7 @@ export class TableCard implements CardView {
         grip.classList.remove('tb-grip-drag');
         this.gripDrag = false;
         if (ev.type === 'pointerup' && moved && Math.abs(ev.clientX - e.clientX) > 4) this.moveColumn(ci, dst);
-        this.syncGrips();
+        this.syncGrips(true);
       };
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);

@@ -528,3 +528,81 @@ export async function seedMedia(doc: Doc) {
   const file = createFile(doc, test.id, 2160, 160, fileRef, 'notes.txt', txt.size, 'text/plain');
   doc.elements[file.id] = file;
 }
+
+// Dev-only profiling board (?seed=N): reproduces the perf-harness mix
+// (bulk notes, columns, lines, pinned comments, tables, todos, ink,
+// board cards) so render-layer timings are comparable across runs.
+export function seedPerfDoc(notes = 1600): Doc {
+  const doc = emptyDoc();
+  const home = createBoard({ id: 'home', title: 'Home' });
+  doc.boards[home.id] = home;
+  const perf = createBoard({ id: 'perf', title: 'Perf', parentId: 'home' });
+  doc.boards[perf.id] = perf;
+  const bid = perf.id;
+  const put = (el: Element) => {
+    doc.elements[el.id] = el;
+    return el;
+  };
+
+  const COLS = 40;
+  for (let i = 0; i < notes; i++) {
+    put(createNote(doc, bid, (i % COLS) * 260, Math.floor(i / COLS) * 160, `note ${i}`));
+  }
+
+  for (let c = 0; c < 6; c++) {
+    const col = put(createColumn(doc, bid, COLS * 260 + 60 + c * 320, 0, `col ${c}`));
+    for (let m = 0; m < 15; m++) {
+      const note = createNote(doc, bid, 0, 0, `member ${m}`);
+      note.parentId = col.id;
+      put(note);
+    }
+  }
+
+  const canvasNotes = Object.values(doc.elements).filter((e) => e.type === 'note' && e.parentId === null);
+  for (let i = 0; i < 150; i++) {
+    const a = canvasNotes[i % canvasNotes.length]!;
+    const b = canvasNotes[(i * 7 + 13) % canvasNotes.length]!;
+    put(createLine(doc, bid, { el: a.id, x: a.x, y: a.y }, { el: b.id, x: b.x, y: b.y }));
+  }
+
+  for (let i = 0; i < 60; i++) {
+    const anchor = canvasNotes[(i * 11 + 5) % canvasNotes.length]!;
+    put(createComment(doc, bid, 0, 0, anchor.id));
+  }
+
+  for (let i = 0; i < 2; i++) {
+    const tbl = put(createTable(doc, bid, COLS * 260 + 60, 500 + i * 700));
+    tbl.content = {
+      table: {
+        title: `table ${i}`,
+        caption: '',
+        cells: Array.from({ length: 12 }, (_, r) => Array.from({ length: 10 }, (_, c) => ({ text: `r${r}c${c}` }))),
+      },
+    };
+  }
+
+  for (let i = 0; i < 3; i++) {
+    const todo = put(createTodo(doc, bid, COLS * 260 + 500, 500 + i * 450));
+    if ('todo' in todo.content) {
+      todo.content.todo.items = Array.from({ length: 20 }, (_, j) => ({
+        id: uid(),
+        text: `item ${j}`,
+        done: j % 3 === 0,
+      }));
+    }
+  }
+
+  for (let i = 0; i < 10; i++) {
+    const pts: [number, number][] = [];
+    for (let j = 0; j < 500; j++) pts.push([i * 120 + j * 0.6, 1800 + Math.sin(j / 8) * 60]);
+    put(createAnnotation(doc, bid, [{ pts, color: '#323b4a', size: 3 }]));
+  }
+
+  for (let i = 0; i < 4; i++) {
+    const sub = createBoard({ title: `sub ${i}`, parentId: bid });
+    doc.boards[sub.id] = sub;
+    put(createBoardCard(doc, bid, sub.id, COLS * 260 + 60 + i * 300, 1400));
+  }
+
+  return doc;
+}

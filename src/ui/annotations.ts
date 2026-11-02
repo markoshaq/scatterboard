@@ -1,5 +1,5 @@
 import type { Element, ID, Stroke } from '../state/schema';
-import { annotationDoc, strokesBBox } from '../state/schema';
+import { annotationDoc, strokesBBoxCached } from '../state/schema';
 import { strokePathEl } from '../draw/strokes';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -51,7 +51,7 @@ export class AnnotationLayer {
       } else if (svg.parentNode !== this.node) {
         this.node.appendChild(svg);
       }
-      const box = strokesBBox(c.strokes);
+      const box = strokesBBoxCached(c.strokes);
       const w = Math.max(1, box.w);
       const h = Math.max(1, box.h);
       svg.style.left = `${el.x + box.x}px`;

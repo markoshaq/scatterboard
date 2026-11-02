@@ -498,6 +498,20 @@ export function createAnnotation(doc: Doc, boardId: ID, strokes: Stroke[]): Elem
   return el;
 }
 
+const bboxCache = new WeakMap<Stroke[], { x: number; y: number; w: number; h: number }>();
+
+// Strokes are replaced wholesale on content patches, so identity is a
+// safe memo key: layer.heightOf and the annotation overlay both hit
+// this per render pass.
+export function strokesBBoxCached(strokes: Stroke[]): { x: number; y: number; w: number; h: number } {
+  let box = bboxCache.get(strokes);
+  if (!box) {
+    box = strokesBBox(strokes);
+    bboxCache.set(strokes, box);
+  }
+  return box;
+}
+
 export function strokesBBox(strokes: Stroke[]): { x: number; y: number; w: number; h: number } {
   let x1 = Infinity,
     y1 = Infinity,

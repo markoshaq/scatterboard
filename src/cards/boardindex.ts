@@ -10,6 +10,12 @@ export class BoardIndex {
   lines: Element[] = [];
   // parentId -> member elements, z-ascending; UNSORTED holds filed items.
   byParent = new Map<ID, Element[]>();
+  // boardId -> element count across every board, built in the same
+  // single pass (boardCardCount callers used to rescan the doc each).
+  boardCounts = new Map<ID, number>();
+  // boardId -> canvas card count (parentId null, no lines or anchored
+  // comments): the boards panel's row metric.
+  canvasCounts = new Map<ID, number>();
   private lastRev = -1;
   private lastBoard: ID | null = null;
 
@@ -21,8 +27,13 @@ export class BoardIndex {
     this.els = [];
     this.lines = [];
     this.byParent.clear();
-    if (boardId === null) return true;
+    this.boardCounts.clear();
+    this.canvasCounts.clear();
     for (const el of Object.values(doc.elements)) {
+      this.boardCounts.set(el.boardId, (this.boardCounts.get(el.boardId) ?? 0) + 1);
+      if (el.parentId === null && el.type !== 'line' && el.anchorId === undefined) {
+        this.canvasCounts.set(el.boardId, (this.canvasCounts.get(el.boardId) ?? 0) + 1);
+      }
       if (el.boardId !== boardId) continue;
       if (el.parentId === null) {
         this.els.push(el);
@@ -41,5 +52,9 @@ export class BoardIndex {
 
   members(id: ID): Element[] {
     return this.byParent.get(id) ?? [];
+  }
+
+  cardCount(boardId: ID): number {
+    return this.boardCounts.get(boardId) ?? 0;
   }
 }

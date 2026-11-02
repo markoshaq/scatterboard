@@ -221,7 +221,7 @@ function onDblClick(e: MouseEvent, app: App) {
   const p = app.boardPoint(e);
   const hit = app.lineHit(p);
   if (hit?.kind === 'body' || hit?.kind === 'end') {
-    app.startLabelEdit(hit.id);
+    app.overlays.startLabelEdit(hit.id);
     return;
   }
   app.createNoteAt(p.x, p.y, { x: e.clientX, y: e.clientY });
