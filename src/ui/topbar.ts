@@ -14,6 +14,7 @@ interface TopbarEvents {
   onExport: (anchor: HTMLElement) => void;
   onSettings: (anchor: HTMLElement) => void;
   onCrumbIcon: (id: ID, anchor: HTMLElement) => void;
+  onCrumbBoards?: (id: ID, anchor: HTMLElement) => void;
   onUndo: () => void;
   onRedo: () => void;
 }
@@ -32,6 +33,9 @@ export class Topbar {
   private undoBtn: HTMLButtonElement;
   private redoBtn: HTMLButtonElement;
   private events: TopbarEvents;
+  private savedTimer: number | null = null;
+  private crumbsSig = '';
+  private lastUnsorted = -1;
 
   constructor(root: HTMLElement, events: TopbarEvents) {
     this.events = events;
@@ -40,6 +44,9 @@ export class Topbar {
     const brand = document.createElement('span');
     brand.className = 'brand';
     brand.textContent = t('appName');
+    const brandSep = document.createElement('span');
+    brandSep.className = 'crumb-sep';
+    brandSep.textContent = '/';
     this.titleEl = document.createElement('span');
     this.titleEl.className = 'crumbs';
     this.unsortedEl = document.createElement('button');
@@ -63,21 +70,21 @@ export class Topbar {
     gear.type = 'button';
     gear.className = 'view-btn gear-btn';
     gear.innerHTML = ICONS.gear;
-    gear.title = t('settingsTitle');
+    gear.title = t('settingsTitle');    gear.setAttribute('aria-label', t('settingsTitle'));
     gear.addEventListener('click', () => this.events.onSettings(gear));
-    bar.append(brand, this.titleEl, this.unsortedEl, this.chipEl, exportBtn, viewBtn, gear);
+    bar.append(brand, brandSep, this.titleEl, this.unsortedEl, exportBtn, viewBtn, gear);
 
     const zoom = document.createElement('div');
     zoom.className = 'zoombar';
     this.undoBtn = document.createElement('button');
     this.undoBtn.className = 'zb-ur';
     this.undoBtn.innerHTML = ICONS.undo;
-    this.undoBtn.title = t('drawUndo');
+    this.undoBtn.title = t('drawUndo');    this.undoBtn.setAttribute('aria-label', t('drawUndo'));
     this.undoBtn.addEventListener('click', events.onUndo);
     this.redoBtn = document.createElement('button');
     this.redoBtn.className = 'zb-ur';
     this.redoBtn.innerHTML = ICONS.redo;
-    this.redoBtn.title = t('drawRedo');
+    this.redoBtn.title = t('drawRedo');    this.redoBtn.setAttribute('aria-label', t('drawRedo'));
     this.redoBtn.addEventListener('click', events.onRedo);
     zoom.append(this.undoBtn, this.redoBtn);
     const out = document.createElement('button');
@@ -94,7 +101,7 @@ export class Topbar {
     fit.addEventListener('click', events.onFit);
     zoom.append(out, this.zoomEl, inBtn, fit);
 
-    root.append(bar, zoom);
+    root.append(bar, zoom, this.chipEl);
     this.setUndoArrows(false, false, false);
   }
 
@@ -107,6 +114,9 @@ export class Topbar {
   }
 
   setCrumbs(crumbs: Crumb[]) {
+    const sig = crumbs.map((c) => `${c.id}|${c.title}|${c.icon ?? ''}`).join(';');
+    if (sig === this.crumbsSig) return;
+    this.crumbsSig = sig;
     this.titleEl.textContent = '';
     crumbs.forEach((c, i) => {
       if (i > 0) {
@@ -122,7 +132,7 @@ export class Topbar {
         const ic = document.createElement('span');
         ic.className = 'crumb-ic';
         mountBoardIcon(ic, c.icon, c.title);
-        ic.title = t('toolIcon');
+        ic.title = t('toolIcon');        ic.setAttribute('aria-label', t('toolIcon'));
         ic.addEventListener('click', (e) => {
           e.stopPropagation();
           this.events.onCrumbIcon(c.id, ic);
@@ -131,6 +141,7 @@ export class Topbar {
       }
       const txt = document.createElement('span');
       txt.textContent = c.title;
+      if (last) txt.addEventListener('click', () => this.events.onCrumbBoards?.(c.id, el));
       el.appendChild(txt);
       if (!last) el.addEventListener('click', () => this.events.onNavigate(c.id));
       this.titleEl.appendChild(el);
@@ -138,15 +149,29 @@ export class Topbar {
   }
 
   setUnsorted(n: number) {
+    if (n === this.lastUnsorted) return;
+    this.lastUnsorted = n;
     this.unsortedEl.textContent = `${n} ${t('unsortedTitle')}`;
   }
 
+  // Save chip pops bottom-left while a save runs, flashes 'Saved' and
+  // fades back out shortly after.
   setSaveState(state: 'saving' | 'saved') {
     this.chipEl.textContent = state === 'saving' ? t('saving') : t('saved');
     this.chipEl.classList.toggle('saving', state === 'saving');
+    this.chipEl.classList.add('show');
+    if (this.savedTimer !== null) window.clearTimeout(this.savedTimer);
+    this.savedTimer = null;
+    if (state === 'saved') {
+      this.savedTimer = window.setTimeout(() => {
+        this.chipEl.classList.remove('show');
+        this.savedTimer = null;
+      }, 1600);
+    }
   }
 
   setZoom(z: number) {
-    this.zoomEl.textContent = `${Math.round(z * 100)}%`;
+    const s = `${Math.round(z * 100)}%`;
+    if (this.zoomEl.textContent !== s) this.zoomEl.textContent = s;
   }
 }

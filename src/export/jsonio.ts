@@ -1,6 +1,7 @@
 import type { Action } from '../state/actions';
 import type { Board, Comment, Doc, Element, ID, Label, LineEnd } from '../state/schema';
 import { createBoardCard, uid, UNSORTED } from '../state/schema';
+import { sanitizeHtml } from '../ui/sanitize';
 
 // Full-board JSON export/import. The format carries the board subtree
 // (board records, their elements, labels, comments) under version 1.
@@ -59,7 +60,7 @@ export function parseBoardExport(text: string): BoardExport | null {
     return null;
   }
   const d = data as Partial<BoardExport>;
-  if (!d || d.version !== 1 || typeof d.board !== 'string') return null;
+  if (d?.version !== 1 || typeof d.board !== 'string') return null;
   if (!Array.isArray(d.boards) || !Array.isArray(d.elements)) return null;
   if (!d.boards.length || d.boards.some((b) => !b || typeof b.id !== 'string')) return null;
   if (d.elements.some((e) => !e || typeof e.id !== 'string' || typeof e.type !== 'string' || !e.content)) {
@@ -102,6 +103,19 @@ export function importActions(
     const bid = bmap.get(e.boardId);
     if (!bid) continue;
     const clone = structuredClone(e);
+    // Richtext html renders via innerHTML: scrub it to the whitelist
+    // the editor can produce. An empty result is dropped so cards fall
+    // back to their plaintext field.
+    const scrub = (holder: { html?: string }) => {
+      if (holder.html === undefined) return;
+      const c = sanitizeHtml(holder.html);
+      if (c) holder.html = c;
+      else delete holder.html;
+    };
+    if ('note' in clone.content) scrub(clone.content.note);
+    if ('heading' in clone.content) scrub(clone.content.heading);
+    if ('document' in clone.content) scrub(clone.content.document);
+    if ('table' in clone.content) for (const row of clone.content.table.cells) for (const cell of row) scrub(cell);
     clone.id = emap.get(e.id)!;
     clone.boardId = bid;
     clone.z = ++doc.seq;

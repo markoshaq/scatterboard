@@ -91,7 +91,6 @@ export class SwatchCard implements CardView {
   private valueEl: HTMLElement;
   private captionEl: HTMLElement;
   private picker: HTMLInputElement | null = null;
-  private ro: ResizeObserver;
   private selected = false;
   private downSelected = false;
   private lastCaption: string | null = null;
@@ -137,10 +136,7 @@ export class SwatchCard implements CardView {
     this.captionEl.addEventListener('blur', () => {
       if (this.editing) this.ctx.events.onEditEnd(this.id);
     });
-    this.ro = new ResizeObserver(() => {
-      this.ctx.events.onMeasure(this.id, this.node.offsetHeight);
-    });
-    this.ro.observe(this.node);
+    this.ctx.events.observeNode?.(this);
     this.update(el);
   }
 
@@ -226,7 +222,7 @@ export class SwatchCard implements CardView {
   }
 
   destroy() {
-    this.ro.disconnect();
+    this.ctx.events.unobserveNode?.(this);
     this.node.remove();
   }
 }

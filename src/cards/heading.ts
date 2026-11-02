@@ -10,7 +10,6 @@ export class HeadingCard implements CardView {
   editing = false;
   private textEl: HTMLElement;
   private handle: HTMLElement;
-  private ro: ResizeObserver;
   private events: CardEvents;
   private lastText = '';
   private lastHtml: string | undefined;
@@ -49,10 +48,7 @@ export class HeadingCard implements CardView {
     this.textEl.addEventListener('blur', () => {
       if (this.editing) this.events.onEditEnd(this.id);
     });
-    this.ro = new ResizeObserver(() => {
-      this.events.onMeasure(this.id, this.node.offsetHeight);
-    });
-    this.ro.observe(this.node);
+    this.events.observeNode?.(this);
     this.update(el);
   }
 
@@ -125,7 +121,7 @@ export class HeadingCard implements CardView {
   }
 
   destroy() {
-    this.ro.disconnect();
+    this.events.unobserveNode?.(this);
     this.node.remove();
   }
 }

@@ -25,7 +25,6 @@ export class DocumentCard implements CardView {
   private prevEl: HTMLElement;
   private capEl: HTMLElement;
   private handle: HTMLElement;
-  private ro: ResizeObserver;
   private selected = false;
   private downSelected = false;
   private downAt = { x: 0, y: 0 };
@@ -100,10 +99,7 @@ export class DocumentCard implements CardView {
       });
     }
 
-    this.ro = new ResizeObserver(() => {
-      this.ctx.events.onMeasure(this.id, this.node.offsetHeight);
-    });
-    this.ro.observe(this.node);
+    this.ctx.events.observeNode?.(this);
     this.update(el);
   }
 
@@ -171,7 +167,7 @@ export class DocumentCard implements CardView {
   }
 
   destroy() {
-    this.ro.disconnect();
+    this.ctx.events.unobserveNode?.(this);
     this.node.remove();
   }
 }

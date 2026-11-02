@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "private": true,
-  "author": "Marko \u0160ekuljica",
+  "author": "Marko Šekuljica",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/markoshaq/scatterboard.git"
@@ -24,11 +24,17 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prebuild": "npm run typecheck && npm test"
+    "prebuild": "npm run typecheck && npm test",
+    "lint": "biome lint src test"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
+    "happy-dom": "^21.0.4",
     "typescript": "~5.9.3",
     "vite": "^7.1.7",
     "vitest": "^4.1.12"
+  },
+  "engines": {
+    "node": ">=20.19"
   }
 }

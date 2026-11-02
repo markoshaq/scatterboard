@@ -23,7 +23,6 @@ export class ImageCard implements CardView {
   private missing: HTMLElement;
   private capEl: HTMLElement;
   private handle: HTMLElement;
-  private ro: ResizeObserver;
   private selected = false;
   private downSelected = false;
   private downAt = { x: 0, y: 0 };
@@ -86,10 +85,7 @@ export class ImageCard implements CardView {
       if (this.editing) this.ctx.events.onEditEnd(this.id);
     });
 
-    this.ro = new ResizeObserver(() => {
-      this.ctx.events.onMeasure(this.id, this.node.offsetHeight);
-    });
-    this.ro.observe(this.node);
+    this.ctx.events.observeNode?.(this);
     this.update(el);
   }
 
@@ -171,7 +167,7 @@ export class ImageCard implements CardView {
   }
 
   destroy() {
-    this.ro.disconnect();
+    this.ctx.events.unobserveNode?.(this);
     this.node.remove();
   }
 }

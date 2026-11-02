@@ -270,8 +270,8 @@ function drawStrokes(ctx: CanvasRenderingContext2D, strokes: Stroke[], ox: numbe
     ctx.strokeStyle = s.color;
     ctx.lineWidth = s.size;
     ctx.beginPath();
-    ctx.moveTo(ox + s.pts[0]![0], oy + s.pts[0]![1]);
-    for (let i = 1; i < s.pts.length; i++) ctx.lineTo(ox + s.pts[i]![0], oy + s.pts[i]![1]);
+    ctx.moveTo(ox + s.pts[0]?.[0], oy + s.pts[0]?.[1]);
+    for (let i = 1; i < s.pts.length; i++) ctx.lineTo(ox + s.pts[i]?.[0], oy + s.pts[i]?.[1]);
     ctx.stroke();
   }
 }

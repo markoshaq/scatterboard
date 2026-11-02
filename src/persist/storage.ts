@@ -55,4 +55,8 @@ export interface DocStorage extends StorageAdapter {
   docBytes(): number;
   lastBoard(): string | null;
   setLastBoard(id: string): void;
+  // Small per-board position write so pan/zoom never triggers a full
+  // doc serialize. Rows are reapplied over doc.boards on load.
+  saveBoardPos(id: string, pos: { x: number; y: number; z: number }): Promise<void> | void;
+  clear(): Promise<void>;
 }

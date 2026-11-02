@@ -1,4 +1,4 @@
-import type { Element, ID } from '../state/schema';
+import type { Element, ID, Stroke } from '../state/schema';
 import { annotationDoc, strokesBBox } from '../state/schema';
 import { strokePathEl } from '../draw/strokes';
 
@@ -11,6 +11,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 export class AnnotationLayer {
   node: HTMLElement;
   private svgs = new Map<ID, SVGSVGElement>();
+  private sigs = new Map<ID, Stroke[]>();
   private onPick: (id: ID, e: PointerEvent) => void;
 
   constructor(onPick: (id: ID, e: PointerEvent) => void) {
@@ -60,9 +61,10 @@ export class AnnotationLayer {
       svg.setAttribute('viewBox', `${box.x} ${box.y} ${w} ${h}`);
       svg.classList.toggle('selected', selected);
       svg.classList.toggle('present-dim', !!dim);
-      const sig = `${el.modifiedAt}:${selected ? 1 : 0}`;
-      if (svg.dataset.sig !== sig) {
-        svg.dataset.sig = sig;
+      // Strokes are replaced wholesale on content patches, so identity
+      // is the rebuild sig: x/y moves no longer rebuild every path.
+      if (this.sigs.get(el.id) !== c.strokes) {
+        this.sigs.set(el.id, c.strokes);
         svg.textContent = '';
         for (const st of c.strokes) {
           const p = strokePathEl(st);
@@ -75,6 +77,7 @@ export class AnnotationLayer {
       if (!seen.has(id)) {
         svg.remove();
         this.svgs.delete(id);
+        this.sigs.delete(id);
       }
     }
   }

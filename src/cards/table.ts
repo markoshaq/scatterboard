@@ -46,7 +46,6 @@ export class TableCard implements CardView {
   private gridEl: HTMLElement;
   private capEl: HTMLElement;
   private handle: HTMLElement;
-  private ro: ResizeObserver;
   private cellEls: HTMLElement[][] = [];
   private focus: { r: number; c: number } | null = null;
   private editingCell = false;
@@ -152,10 +151,7 @@ export class TableCard implements CardView {
       });
     }
 
-    this.ro = new ResizeObserver(() => {
-      this.ctx.events.onMeasure(this.id, this.node.offsetHeight);
-    });
-    this.ro.observe(this.node);
+    this.ctx.events.observeNode?.(this);
     this.update(el);
   }
 
@@ -221,7 +217,7 @@ export class TableCard implements CardView {
   private syncFocusDom() {
     for (let r = 0; r < this.cellEls.length; r++) {
       for (let c = 0; c < this.cellEls[r]!.length; c++) {
-        const el = this.cellEls[r]![c]!;
+        const el = this.cellEls[r]![c];
         const on = !!this.focus && this.focus.r === r && this.focus.c === c;
         el.classList.toggle('focused', on);
         if (on && this.editingCell) this.makeEditable(el);
@@ -644,7 +640,7 @@ export class TableCard implements CardView {
     }
     // Row grips mirror the column grips on the left edge.
     for (let ri = 0; ri < this.cellEls.length; ri++) {
-      const cell = this.cellEls[ri]![0];
+      const cell = this.cellEls[ri]?.[0];
       if (!cell) continue;
       const grip = document.createElement('div');
       grip.className = 'tb-rgrip';
@@ -962,10 +958,17 @@ export class TableCard implements CardView {
     }
     const rich = !isFormula(cell.text) && (type === 'auto' || type === 'text') && cell.html;
     if (rich) {
-      if (el.innerHTML !== cell.html) el.innerHTML = cell.html!;
+      if (el.dataset.shown !== cell.html) {
+        el.dataset.shown = cell.html;
+        el.innerHTML = cell.html!;
+      }
     } else {
       const shown = displayOf(cell, doc.cells);
-      if (el.innerText !== shown) el.textContent = shown;
+      // dataset.shown avoids the innerText layout read per cell.
+      if (el.dataset.shown !== shown) {
+        el.dataset.shown = shown;
+        el.textContent = shown;
+      }
     }
   }
 
@@ -1030,7 +1033,7 @@ export class TableCard implements CardView {
 
   destroy() {
     this.closeFx();
-    this.ro.disconnect();
+    this.ctx.events.unobserveNode?.(this);
     this.node.remove();
   }
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction, emptyChange, type Action } from '../src/state/actions';
 import {
-  createBoard, createColumn, createComment, createLabel, createLine, createNote,
+  createBoard, createColumn, createComment, createLabel, createNote,
   emptyDoc, migrateDoc, UNSORTED, type Doc, type Element,
 } from '../src/state/schema';
 import { remapElements } from '../src/state/clone';
@@ -156,7 +156,7 @@ describe('jsonio round trip', () => {
     const d = doc();
     const sub = createBoard({ id: 'sub', title: 'Sub', parentId: 'home' });
     d.boards.sub = sub;
-    const bc = d.elements['bc1'] = { ...createNote(d, 'home', 0, 0), id: 'bc1', type: 'board', content: { boardRef: 'sub' } };
+    d.elements.bc1 = { ...createNote(d, 'home', 0, 0), id: 'bc1', type: 'board', content: { boardRef: 'sub' } };
     const n = createNote(d, 'sub', 5, 5, 'inside');
     const label = createLabel('sub', 'L1', '#00f');
     d.labels[label.id] = label;
@@ -245,7 +245,7 @@ describe('clipboard', () => {
     expect(out).toHaveLength(1);
     expect(out[0]!.x).toBe(0);
     out[0]!.x = 555;
-    expect(getClipboard()![0]!.x).toBe(0);
+    expect(getClipboard()?.[0]?.x).toBe(0);
   });
 });
 
@@ -312,18 +312,18 @@ describe('remapCells', () => {
   ];
   it('shifts refs on column insert', () => {
     const out = remapCells(cells, (r, c) => ({ r, c: c >= 1 ? c + 1 : c }));
-    expect(out[1]![2]!.text).toBe('=SUM(C1:D1)');
+    expect(out[1]?.[2]?.text).toBe('=SUM(C1:D1)');
   });
   it('shifts refs on row delete, boundary refs stay', () => {
     const out = remapCells(cells, (r, c) => ({ r: r > 0 ? r - 1 : r, c }));
-    expect(out[1]![2]!.text).toBe('=SUM(B1:C1)');
+    expect(out[1]?.[2]?.text).toBe('=SUM(B1:C1)');
     const moved = remapCells([[{ text: '=SUM(B3:C3)' }]], (r, c) => ({ r: r > 0 ? r - 1 : r, c }));
-    expect(moved[0]![0]!.text).toBe('=SUM(B2:C2)');
+    expect(moved[0]?.[0]?.text).toBe('=SUM(B2:C2)');
   });
   it('leaves quoted literals and non-formulas alone', () => {
     const src: TableCell[][] = [[{ text: '=IF(A1="B2","yes","no")' }, { text: 'plain B2' }]];
     const out = remapCells(src, (r, c) => ({ r, c: c + 1 }));
-    expect(out[0]![0]!.text).toBe('=IF(B1="B2","yes","no")');
-    expect(out[0]![1]!.text).toBe('plain B2');
+    expect(out[0]?.[0]?.text).toBe('=IF(B1="B2","yes","no")');
+    expect(out[0]?.[1]?.text).toBe('plain B2');
   });
 });

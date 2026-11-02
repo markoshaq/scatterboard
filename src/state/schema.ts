@@ -317,6 +317,8 @@ export function emptyDoc(): Doc {
 
 // Defaults for fields added after persisted version 1 was written.
 export function migrateDoc(doc: Doc): Doc {
+  doc.boards ??= {};
+  doc.elements ??= {};
   doc.comments ??= {};
   doc.labels ??= {};
   doc.trash ??= {};

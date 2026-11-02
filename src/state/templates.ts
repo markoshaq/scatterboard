@@ -123,12 +123,13 @@ export function snapshotTemplate(doc: Doc, boardId: ID, name: string): Template 
 
 // Instantiate a template into a fresh child board of hostId: new ids
 // everywhere, labels rebound to the new board, board card placed at `at`.
+// hostId null creates a root project board and skips the card.
 export function instantiateActions(
   doc: Doc,
   template: Template,
-  hostId: ID,
+  hostId: ID | null,
   at: { x: number; y: number },
-): { actions: Action[]; cardId: ID } {
+): { actions: Action[]; cardId?: ID; boardId: ID } {
   const partial: Partial<Board> = {
     title: template.board.title || template.name,
     grid: template.board.grid,
@@ -146,12 +147,16 @@ export function instantiateActions(
   const { clones } = remapElements(doc, template.elements, () => board.id, 0, 0, {
     labelId: (lid) => lmap.get(lid) ?? null,
   });
-  const card = createBoardCard(doc, hostId, board.id, Math.round(at.x), Math.round(at.y));
   const actions: Action[] = [
     { type: 'board.create', board },
     ...labels.map((label): Action => ({ type: 'label.create', label })),
     ...clones.map((el): Action => ({ type: 'element.create', el })),
-    { type: 'element.create', el: card },
   ];
-  return { actions, cardId: card.id };
+  let cardId: ID | undefined;
+  if (hostId !== null) {
+    const card = createBoardCard(doc, hostId, board.id, Math.round(at.x), Math.round(at.y));
+    cardId = card.id;
+    actions.push({ type: 'element.create', el: card });
+  }
+  return cardId === undefined ? { actions, boardId: board.id } : { actions, cardId, boardId: board.id };
 }

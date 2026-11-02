@@ -117,7 +117,7 @@ export function openSearchPanel(opts: {
   input.placeholder = t('searchPh');
   const sort = document.createElement('select');
   sort.className = 'sp-sort';
-  sort.title = t('sortLabel');
+  sort.title = t('sortLabel');  sort.setAttribute('aria-label', t('sortLabel'));
   for (const [v, label] of [
     ['relevance', t('sortRelevance')],
     ['modified', t('sortModified')],

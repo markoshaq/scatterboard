@@ -17,8 +17,8 @@ export function strokeD(s: Stroke): string {
     const [x, y] = s.pts[0]!;
     return `M ${x} ${y} L ${x + 0.01} ${y + 0.01}`;
   }
-  let d = `M ${s.pts[0]![0]} ${s.pts[0]![1]}`;
-  for (let i = 1; i < s.pts.length; i++) d += ` L ${s.pts[i]![0]} ${s.pts[i]![1]}`;
+  let d = `M ${s.pts[0]?.[0]} ${s.pts[0]?.[1]}`;
+  for (let i = 1; i < s.pts.length; i++) d += ` L ${s.pts[i]?.[0]} ${s.pts[i]?.[1]}`;
   return d;
 }
 
@@ -48,9 +48,9 @@ export function strokeOutlineD(s: Stroke): string {
     left.push([x - dy * hw, y + dx * hw]);
     right.push([x + dy * hw, y - dx * hw]);
   }
-  let d = `M ${left[0]![0]} ${left[0]![1]}`;
-  for (let i = 1; i < n; i++) d += ` L ${left[i]![0]} ${left[i]![1]}`;
-  for (let i = n - 1; i >= 0; i--) d += ` L ${right[i]![0]} ${right[i]![1]}`;
+  let d = `M ${left[0]?.[0]} ${left[0]?.[1]}`;
+  for (let i = 1; i < n; i++) d += ` L ${left[i]?.[0]} ${left[i]?.[1]}`;
+  for (let i = n - 1; i >= 0; i--) d += ` L ${right[i]?.[0]} ${right[i]?.[1]}`;
   return `${d} Z`;
 }
 
@@ -82,10 +82,10 @@ function segDist(px: number, py: number, ax: number, ay: number, bx: number, by:
 // Distance from a point to the stroke polyline; Infinity for empty strokes.
 function strokeDist(s: Stroke, x: number, y: number): number {
   if (!s.pts.length) return Infinity;
-  if (s.pts.length === 1) return Math.hypot(x - s.pts[0]![0], y - s.pts[0]![1]);
+  if (s.pts.length === 1) return Math.hypot(x - s.pts[0]?.[0], y - s.pts[0]?.[1]);
   let best = Infinity;
   for (let i = 0; i + 1 < s.pts.length; i++) {
-    best = Math.min(best, segDist(x, y, s.pts[i]![0], s.pts[i]![1], s.pts[i + 1]![0], s.pts[i + 1]![1]));
+    best = Math.min(best, segDist(x, y, s.pts[i]?.[0], s.pts[i]?.[1], s.pts[i + 1]?.[0], s.pts[i + 1]?.[1]));
   }
   return best;
 }

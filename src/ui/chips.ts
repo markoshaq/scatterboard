@@ -39,6 +39,9 @@ export class ChipsLayer {
       }
       row.style.left = `${rect.x}px`;
       row.style.top = `${rect.y + rect.h + 6}px`;
+      // Wrap at the card's own width: chips go vertical only when they
+      // would outgrow the card they belong to.
+      row.style.maxWidth = `${Math.max(rect.w, 160)}px`;
       row.classList.toggle('present-dim', !!dim);
       const key = `${labels.map((l) => l.id).join(',')}|${reactions.join(',')}`;
       if (row.dataset.key === key) continue;

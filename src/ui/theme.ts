@@ -29,30 +29,34 @@ export interface CanvasColors {
   marqS: string;
 }
 
+// Hoisted constants: callers fetch these per canvas frame, so the
+// objects must not be re-allocated per call.
+const DARK_COLORS: CanvasColors = {
+  bg: '#1d1d19',
+  grid: '#45453d',
+  ink: '#b0b0a4',
+  accent: '#6d97f5',
+  selHalo: 'rgba(109, 151, 245, 0.32)',
+  guide: '#f0506e',
+  grab: '#2a2a25',
+  marqF: 'rgba(109, 151, 245, 0.14)',
+  marqS: 'rgba(109, 151, 245, 0.6)',
+};
+
+const LIGHT_COLORS: CanvasColors = {
+  bg: '#f6f6f2',
+  grid: '#cfcfc7',
+  ink: '#5c5c52',
+  accent: '#356df3',
+  selHalo: 'rgba(53, 109, 243, 0.3)',
+  guide: '#f0506e',
+  grab: '#ffffff',
+  marqF: 'rgba(53, 109, 243, 0.08)',
+  marqS: 'rgba(53, 109, 243, 0.6)',
+};
+
 export function canvasColors(): CanvasColors {
-  return mode === 'dark'
-    ? {
-        bg: '#1d1d19',
-        grid: '#45453d',
-        ink: '#b0b0a4',
-        accent: '#6d97f5',
-        selHalo: 'rgba(109, 151, 245, 0.32)',
-        guide: '#f0506e',
-        grab: '#2a2a25',
-        marqF: 'rgba(109, 151, 245, 0.14)',
-        marqS: 'rgba(109, 151, 245, 0.6)',
-      }
-    : {
-        bg: '#f6f6f2',
-        grid: '#cfcfc7',
-        ink: '#5c5c52',
-        accent: '#356df3',
-        selHalo: 'rgba(53, 109, 243, 0.3)',
-        guide: '#f0506e',
-        grab: '#ffffff',
-        marqF: 'rgba(53, 109, 243, 0.08)',
-        marqS: 'rgba(53, 109, 243, 0.6)',
-      };
+  return mode === 'dark' ? DARK_COLORS : LIGHT_COLORS;
 }
 
 // Card colours are user-picked pastels; dark mode renders them as a dark

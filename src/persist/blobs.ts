@@ -10,6 +10,18 @@ const STORE = 'blobs';
 
 let dbp: Promise<IDBDatabase> | null = null;
 
+// Reset-everything path: close the cached handle and drop the store.
+export async function clearBlobs() {
+  if (dbp) {
+    (await dbp.catch(() => null))?.close();
+    dbp = null;
+  }
+  await new Promise<void>((res) => {
+    const req = indexedDB.deleteDatabase(DB_NAME);
+    req.onsuccess = req.onerror = req.onblocked = () => res();
+  });
+}
+
 function db(): Promise<IDBDatabase> {
   dbp ??= new Promise<IDBDatabase>((res, rej) => {
     const req = indexedDB.open(DB_NAME, 1);

@@ -15,7 +15,6 @@ export class BoardCard implements CardView {
   private tileEl: HTMLElement;
   private titleEl: HTMLElement;
   private countEl: HTMLElement;
-  private ro: ResizeObserver;
   private lastTitle: string | null = null;
   private lastIcon = '';
 
@@ -50,10 +49,7 @@ export class BoardCard implements CardView {
     this.titleEl.addEventListener('blur', () => {
       if (this.editing) this.ctx.events.onEditEnd(this.id);
     });
-    this.ro = new ResizeObserver(() => {
-      this.ctx.events.onMeasure(this.id, this.node.offsetHeight);
-    });
-    this.ro.observe(this.node);
+    this.ctx.events.observeNode?.(this);
     this.update(el);
   }
 
@@ -114,7 +110,7 @@ export class BoardCard implements CardView {
   }
 
   destroy() {
-    this.ro.disconnect();
+    this.ctx.events.unobserveNode?.(this);
     this.node.remove();
   }
 }

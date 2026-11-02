@@ -31,7 +31,7 @@ interface Scene {
   marquee: Rect | null;
   guides: Guide[];
   guideAlpha: number;
-  outlines: Rect[];
+  outlines: { rect: Rect; radius: number }[];
   lines: SceneLine[];
   draft: DraftLine | null;
 }
@@ -91,7 +91,18 @@ export class Renderer {
     ctx.clearRect(0, 0, vp.vw, vp.vh);
     if (scene.grid) this.drawGrid();
     ctx.setTransform(dpr * vp.z, 0, 0, dpr * vp.z, dpr * vp.x, dpr * vp.y);
-    for (const l of scene.lines) this.drawLine(l);
+    // Skip lines whose bounding box misses the view: hundreds of
+    // off-canvas lines should cost a compare, not a stroke.
+    const vr = vp.viewRect(0);
+    const lp = 12 + 8 / vp.z;
+    for (const l of scene.lines) {
+      const lx = Math.min(l.x1, l.x2) - lp;
+      const ly = Math.min(l.y1, l.y2) - lp;
+      const lw = Math.abs(l.x2 - l.x1) + lp * 2;
+      const lh = Math.abs(l.y2 - l.y1) + lp * 2;
+      if (lx > vr.x + vr.w || lx + lw < vr.x || ly > vr.y + vr.h || ly + lh < vr.y) continue;
+      this.drawLine(l);
+    }
 
     const chrome = this.chrome;
     chrome.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -106,7 +117,7 @@ export class Renderer {
     }
     if (scene.draft) this.drawDraft(scene.draft);
     for (const g of scene.guides) this.drawGuide(g);
-    for (const r of scene.outlines) this.drawOutline(r);
+    for (const o of scene.outlines) this.drawOutline(o.rect, o.radius);
     if (scene.marquee) this.drawMarquee(scene.marquee);
     this.ctx = ctx;
   }
@@ -119,16 +130,13 @@ export class Renderer {
     const x0 = Math.floor(-vp.x / (step * vp.z)) * step;
     const y0 = Math.floor(-vp.y / (step * vp.z)) * step;
     ctx.fillStyle = this.cc.grid;
-    ctx.beginPath();
+    // Dots are <=1.6px: a fillRect reads identical and skips ~1300 arc
+    // calls per frame.
     for (let bx = x0; bx * vp.z + vp.x < vp.vw + step; bx += step) {
       for (let by = y0; by * vp.z + vp.y < vp.vh + step; by += step) {
-        const sx = bx * vp.z + vp.x;
-        const sy = by * vp.z + vp.y;
-        ctx.moveTo(sx + r, sy);
-        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fillRect(bx * vp.z + vp.x - r, by * vp.z + vp.y - r, r * 2, r * 2);
       }
     }
-    ctx.fill();
   }
 
   private drawLine(l: SceneLine) {
@@ -222,13 +230,14 @@ export class Renderer {
     ctx.globalAlpha = 1;
   }
 
-  private drawOutline(r: Rect) {
+  private drawOutline(r: Rect, radius: number) {
     const { ctx, vp } = this;
     const pad = 3 / vp.z;
     ctx.strokeStyle = this.cc.accent;
     ctx.lineWidth = 1.5 / vp.z;
     ctx.beginPath();
-    ctx.roundRect(r.x - pad, r.y - pad, r.w + pad * 2, r.h + pad * 2, 9 / vp.z);
+    // Concentric with the card's own corner: radius + pad, in board units.
+    ctx.roundRect(r.x - pad, r.y - pad, r.w + pad * 2, r.h + pad * 2, (radius + 3) / vp.z);
     ctx.stroke();
   }
 

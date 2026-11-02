@@ -22,8 +22,46 @@ const WORKER_URL = './jswasm/sqlite3-worker1.mjs';
 const WS_KEY = 'workspace';
 const LAST_KEY = 'last-board';
 const MIGRATED = 'migrated';
+const POS_PREFIX = 'pos:';
 const LS_KEY = 'planboard:v1';
 const LS_LAST = 'planboard:last-board';
+
+// JSON stringify/parse off the main thread: the doc travels by
+// structured clone, so the slow codec work never blocks the UI.
+class JsonCodec {
+  private worker = new Worker(new URL('./json.worker.ts', import.meta.url), { type: 'module' });
+  private nextId = 1;
+  private pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>();
+
+  constructor() {
+    this.worker.onmessage = (e: MessageEvent<{ id: number; out?: unknown; error?: string }>) => {
+      const p = this.pending.get(e.data.id);
+      if (!p) return;
+      this.pending.delete(e.data.id);
+      if (e.data.error !== undefined) p.reject(new Error(e.data.error));
+      else p.resolve(e.data.out);
+    };
+    this.worker.onerror = () => {
+      for (const p of this.pending.values()) p.reject(new Error('json worker failed'));
+      this.pending.clear();
+    };
+  }
+
+  stringify(v: unknown): Promise<string> {
+    return this.call('stringify', v) as Promise<string>;
+  }
+
+  parse(s: string): Promise<unknown> {
+    return this.call('parse', s);
+  }
+
+  private call(op: string, payload: unknown): Promise<unknown> {
+    const id = this.nextId++;
+    const p = new Promise<unknown>((res, rej) => this.pending.set(id, { resolve: res, reject: rej }));
+    this.worker.postMessage({ id, op, payload });
+    return p;
+  }
+}
 
 // Minimal worker1 client: {type, messageId, args} out, {type, messageId,
 // dbId, result} or {type:'error'} back. Calls wait for the ready post.
@@ -94,6 +132,10 @@ export class SqliteAdapter implements DocStorage {
   private last: string | null = null;
   private queue: Promise<void> = Promise.resolve();
   private broken = false;
+  private codec: JsonCodec | null | undefined;
+  private pos = new Map<string, { x: number; y: number; z: number }>();
+  // Fires once when a write fails and saves degrade to localStorage.
+  onDegraded?: () => void;
 
   private constructor(private local: LocalStorageAdapter) {}
 
@@ -111,6 +153,14 @@ export class SqliteAdapter implements DocStorage {
       await db.exec(a.dbId, 'CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)');
       await a.migrate();
       a.last = (await a.get(LAST_KEY)) ?? null;
+      const posRows = await db.exec(a.dbId, 'SELECT key, value FROM kv WHERE key LIKE ?', [`${POS_PREFIX}%`]);
+      for (const r of posRows) {
+        try {
+          a.pos.set(String(r.key).slice(POS_PREFIX.length), JSON.parse(String(r.value)) as { x: number; y: number; z: number });
+        } catch {
+          // Bad row: ignored, next save rewrites it.
+        }
+      }
       return a;
     } catch {
       return null;
@@ -127,6 +177,7 @@ export class SqliteAdapter implements DocStorage {
       try {
         await this.db!.exec(this.dbId, 'INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)', [key, value]);
       } catch {
+        if (!this.broken) this.onDegraded?.();
         this.broken = true;
       }
     });
@@ -145,12 +196,30 @@ export class SqliteAdapter implements DocStorage {
     await this.put(MIGRATED, '1');
   }
 
+  private json(): JsonCodec | null {
+    if (this.codec === undefined) {
+      try {
+        this.codec = new JsonCodec();
+      } catch {
+        this.codec = null;
+      }
+    }
+    return this.codec;
+  }
+
   async load(): Promise<PersistedWorkspace | null> {
     try {
       const raw = await this.get(WS_KEY);
       if (!raw) return null;
       this.bytes = new Blob([raw]).size;
-      return JSON.parse(raw) as PersistedWorkspace;
+      const c = this.json();
+      const w = (c ? await c.parse(raw) : JSON.parse(raw)) as PersistedWorkspace;
+      // Position rows may postdate the doc serialize; the newest wins.
+      for (const [bid, p] of this.pos) {
+        const b = w.doc.boards[bid];
+        if (b) b.position = p;
+      }
+      return w;
     } catch {
       return null;
     }
@@ -161,9 +230,15 @@ export class SqliteAdapter implements DocStorage {
       await this.local.save(w);
       return;
     }
-    const json = JSON.stringify(w);
+    const c = this.json();
+    const json = c ? await c.stringify(w) : JSON.stringify(w);
     this.bytes = new Blob([json]).size;
     await this.put(WS_KEY, json);
+  }
+
+  saveBoardPos(id: string, pos: { x: number; y: number; z: number }) {
+    this.pos.set(id, pos);
+    return this.put(`${POS_PREFIX}${id}`, JSON.stringify(pos));
   }
 
   docBytes(): number {
@@ -177,5 +252,16 @@ export class SqliteAdapter implements DocStorage {
   setLastBoard(id: string) {
     this.last = id;
     void this.put(LAST_KEY, id);
+  }
+
+  async clear() {
+    try {
+      await this.db!.exec(this.dbId, 'DELETE FROM kv');
+    } catch {
+      this.broken = true;
+    }
+    this.last = null;
+    this.bytes = 0;
+    await this.local.clear();
   }
 }

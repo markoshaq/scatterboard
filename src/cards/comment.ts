@@ -9,6 +9,7 @@ import { cardBg } from '../ui/theme';
 interface ThreadEvents {
   onAdd(text: string): void;
   onEdit(itemId: string, text: string): void;
+  onDelete(itemId: string): void;
 }
 
 // Shared thread body: item rows (text + relative time + Edit) and a send box.
@@ -103,7 +104,12 @@ class CommentThread {
         sel.selectAllChildren(text);
         sel.collapseToEnd();
       });
-      meta.appendChild(edit);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'ct-edit ct-del';
+      del.textContent = t('boardDelete');
+      del.addEventListener('click', () => this.events.onDelete(item.id));
+      meta.append(edit, del);
       row.append(text, meta);
       text.addEventListener('keydown', (e) => {
         if (this.editingItem !== item.id) return;
@@ -119,7 +125,9 @@ class CommentThread {
         text.contentEditable = 'false';
         text.classList.remove('editing');
         const next = text.innerText.replace(/\n$/, '');
-        if (next !== item.text) this.events.onEdit(item.id, next);
+        // Blank comments are not allowed: an emptied edit reverts.
+        if (!next.trim()) text.textContent = item.text;
+        else if (next !== item.text) this.events.onEdit(item.id, next);
       });
       this.list.appendChild(row);
     }
@@ -132,7 +140,6 @@ export class CommentCard implements CardView {
   editing = false;
   private ctx: CardCtx;
   private thread: CommentThread;
-  private ro: ResizeObserver;
 
   constructor(el: Element, ctx: CardCtx) {
     this.id = el.id;
@@ -143,12 +150,10 @@ export class CommentCard implements CardView {
     this.thread = new CommentThread({
       onAdd: (text) => this.addItem(text),
       onEdit: (iid, text) => this.editItem(iid, text),
+      onDelete: (iid) => this.deleteItem(iid),
     });
     this.node.appendChild(this.thread.node);
-    this.ro = new ResizeObserver(() => {
-      this.ctx.events.onMeasure(this.id, this.node.offsetHeight);
-    });
-    this.ro.observe(this.node);
+    this.ctx.events.observeNode?.(this);
     this.update(el);
   }
 
@@ -172,6 +177,13 @@ export class CommentCard implements CardView {
     if (!c) return;
     const items = c.items.map((i) => (i.id === iid ? { ...i, text, editedAt: Date.now() } : i));
     this.ctx.events.onContent(this.id, { comment: { items } });
+  }
+
+  private deleteItem(iid: string) {
+    const el = this.ctx.doc.elements[this.id];
+    const c = el ? commentDoc(el) : null;
+    if (!c) return;
+    this.ctx.events.onContent(this.id, { comment: { items: c.items.filter((i) => i.id !== iid) } });
   }
 
   update(el: Element) {
@@ -205,7 +217,7 @@ export class CommentCard implements CardView {
   }
 
   destroy() {
-    this.ro.disconnect();
+    this.ctx.events.unobserveNode?.(this);
     this.node.remove();
   }
 }
@@ -223,6 +235,10 @@ export function openThreadPopup(
     },
     onEdit: (iid, text) => {
       events.onEdit(iid, text);
+      thread.update(items());
+    },
+    onDelete: (iid) => {
+      events.onDelete(iid);
       thread.update(items());
     },
   });

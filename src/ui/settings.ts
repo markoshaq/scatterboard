@@ -22,6 +22,7 @@ interface SettingsApi {
   guideAlpha(): number;
   onGuideAlpha(v: number): void;
   onTemplates(): void;
+  onReset(): void;
   // Toolbar palette editor: ordered keys with hidden flags, moves and
   // a reset back to the default order.
   railItems(): { key: string; label: string; hidden: boolean }[];
@@ -108,7 +109,7 @@ function openToolbarEditor(anchor: HTMLElement, api: SettingsApi) {
       hide.type = 'button';
       hide.className = 'tbe-mini tbe-hide';
       hide.innerHTML = ICONS.close;
-      hide.title = t('deleteLabel');
+      hide.title = t('deleteLabel');      hide.setAttribute('aria-label', t('deleteLabel'));
       hide.addEventListener('click', () => {
         api.onRailHide(it.key, !it.hidden);
         render();
@@ -144,7 +145,10 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   const group = (label: string) => node.appendChild(head(label));
 
   const radios: (HTMLButtonElement & { syncCheck?: () => void })[] = [];
-  const syncAll = () => radios.forEach((b) => b.syncCheck?.());
+  const syncAll = () =>
+    radios.forEach((b) => {
+      b.syncCheck?.();
+    });
   const radio = (label: string, checked: () => boolean, pick: () => void) => {
     const b = radioRow(label, checked, pick, syncAll);
     radios.push(b);
@@ -221,6 +225,19 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   void api.storage().then(({ doc, blobs }) => {
     meter.textContent = t('storageLine').replace('{doc}', fmtBytes(doc)).replace('{media}', fmtBytes(blobs));
   });
+
+  const resetRow = document.createElement('button');
+  resetRow.type = 'button';
+  resetRow.className = 'pop-row stp-danger';
+  const resetLab = document.createElement('span');
+  resetLab.className = 'pop-label';
+  resetLab.textContent = t('setReset');
+  resetRow.appendChild(resetLab);
+  resetRow.addEventListener('click', () => {
+    pop.close();
+    api.onReset();
+  });
+  node.appendChild(resetRow);
 
   return pop;
 }

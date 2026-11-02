@@ -15,66 +15,1028 @@ interface BoardIcon {
 const B = (id: string, svg: string, kw: string[]): BoardIcon => ({ id, svg: S(svg), kw: [id, ...kw] });
 
 const BOARD_ICONS: BoardIcon[] = [
-  B('flag', `<path d="M5 17V3.5"/><path d="M5 4c2-1.5 4-1.5 6 0s4 1.5 5 .5V11c-1 1-3 .5-5-.5s-4-1.5-6 0"/>`, ['goal', 'milestone', 'start', 'ship', 'launch', 'mark']),
-  B('target', `<circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="3.5"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/>`, ['goal', 'aim', 'focus', 'objective']),
-  B('rocket', `<path d="M10 3c3 1.5 4.5 5 4.5 8.5l-3 2h-3l-3-2C5.5 8 7 4.5 10 3z"/><circle cx="10" cy="8.5" r="1.6"/><path d="M6.5 13.5 5 17l3.5-1.5M13.5 13.5 15 17l-3.5-1.5"/>`, ['launch', 'ship', 'release', 'space', 'fast']),
-  B('bulb', `<path d="M10 3a5 5 0 0 1 2.5 9.3c-.5.4-.5 1-.5 1.7h-4c0-.7 0-1.3-.5-1.7A5 5 0 0 1 10 3z"/><path d="M8.5 16.5h3"/>`, ['idea', 'brainstorm', 'think', 'light', 'concept']),
-  B('star', `<path d="m10 3.5 2 4.3 4.7.5-3.5 3.2.9 4.6L10 13.8 5.9 16l.9-4.6-3.5-3.1 4.7-.5z"/>`, ['favorite', 'feature', 'best', 'rate']),
-  B('heart', `<path d="M10 16s-6.5-4-6.5-8.5A3.6 3.6 0 0 1 10 5a3.6 3.6 0 0 1 6.5 2.5C16.5 12 10 16 10 16z"/>`, ['love', 'health', 'fav', 'like']),
-  B('bolt', `<path d="M11 3 5 11h4l-1 6 7-9h-4z"/>`, ['fast', 'power', 'energy', 'quick', 'sprint']),
-  B('fire', `<path d="M10 3c1 2.5 4.5 4.5 4.5 8.5a4.5 4.5 0 0 1-9 0c0-2 1-3.5 2-5 .5 1 1 1.5 1.5 1.5C9 6.5 9.5 4.5 10 3z"/>`, ['hot', 'urgent', 'streak', 'burn']),
-  B('check', `<path d="m4 10.5 4 4 8-9"/>`, ['done', 'todo', 'task', 'complete', 'yes']),
-  B('list', `<path d="M7 5.5h9M7 10h9M7 14.5h9"/><circle cx="4" cy="5.5" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="14.5" r="1" fill="currentColor" stroke="none"/>`, ['todo', 'tasks', 'backlog', 'plan', 'items']),
-  B('calendar', `<rect x="3.5" y="4.5" width="13" height="12" rx="2"/><path d="M3.5 8.5h13M7 3v3M13 3v3"/>`, ['date', 'schedule', 'week', 'sprint', 'plan']),
-  B('clock', `<circle cx="10" cy="10" r="6.5"/><path d="M10 6.5V10l3 2"/>`, ['time', 'deadline', 'hours', 'schedule']),
-  B('pin', `<path d="M10 17s5-5.2 5-8.7a5 5 0 0 0-10 0C5 11.8 10 17 10 17z"/><circle cx="10" cy="8.2" r="1.8"/>`, ['place', 'map', 'location', 'mark']),
-  B('map', `<path d="m3 5.5 4.5-2 5 2 4.5-2v11l-4.5 2-5-2-4.5 2z"/><path d="M7.5 3.5v11M12.5 5.5v11"/>`, ['world', 'travel', 'level', 'area', 'route']),
-  B('compass', `<circle cx="10" cy="10" r="6.5"/><path d="m13 7-1.8 4.2L7 13l1.8-4.2z"/>`, ['explore', 'direction', 'research', 'nav']),
-  B('search', `<circle cx="9" cy="9" r="5.5"/><path d="m13.5 13.5 3.5 3.5"/>`, ['find', 'research', 'look', 'scan']),
-  B('book', `<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v13H5.5A1.5 1.5 0 0 0 4 17.5z"/><path d="M4 16V4.5M8 7h5"/>`, ['docs', 'read', 'spec', 'story', 'lore', 'notes']),
-  B('doc', `<path d="M5.5 2.5h6L15 6v11.5h-9.5z"/><path d="M11 2.5V6.5h4"/><path d="M7.5 9.5h5M7.5 12.5h5"/>`, ['document', 'write', 'spec', 'design', 'gdd']),
-  B('chat', `<path d="M4 4.5h12a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H9l-3.6 3v-3H4a1.5 1.5 0 0 1-1.5-1.5V6A1.5 1.5 0 0 1 4 4.5z"/>`, ['talk', 'feedback', 'discuss', 'review', 'comment']),
-  B('people', `<circle cx="7" cy="7" r="2.8"/><path d="M2.5 16c.6-3 2.5-4.5 4.5-4.5s3.9 1.5 4.5 4.5"/><circle cx="14" cy="8" r="2.2"/><path d="M13.5 11.7c2 .1 3.5 1.4 4 4.3"/>`, ['team', 'user', 'person', 'crew', 'playtest']),
-  B('user', `<circle cx="10" cy="6.5" r="3"/><path d="M4 16.5c.8-3.4 3.2-5 6-5s5.2 1.6 6 5"/>`, ['person', 'me', 'assignee', 'profile']),
-  B('palette', `<path d="M10 3.5a6.5 6.5 0 1 0 0 13c1 0 1.5-.5 1.5-1.3 0-1.2-1-1.4-1-2.4 0-.8.6-1.3 1.6-1.3h1.6c1.4 0 2.8-1 2.8-2.7C16.5 5.6 13.6 3.5 10 3.5z"/><circle cx="6.8" cy="8.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="10" cy="6.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="13.4" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="6.5" cy="12" r="1.1" fill="currentColor" stroke="none"/>`, ['art', 'color', 'mood', 'style', 'visual', 'moodboard']),
-  B('brush', `<path d="m13.5 3.5 3 3L9 14l-3.5.5L5 11z"/><path d="M5 14.5c-1.5.5-2 2-2 2.5 1.5.5 3.5 0 4.5-1"/>`, ['paint', 'art', 'draw', 'concept', 'sketch']),
-  B('image', `<rect x="3" y="3.5" width="14" height="13" rx="2.5"/><circle cx="7.5" cy="8" r="1.4"/><path d="M4 14.5l4-4 3 3 3-3.5 3 3.5"/>`, ['picture', 'ref', 'reference', 'screenshot', 'asset', 'moodboard']),
-  B('camera', `<rect x="3" y="6.5" width="14" height="10" rx="2"/><circle cx="10" cy="11.5" r="2.8"/><path d="M7 6.5 8 4.5h4l1 2"/>`, ['photo', 'screenshot', 'capture', 'shot']),
-  B('film', `<rect x="3" y="4" width="14" height="12" rx="2"/><path d="M7 4v12M13 4v12M3 8.5h4M3 11.5h4M13 8.5h4M13 11.5h4"/>`, ['video', 'cutscene', 'trailer', 'movie', 'anim']),
-  B('music', `<path d="M7 14.5V5.8l7-1.8v8.2"/><circle cx="5.5" cy="14.5" r="2"/><circle cx="12.5" cy="12.2" r="2"/>`, ['audio', 'sound', 'sfx', 'song', 'score']),
-  B('gamepad', `<rect x="2.5" y="6.5" width="15" height="8" rx="4"/><path d="M6.5 8.8v3.4M4.8 10.5h3.4"/><circle cx="13" cy="9.5" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="11.5" r="1" fill="currentColor" stroke="none"/>`, ['game', 'play', 'control', 'gamedev', 'dev']),
-  B('sword', `<path d="m4 16 9.5-9.5M13.5 4l2.5 2.5L9.5 13M6.5 11.5l2 2M4.5 15.5l-1 1"/>`, ['combat', 'weapon', 'fight', 'rpg', 'boss']),
-  B('shield', `<path d="M10 2.8 4 5.5v5c0 4 3 6 6 7 3-1 6-3 6-7v-5z"/>`, ['defense', 'armor', 'safe', 'protect']),
-  B('gem', `<path d="M6.5 3.5h7L17 8l-7 8.5L3 8z"/><path d="M3 8h14M7.5 8l2.5 8.5L12.5 8"/>`, ['loot', 'rare', 'reward', 'treasure', 'epic']),
-  B('coin', `<circle cx="10" cy="10" r="6.5"/><path d="M10 6v8M7.5 7.5c.6-.8 4.4-1 4.4.9 0 1.8-4.4 1.2-4.4 3.1 0 1.9 3.8 1.7 4.4.9"/>`, ['money', 'currency', 'economy', 'shop', 'gold']),
-  B('key', `<circle cx="6.5" cy="6.5" r="3"/><path d="m8.8 8.8 7.7 7.7M14 13l2-2M16.5 15.5l1.5-1.5"/>`, ['unlock', 'secret', 'access', 'door']),
-  B('puzzle', `<path d="M8 4.5c0-1.5 4-1.5 4 0V6h2.5c1.5 0 1.5 4 0 4H12v2.5c0 1.5-4 1.5-4 0V10H5.5c-1.5 0-1.5-4 0-4H8z"/>`, ['mechanic', 'system', 'fit', 'piece', 'design']),
-  B('grid', `<rect x="3.5" y="3.5" width="13" height="13" rx="2"/><path d="M8 3.5v13M12.5 3.5v13M3.5 8h13M3.5 12.5h13"/>`, ['level', 'layout', 'table', 'tiles', 'map']),
-  B('code', `<path d="M7.5 6 4.5 10l3 4M12.5 6l3 4-3 4"/>`, ['dev', 'script', 'tech', 'program', 'engine']),
-  B('bug', `<rect x="6" y="7.5" width="8" height="8" rx="3.5"/><path d="M10 7.5V5M6 10H3.5M6 13.5H3.5M14 10h2.5M14 13.5h2.5M7.5 5.5 6 4M12.5 5.5 14 4"/>`, ['fix', 'issue', 'qa', 'test', 'defect']),
-  B('wrench', `<path d="M13.5 3.5a3.8 3.8 0 0 0-5 5L3 14l3 3 5.5-5.5a3.8 3.8 0 0 0 5-5l-2.8 2.8-2.7-.3-.3-2.7z"/>`, ['tool', 'fix', 'build', 'repair', 'tune']),
-  B('box', `<path d="m10 3 6.5 3.5v7L10 17l-6.5-3.5v-7z"/><path d="m3.5 6.5 6.5 3.5 6.5-3.5M10 10v7"/>`, ['asset', 'pack', 'package', 'item', 'kit']),
-  B('folder', `<path d="M3 5.5a1.5 1.5 0 0 1 1.5-1.5h4l2 2.5h5a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14z"/>`, ['files', 'project', 'organize', 'group']),
-  B('archive', `<rect x="3" y="3.5" width="14" height="4" rx="1"/><path d="M4.5 7.5v7a1.5 1.5 0 0 0 1.5 1.5h8a1.5 1.5 0 0 0 1.5-1.5v-7"/><path d="M8.5 10.5h3"/>`, ['store', 'old', 'done', 'keep']),
-  B('link', `<path d="M8.5 11.5l3-3"/><path d="M9.7 7.3 11 6a2.5 2.5 0 0 1 3.5 3.5l-1.3 1.3"/><path d="M10.3 12.7 9 14a2.5 2.5 0 0 1-3.5-3.5l1.3-1.3"/>`, ['url', 'ref', 'web', 'source']),
-  B('globe', `<circle cx="10" cy="10" r="6.5"/><path d="M3.5 10h13M10 3.5c-4 4-4 9 0 13 4-4 4-9 0-13z"/>`, ['web', 'world', 'site', 'online', 'community']),
-  B('home', `<path d="m3.5 9.5 6.5-5.5 6.5 5.5"/><path d="M5.5 8.5V16h9V8.5"/><path d="M8.5 16v-4h3v4"/>`, ['main', 'start', 'base', 'hub']),
-  B('trophy', `<path d="M6.5 4h7v4.5a3.5 3.5 0 0 1-7 0z"/><path d="M6.5 5H4a2.5 2.5 0 0 0 2.5 3.5M13.5 5H16a2.5 2.5 0 0 1-2.5 3.5"/><path d="M10 12v2.5M7 16.5h6"/>`, ['win', 'award', 'rank', 'achievement', 'goal']),
-  B('medal', `<circle cx="10" cy="12" r="4"/><path d="m7.5 8.5-2-5h4l1.5 3 1.5-3h4l-2 5"/>`, ['award', 'badge', 'rank', 'win']),
-  B('chart', `<path d="M4 4v12h12"/><path d="M7.5 12.5v-4M11 12.5v-6.5M14.5 12.5V8"/>`, ['stats', 'data', 'metrics', 'progress', 'analytics']),
-  B('money', `<rect x="3" y="6" width="14" height="9" rx="1.5"/><circle cx="10" cy="10.5" r="2.2"/><path d="M5.5 8.5h.01M14.5 12.5h.01"/>`, ['budget', 'cost', 'finance', 'cash']),
-  B('cart', `<path d="M3.5 4h2l2 9h8l1.8-6.5H6"/><circle cx="8.5" cy="16" r="1.2"/><circle cx="14.5" cy="16" r="1.2"/>`, ['shop', 'store', 'buy', 'market']),
-  B('tag', `<path d="M3.5 3.5h5.2l7.3 7.3a1.8 1.8 0 0 1 0 2.5l-2.7 2.7a1.8 1.8 0 0 1-2.5 0L3.5 8.7z"/><circle cx="7" cy="7" r="1.3" fill="currentColor" stroke="none"/>`, ['label', 'price', 'category', 'meta']),
-  B('bookmark', `<path d="M5.5 3.5h9V17l-4.5-3L5.5 17z"/>`, ['save', 'mark', 'keep', 'fav']),
-  B('bell', `<path d="M10 3.5c-3 0-4.5 2-4.5 5v3L4 14h12l-1.5-2.5v-3c0-3-1.5-5-4.5-5z"/><path d="M8.5 16a1.6 1.6 0 0 0 3 0"/>`, ['alert', 'notify', 'remind', 'ping']),
-  B('sun', `<circle cx="10" cy="10" r="3.5"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4"/>`, ['day', 'bright', 'weather', 'light']),
-  B('moon', `<path d="M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z"/>`, ['night', 'dark', 'sleep', 'evening']),
-  B('leaf', `<path d="M15.5 4.5c-6 0-9.5 2.5-9.5 8a3.5 3.5 0 0 0 7 .5c3-1 2.5-5.5 2.5-8.5z"/><path d="M6.5 15.5c2-4 4.5-6.5 7.5-8.5"/>`, ['nature', 'plant', 'green', 'eco', 'forest']),
-  B('tree', `<path d="M10 3 5.5 9.5h2.5L5 14h10l-3-4.5h2.5z"/><path d="M10 14v3"/>`, ['nature', 'forest', 'wood', 'outdoor']),
-  B('wave', `<path d="M3 8.5c2.5-3 5-3 7 0s4.5 3 7 0"/><path d="M3 13.5c2.5-3 5-3 7 0s4.5 3 7 0"/>`, ['water', 'ocean', 'sea', 'flow']),
-  B('mountain', `<path d="m3 15.5 5-8 3 4.5 2-2.5 4 6z"/><path d="m8 7.5.9 1.6L10 8l1.1 1.1L12 7.5"/>`, ['peak', 'climb', 'goal', 'outdoor', 'terrain']),
-  B('paw', `<circle cx="6" cy="7" r="1.6"/><circle cx="10" cy="5.5" r="1.6"/><circle cx="14" cy="7" r="1.6"/><path d="M10 9.5c-2.5 0-4.5 2-4.5 4a2.3 2.3 0 0 0 4.5.8 2.3 2.3 0 0 0 4.5-.8c0-2-2-4-4.5-4z"/>`, ['pet', 'animal', 'creature', 'cat', 'dog']),
-  B('gift', `<rect x="4" y="7.5" width="12" height="9" rx="1"/><path d="M10 7.5v9M4 11h12M10 7.5C8 7.5 6 6.8 6 5.2 6 3.5 9 3.5 10 7.5c1-4 4-4 4-2.3 0 1.6-2 2.3-4 2.3z"/>`, ['reward', 'present', 'bonus', 'surprise']),
+  B('flag', `
+<svg
+  class="lucide lucide-flag"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528" />
+`, ['goal', 'milestone', 'start', 'ship', 'launch', 'mark']),
+  B('target', `
+<svg
+  class="lucide lucide-target"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <circle cx="12" cy="12" r="6" />
+  <circle cx="12" cy="12" r="2" />
+`, ['goal', 'aim', 'focus', 'objective']),
+  B('rocket', `
+<svg
+  class="lucide lucide-rocket"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
+  <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09" />
+  <path d="M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z" />
+  <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05" />
+`, ['launch', 'ship', 'release', 'space', 'fast']),
+  B('bulb', `
+<svg
+  class="lucide lucide-lightbulb"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
+  <path d="M9 18h6" />
+  <path d="M10 22h4" />
+`, ['idea', 'brainstorm', 'think', 'light', 'concept']),
+  B('star', `
+<svg
+  class="lucide lucide-star"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
+`, ['favorite', 'feature', 'best', 'rate']),
+  B('heart', `
+<svg
+  class="lucide lucide-heart"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" />
+`, ['love', 'health', 'fav', 'like']),
+  B('bolt', `
+<svg
+  class="lucide lucide-zap"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z" />
+`, ['fast', 'power', 'energy', 'quick', 'sprint']),
+  B('fire', `
+<svg
+  class="lucide lucide-flame"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4" />
+`, ['hot', 'urgent', 'streak', 'burn']),
+  B('check', `
+<svg
+  class="lucide lucide-check"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 6 9 17l-5-5" />
+`, ['done', 'todo', 'task', 'complete', 'yes']),
+  B('list', `
+<svg
+  class="lucide lucide-list"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M3 5h.01" />
+  <path d="M3 12h.01" />
+  <path d="M3 19h.01" />
+  <path d="M8 5h13" />
+  <path d="M8 12h13" />
+  <path d="M8 19h13" />
+`, ['todo', 'tasks', 'backlog', 'plan', 'items']),
+  B('calendar', `
+<svg
+  class="lucide lucide-calendar"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M8 2v3" />
+  <path d="M16 2v3" />
+  <rect x="3" y="3" width="18" height="18" rx="2" />
+  <path d="M3 9h18" />
+`, ['date', 'schedule', 'week', 'sprint', 'plan']),
+  B('clock', `
+<svg
+  class="lucide lucide-clock"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="M12 6v6l4 2" />
+`, ['time', 'deadline', 'hours', 'schedule']),
+  B('pin', `
+<svg
+  class="lucide lucide-map-pin"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" />
+  <circle cx="12" cy="10" r="3" />
+`, ['place', 'map', 'location', 'mark']),
+  B('map', `
+<svg
+  class="lucide lucide-map"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z" />
+  <path d="M15 5.764v15" />
+  <path d="M9 3.236v15" />
+`, ['world', 'travel', 'level', 'area', 'route']),
+  B('compass', `
+<svg
+  class="lucide lucide-compass"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z" />
+`, ['explore', 'direction', 'research', 'nav']),
+  B('search', `
+<svg
+  class="lucide lucide-search"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" />
+`, ['find', 'research', 'look', 'scan']),
+  B('book', `
+<svg
+  class="lucide lucide-book"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />
+`, ['docs', 'read', 'spec', 'story', 'lore', 'notes']),
+  B('doc', `
+<svg
+  class="lucide lucide-file-text"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+  <path d="M14 2v5a1 1 0 0 0 1 1h5" />
+  <path d="M10 9H8" />
+  <path d="M16 13H8" />
+  <path d="M16 17H8" />
+`, ['document', 'write', 'spec', 'design', 'gdd']),
+  B('chat', `
+<svg
+  class="lucide lucide-message-circle"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" />
+`, ['talk', 'feedback', 'discuss', 'review', 'comment']),
+  B('people', `
+<svg
+  class="lucide lucide-users"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+  <path d="M16 3.128a4 4 0 0 1 0 7.744" />
+  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+  <circle cx="9" cy="7" r="4" />
+`, ['team', 'user', 'person', 'crew', 'playtest']),
+  B('user', `
+<svg
+  class="lucide lucide-user"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+  <circle cx="12" cy="7" r="4" />
+`, ['person', 'me', 'assignee', 'profile']),
+  B('palette', `
+<svg
+  class="lucide lucide-palette"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" />
+  <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+  <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+  <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+  <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+`, ['art', 'color', 'mood', 'style', 'visual', 'moodboard']),
+  B('brush', `
+<svg
+  class="lucide lucide-brush"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m11 10 3 3" />
+  <path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z" />
+  <path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031" />
+`, ['paint', 'art', 'draw', 'concept', 'sketch']),
+  B('image', `
+<svg
+  class="lucide lucide-image"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+  <circle cx="9" cy="9" r="2" />
+  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+`, ['picture', 'ref', 'reference', 'screenshot', 'asset', 'moodboard']),
+  B('camera', `
+<svg
+  class="lucide lucide-camera"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" />
+  <circle cx="12" cy="13" r="3" />
+`, ['photo', 'screenshot', 'capture', 'shot']),
+  B('film', `
+<svg
+  class="lucide lucide-film"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="18" height="18" x="3" y="3" rx="2" />
+  <path d="M7 3v18" />
+  <path d="M3 7.5h4" />
+  <path d="M3 12h18" />
+  <path d="M3 16.5h4" />
+  <path d="M17 3v18" />
+  <path d="M17 7.5h4" />
+  <path d="M17 16.5h4" />
+`, ['video', 'cutscene', 'trailer', 'movie', 'anim']),
+  B('music', `
+<svg
+  class="lucide lucide-music"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M21 16V3a1 1 0 0 0-1.28-.96l-10 2.917a1 1 0 0 0-.72.96V19" />
+  <circle cx="18" cy="16" r="3" />
+  <circle cx="6" cy="19" r="3" />
+`, ['audio', 'sound', 'sfx', 'song', 'score']),
+  B('gamepad', `
+<svg
+  class="lucide lucide-gamepad-2"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <line x1="6" x2="10" y1="11" y2="11" />
+  <line x1="8" x2="8" y1="9" y2="13" />
+  <line x1="15" x2="15.01" y1="12" y2="12" />
+  <line x1="18" x2="18.01" y1="10" y2="10" />
+  <path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z" />
+`, ['game', 'play', 'control', 'gamedev', 'dev']),
+  B('sword', `
+<svg
+  class="lucide lucide-sword"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m11 19-6-6" />
+  <path d="m5 21-2-2" />
+  <path d="m8 16-4 4" />
+  <path d="M9.5 17.5 20.414 6.586A2 2 0 0021 5.172V3h-2.172a2 2 0 00-1.414.586L6.5 14.5" />
+`, ['combat', 'weapon', 'fight', 'rpg', 'boss']),
+  B('shield', `
+<svg
+  class="lucide lucide-shield"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+`, ['defense', 'armor', 'safe', 'protect']),
+  B('gem', `
+<svg
+  class="lucide lucide-gem"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M10.5 3 8 9l4 13 4-13-2.5-6" />
+  <path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z" />
+  <path d="M2 9h20" />
+`, ['loot', 'rare', 'reward', 'treasure', 'epic']),
+  B('coin', `
+<svg
+  class="lucide lucide-coins"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M13.744 17.736a6 6 0 1 1-7.48-7.48" />
+  <path d="M15 6h1v4" />
+  <path d="m6.134 14.768.866-.5 2 3.464" />
+  <circle cx="16" cy="8" r="6" />
+`, ['money', 'currency', 'economy', 'shop', 'gold']),
+  B('key', `
+<svg
+  class="lucide lucide-key"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m2 21 9.6-9.6" />
+  <path d="m7.5 15.5 2.3 2.3a1 1 0 0 1 0 1.4l-2.1 2.1a1 1 0 0 1-1.4 0L4 19" />
+  <circle cx="15.5" cy="7.5" r="5.5" />
+`, ['unlock', 'secret', 'access', 'door']),
+  B('puzzle', `
+<svg
+  class="lucide lucide-puzzle"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z" />
+`, ['mechanic', 'system', 'fit', 'piece', 'design']),
+  B('grid', `
+<svg
+  class="lucide lucide-layout-grid"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="7" height="7" x="3" y="3" rx="1" />
+  <rect width="7" height="7" x="14" y="3" rx="1" />
+  <rect width="7" height="7" x="14" y="14" rx="1" />
+  <rect width="7" height="7" x="3" y="14" rx="1" />
+`, ['level', 'layout', 'table', 'tiles', 'map']),
+  B('code', `
+<svg
+  class="lucide lucide-code"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m16 18 6-6-6-6" />
+  <path d="m8 6-6 6 6 6" />
+`, ['dev', 'script', 'tech', 'program', 'engine']),
+  B('bug', `
+<svg
+  class="lucide lucide-bug"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 20v-9" />
+  <path d="M14 7a4 4 0 0 1 4 4v3a6 6 0 0 1-12 0v-3a4 4 0 0 1 4-4z" />
+  <path d="M14.12 3.88 16 2" />
+  <path d="M21 21a4 4 0 0 0-3.81-4" />
+  <path d="M21 5a4 4 0 0 1-3.55 3.97" />
+  <path d="M22 13h-4" />
+  <path d="M3 21a4 4 0 0 1 3.81-4" />
+  <path d="M3 5a4 4 0 0 0 3.55 3.97" />
+  <path d="M6 13H2" />
+  <path d="m8 2 1.88 1.88" />
+  <path d="M9 7.13V6a3 3 0 1 1 6 0v1.13" />
+`, ['fix', 'issue', 'qa', 'test', 'defect']),
+  B('wrench', `
+<svg
+  class="lucide lucide-wrench"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" />
+`, ['tool', 'fix', 'build', 'repair', 'tune']),
+  B('box', `
+<svg
+  class="lucide lucide-box"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+  <path d="m3.3 7 8.7 5 8.7-5" />
+  <path d="M12 22V12" />
+`, ['asset', 'pack', 'package', 'item', 'kit']),
+  B('folder', `
+<svg
+  class="lucide lucide-folder"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+`, ['files', 'project', 'organize', 'group']),
+  B('archive', `
+<svg
+  class="lucide lucide-archive"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="20" height="5" x="2" y="3" rx="1" />
+  <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+  <path d="M10 12h4" />
+`, ['store', 'old', 'done', 'keep']),
+  B('link', `
+<svg
+  class="lucide lucide-link-2"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M9 17H7A5 5 0 0 1 7 7h2" />
+  <path d="M15 7h2a5 5 0 1 1 0 10h-2" />
+  <line x1="8" x2="16" y1="12" y2="12" />
+`, ['url', 'ref', 'web', 'source']),
+  B('globe', `
+<svg
+  class="lucide lucide-globe"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+  <path d="M2 12h20" />
+`, ['web', 'world', 'site', 'online', 'community']),
+  B('home', `
+<svg
+  class="lucide lucide-house"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+  <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+`, ['main', 'start', 'base', 'hub']),
+  B('trophy', `
+<svg
+  class="lucide lucide-trophy"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M10 14.66V17a1 1 0 0 1-1 1 2 2 0 0 0-2 2v2" />
+  <path d="M14 14.66V17a1 1 0 0 0 1 1 2 2 0 0 1 2 2v2" />
+  <path d="M17.916 10H19.5A2.5 2.5 0 0 0 22 7.5V5a1 1 0 0 0-1-1h-3" />
+  <path d="M4 22h16" />
+  <path d="M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z" />
+  <path d="M6.084 10H4.5A2.5 2.5 0 0 1 2 7.5V5a1 1 0 0 1 1-1h3" />
+`, ['win', 'award', 'rank', 'achievement', 'goal']),
+  B('medal', `
+<svg
+  class="lucide lucide-medal"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7.21 15 2.66 7.14a2 2 0 0 1 .13-2.2L4.4 2.8A2 2 0 0 1 6 2h12a2 2 0 0 1 1.6.8l1.6 2.14a2 2 0 0 1 .14 2.2L16.79 15" />
+  <path d="M11 12 5.12 2.2" />
+  <path d="m13 12 5.88-9.8" />
+  <path d="M8 7h8" />
+  <circle cx="12" cy="17" r="5" />
+  <path d="M12 18v-2h-.5" />
+`, ['award', 'badge', 'rank', 'win']),
+  B('chart', `
+<svg
+  class="lucide lucide-chart-column"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M3 3v16a2 2 0 0 0 2 2h16" />
+  <path d="M18 17V9" />
+  <path d="M13 17V5" />
+  <path d="M8 17v-3" />
+`, ['stats', 'data', 'metrics', 'progress', 'analytics']),
+  B('money', `
+<svg
+  class="lucide lucide-banknote"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="20" height="12" x="2" y="6" rx="2" />
+  <circle cx="12" cy="12" r="2" />
+  <path d="M6 12h.01M18 12h.01" />
+`, ['budget', 'cost', 'finance', 'cash']),
+  B('cart', `
+<svg
+  class="lucide lucide-shopping-cart"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m2.05 2.05 1.099-.028a1 1 0 0 1 1.008.815l2.69 14.347A1 1 0 0 0 7.83 18H18" />
+  <path d="M4.563 5h16.435a1 1 0 0 1 .981 1.204l-1.026 6.226A2 2 0 0 1 18.962 14H6.25" />
+  <circle cx="18" cy="20" r="2" />
+  <circle cx="8" cy="20" r="2" />
+`, ['shop', 'store', 'buy', 'market']),
+  B('tag', `
+<svg
+  class="lucide lucide-tag"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" />
+  <circle cx="7.5" cy="7.5" r=".5" fill="currentColor" />
+`, ['label', 'price', 'category', 'meta']),
+  B('bookmark', `
+<svg
+  class="lucide lucide-bookmark"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z" />
+`, ['save', 'mark', 'keep', 'fav']),
+  B('bell', `
+<svg
+  class="lucide lucide-bell"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M10.268 21a2 2 0 0 0 3.464 0" />
+  <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
+`, ['alert', 'notify', 'remind', 'ping']),
+  B('sun', `
+<svg
+  class="lucide lucide-sun"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="4" />
+  <path d="M12 2v2" />
+  <path d="M12 20v2" />
+  <path d="m4.93 4.93 1.41 1.41" />
+  <path d="m17.66 17.66 1.41 1.41" />
+  <path d="M2 12h2" />
+  <path d="M20 12h2" />
+  <path d="m6.34 17.66-1.41 1.41" />
+  <path d="m19.07 4.93-1.41 1.41" />
+`, ['day', 'bright', 'weather', 'light']),
+  B('moon', `
+<svg
+  class="lucide lucide-moon"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+`, ['night', 'dark', 'sleep', 'evening']),
+  B('leaf', `
+<svg
+  class="lucide lucide-leaf"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M11 20a10 10 0 0010-10 25.9 25.9 0 00-1.04-7.281 1 1 0 00-1.755-.325C15.833 5.5 13 5.5 9.8 6.1A7 7 0 0011 20" />
+  <path d="M2 21a5 5 0 012.911-4.544C7.613 15.212 8.351 15.24 11 13" />
+`, ['nature', 'plant', 'green', 'eco', 'forest']),
+  B('tree', `
+<svg
+  class="lucide lucide-tree-pine"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m17 14 3 3.3a1 1 0 0 1-.7 1.7H4.7a1 1 0 0 1-.7-1.7L7 14h-.3a1 1 0 0 1-.7-1.7L9 9h-.2A1 1 0 0 1 8 7.3L12 3l4 4.3a1 1 0 0 1-.8 1.7H15l3 3.3a1 1 0 0 1-.7 1.7H17Z" />
+  <path d="M12 22v-3" />
+`, ['nature', 'forest', 'wood', 'outdoor']),
+  B('wave', `
+<svg
+  class="lucide lucide-waves"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M2 12q2.5 2 5 0t5 0 5 0 5 0" />
+  <path d="M2 19q2.5 2 5 0t5 0 5 0 5 0" />
+  <path d="M2 5q2.5 2 5 0t5 0 5 0 5 0" />
+`, ['water', 'ocean', 'sea', 'flow']),
+  B('mountain', `
+<svg
+  class="lucide lucide-mountain"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m8 3 4 8 5-5 5 15H2L8 3z" />
+`, ['peak', 'climb', 'goal', 'outdoor', 'terrain']),
+  B('paw', `
+<svg
+  class="lucide lucide-paw-print"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="11" cy="4" r="2" />
+  <circle cx="18" cy="8" r="2" />
+  <circle cx="20" cy="16" r="2" />
+  <path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.045Q6.52 17.48 4.46 16.84A3.5 3.5 0 0 1 5.5 10Z" />
+`, ['pet', 'animal', 'creature', 'cat', 'dog']),
+  B('gift', `
+<svg
+  class="lucide lucide-gift"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 7v14" />
+  <path d="M20 11v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8" />
+  <path d="M7.5 7a1 1 0 0 1 0-5A4.8 8 0 0 1 12 7a4.8 8 0 0 1 4.5-5 1 1 0 0 1 0 5" />
+  <rect x="3" y="7" width="18" height="4" rx="1" />
+`, ['reward', 'present', 'bonus', 'surprise']),
 ];
 
 const BY_ID = new Map(BOARD_ICONS.map((i) => [i.id, i]));

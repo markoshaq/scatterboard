@@ -16,7 +16,6 @@ export class FileCard implements CardView {
   private ctx: CardCtx;
   private nameEl: HTMLElement;
   private sizeEl: HTMLElement;
-  private ro: ResizeObserver;
   private selected = false;
   private downSelected = false;
   private downAt = { x: 0, y: 0 };
@@ -56,10 +55,7 @@ export class FileCard implements CardView {
       if (c) void downloadBlobRef(c.blobRef, c.name);
     });
 
-    this.ro = new ResizeObserver(() => {
-      this.ctx.events.onMeasure(this.id, this.node.offsetHeight);
-    });
-    this.ro.observe(this.node);
+    this.ctx.events.observeNode?.(this);
     this.update(el);
   }
 
@@ -73,7 +69,7 @@ export class FileCard implements CardView {
     if (!c) return;
     if (c.name !== this.lastName) {
       this.nameEl.textContent = c.name;
-      this.nameEl.title = c.name;
+      this.nameEl.title = c.name;      this.nameEl.setAttribute('aria-label', c.name);
       this.lastName = c.name;
     }
     if (c.size !== this.lastSize) {
@@ -103,7 +99,7 @@ export class FileCard implements CardView {
   }
 
   destroy() {
-    this.ro.disconnect();
+    this.ctx.events.unobserveNode?.(this);
     this.node.remove();
   }
 }

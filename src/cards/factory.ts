@@ -16,6 +16,10 @@ import { TableCard } from './table';
 export interface CardCtx {
   doc: Doc;
   events: CardEvents;
+  // Layer hooks so nested views (column members) join the layer's flat
+  // view map; absent in standalone contexts.
+  registerView?: (v: CardView) => void;
+  unregisterView?: (v: CardView) => void;
 }
 
 export function createCard(el: Element, ctx: CardCtx): CardView {

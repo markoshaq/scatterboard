@@ -1,4 +1,4 @@
-import type { Element } from '../state/schema';
+import type { Element, Stroke } from '../state/schema';
 import { sketchDoc, SKETCH_PAD_H, SKETCH_PAD_W } from '../state/schema';
 import { t } from '../strings';
 import { ICONS } from '../ui/icons';
@@ -20,8 +20,7 @@ export class SketchCard implements CardView {
   private svg: SVGSVGElement;
   private emptyEl: HTMLElement;
   private handle: HTMLElement;
-  private ro: ResizeObserver;
-  private lastSig = -1;
+  private lastStrokes: Stroke[] | null = null;
 
   constructor(el: Element, ctx: CardCtx) {
     this.id = el.id;
@@ -48,10 +47,7 @@ export class SketchCard implements CardView {
     });
     this.node.append(stage, this.handle);
 
-    this.ro = new ResizeObserver(() => {
-      this.ctx.events.onMeasure(this.id, this.node.offsetHeight);
-    });
-    this.ro.observe(this.node);
+    this.ctx.events.observeNode?.(this);
     this.update(el);
   }
 
@@ -64,8 +60,10 @@ export class SketchCard implements CardView {
     const c = sketchDoc(el);
     if (!c) return;
     this.node.classList.toggle('empty', !c.strokes.length);
-    if (el.modifiedAt === this.lastSig) return;
-    this.lastSig = el.modifiedAt;
+    // Content patches replace the strokes array wholesale, so identity
+    // compare is enough: x/y drags no longer re-serialize every path.
+    if (c.strokes === this.lastStrokes) return;
+    this.lastStrokes = c.strokes;
     this.svg.textContent = '';
     for (const st of c.strokes) this.svg.appendChild(strokePathEl(st));
   }
@@ -90,7 +88,7 @@ export class SketchCard implements CardView {
   }
 
   destroy() {
-    this.ro.disconnect();
+    this.ctx.events.unobserveNode?.(this);
     this.node.remove();
   }
 }

@@ -28,7 +28,6 @@ export class TodoCard implements CardView {
   private titleEl: HTMLElement;
   private itemsEl: HTMLElement;
   private rows = new Map<string, Row>();
-  private ro: ResizeObserver;
   private popup: DuePopupHandle | null = null;
   private pendingFocus: string | null = null;
   private downAt = { x: 0, y: 0 };
@@ -87,10 +86,7 @@ export class TodoCard implements CardView {
       }
     });
 
-    this.ro = new ResizeObserver(() => {
-      this.ctx.events.onMeasure(this.id, this.node.offsetHeight);
-    });
-    this.ro.observe(this.node);
+    this.ctx.events.observeNode?.(this);
     this.update(el);
   }
 
@@ -429,7 +425,7 @@ export class TodoCard implements CardView {
 
   destroy() {
     this.popup?.close();
-    this.ro.disconnect();
+    this.ctx.events.unobserveNode?.(this);
     this.node.remove();
   }
 }

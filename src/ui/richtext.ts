@@ -75,7 +75,7 @@ export function selectionInRoot(root: HTMLElement): boolean {
 
 export function selectionRange(root: HTMLElement): Range | null {
   const s = getSelection();
-  if (!s || !s.rangeCount || s.isCollapsed) return null;
+  if (!s?.rangeCount || s.isCollapsed) return null;
   const r = s.getRangeAt(0);
   return inRoot(root, r.commonAncestorContainer) ? r.cloneRange() : null;
 }
@@ -96,7 +96,7 @@ function blockOf(root: HTMLElement, node: Node | null, offset?: number): HTMLEle
 
 function selectedBlocks(root: HTMLElement): HTMLElement[] {
   const s = getSelection();
-  if (!s || !s.rangeCount) return [];
+  if (!s?.rangeCount) return [];
   const range = s.getRangeAt(0);
   const out = new Set<HTMLElement>();
   const add = (n: Node | null, offset?: number) => {
@@ -152,7 +152,7 @@ export function applyBlockStyle(root: HTMLElement, style: BlockStyle) {
 
 export function blockStyleAt(root: HTMLElement): BlockStyle | null {
   const s = getSelection();
-  if (!s || !s.rangeCount) return null;
+  if (!s?.rangeCount) return null;
   const b = blockOf(root, s.anchorNode, s.anchorOffset);
   if (!b) return null;
   if (b.classList.contains('tx-co')) return 'callout';
@@ -210,7 +210,7 @@ function closestWithin(root: HTMLElement, node: Node | null, tag: string): HTMLE
 
 export function toggleInlineCode(root: HTMLElement) {
   const s = getSelection();
-  if (!s || !s.rangeCount) return;
+  if (!s?.rangeCount) return;
   const range = s.getRangeAt(0);
   const code =
     closestWithin(root, range.startContainer, 'CODE') ?? closestWithin(root, range.endContainer, 'CODE');
@@ -236,7 +236,7 @@ export function toggleInlineCode(root: HTMLElement) {
 // touches; unwrap emptied span/font wrappers.
 function clearInlineProp(root: HTMLElement, prop: 'color' | 'backgroundColor') {
   const s = getSelection();
-  if (!s || !s.rangeCount) return;
+  if (!s?.rangeCount) return;
   const range = s.getRangeAt(0);
   for (const el of [...root.querySelectorAll<HTMLElement>('[style]')]) {
     if (!range.intersectsNode(el)) continue;
@@ -274,7 +274,7 @@ export function applyLink(root: HTMLElement, url: string, range: Range) {
 
 export function inListContext(): boolean {
   const s = getSelection();
-  if (!s || !s.rangeCount) return false;
+  if (!s?.rangeCount) return false;
   const el =
     s.anchorNode instanceof HTMLElement ? s.anchorNode : s.anchorNode?.parentElement ?? null;
   return !!el?.closest('ul, ol');
@@ -301,7 +301,7 @@ const MD_TRIGGERS: Record<string, BlockStyle | 'ul' | 'ol' | 'check' | 'hr'> = {
 // Line-start markdown triggers, run on Space before the char lands.
 function mdAutoformat(root: HTMLElement): boolean {
   const s = getSelection();
-  if (!s || !s.isCollapsed || !s.rangeCount) return false;
+  if (!s?.isCollapsed || !s.rangeCount) return false;
   ensureBlockChildren(root);
   const block = blockOf(root, s.anchorNode, s.anchorOffset);
   if (!block || block.tagName === 'PRE' || block.closest('ul, ol')) return false;

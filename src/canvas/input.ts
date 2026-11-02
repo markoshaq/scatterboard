@@ -1,5 +1,6 @@
 import type { App } from '../app';
 import { boardRefOf, type ID } from '../state/schema';
+import type { LineHit } from './lines';
 
 const DRAG_SLOP = 3;
 
@@ -22,7 +23,10 @@ export function attachPointer(root: HTMLElement, app: App) {
   root.addEventListener('wheel', (e) => onWheel(e, app), { passive: false });
   root.addEventListener('contextmenu', (e) => onContextMenu(e));
   root.addEventListener('pointermove', (e) => {
-    app.pointer = app.boardPoint(e);
+    // Reused point object: no allocation per move.
+    app.pointer ??= { x: 0, y: 0 };
+    app.pointer.x = (e.clientX - app.vp.x) / app.vp.z;
+    app.pointer.y = (e.clientY - app.vp.y) / app.vp.z;
   });
   // OS file drops: images become image cards, everything else file cards.
   root.addEventListener('dragover', (e) => {
@@ -77,7 +81,7 @@ function onDown(e: PointerEvent, app: App) {
     return;
   }
 
-  onBackgroundDown(e, app);
+  onBackgroundDown(e, app, hit);
 }
 
 function onCardDown(e: PointerEvent, app: App, cardId: ID) {
@@ -158,9 +162,10 @@ function onCardDown(e: PointerEvent, app: App, cardId: ID) {
   window.addEventListener('pointercancel', cancel);
 }
 
-function onBackgroundDown(e: PointerEvent, app: App) {
+// `hit` was already resolved in onDown: reusing it avoids a second
+// full line-resolution pass per background click.
+function onBackgroundDown(e: PointerEvent, app: App, hit: LineHit | null) {
   const pt = app.boardPoint(e);
-  const hit = app.lineHit(pt);
   if (hit?.kind === 'end' && hit.which) {
     app.startEndpointGesture(hit.id, hit.which, e);
     return;

@@ -2,7 +2,6 @@ import type { Element, ElementType, EmbedKind } from '../state/schema';
 import { documentDoc } from '../state/schema';
 import { t } from '../strings';
 import { ICONS } from './icons';
-import { openToolPopup } from './popup';
 import { dragGhost } from './util';
 
 export type ToolId =
@@ -72,9 +71,9 @@ interface CreateItem extends RailItem {
   key: string;
 }
 
-// Every create type in default palette order. The rail shows what
-// fits, the rest live under the '...' overflow; prefs reorder and
-// hide entries from this list.
+// Every create type in default palette order. All of them render and
+// the rail scrolls when they overflow; prefs reorder and hide entries
+// from this list.
 export const CREATE_ITEMS: CreateItem[] = [
   { key: 'note', type: 'note', label: t('railNote'), icon: ICONS.note },
   { key: 'todo', type: 'todo', label: t('railTodo'), icon: ICONS.todo },
@@ -92,18 +91,6 @@ export const CREATE_ITEMS: CreateItem[] = [
   { key: 'embed:map', type: 'embed', kind: 'map', label: t('railMap'), icon: ICONS.map },
   { key: 'embed:video', type: 'embed', kind: 'video', label: t('railVideo'), icon: ICONS.video },
 ];
-
-// Overflow popup sections, in display order: primary creates stay
-// ungrouped, the rest cluster under a Media or Advanced head.
-const MEDIA_KEYS = new Set(['link', 'embed:audio', 'embed:map', 'embed:video']);
-const ADVANCED_KEYS = new Set(['board', 'comment', 'swatch']);
-
-function head(label: string): HTMLElement {
-  const h = document.createElement('div');
-  h.className = 'ts-head';
-  h.textContent = label;
-  return h;
-}
 
 // Ordered, visible palette items: prefs order wins, unknown keys drop,
 // missing keys append, hidden keys leave the palette entirely.
@@ -265,14 +252,11 @@ const DEFAULT_WELL = '#ebedee';
 export class Rail {
   private itemsEl: HTMLElement;
   private well: HTMLInputElement;
-  private trash: HTMLButtonElement;
   private events: RailEvents;
   private signature = '';
   private toolBtns = new Map<ToolId, HTMLButtonElement>();
   private disabled = new Set<ToolId>();
   private palette: { order?: string[] | undefined; hidden?: string[] | undefined; sig: string } = { sig: '' };
-  private lastSel: Element[] = [];
-  private lastEdit: Element | null = null;
 
   constructor(root: HTMLElement, events: RailEvents) {
     this.events = events;
@@ -292,16 +276,16 @@ export class Rail {
     this.well.name = 'board-color';
     this.well.type = 'color';
     this.well.className = 'rail-well';
-    this.well.title = t('boardColor');
+    this.well.title = t('boardColor');    this.well.setAttribute('aria-label', t('boardColor'));
     this.well.value = DEFAULT_WELL;
     this.well.addEventListener('input', () => this.events.onBoardColor(this.well.value));
     rail.append(this.itemsEl, this.well);
-    this.trash = trash;
     // The can sits outside .rail: during a card-over-trash drag it drops
     // under the lifted viewport while the rest of the rail stays on top.
     root.append(rail, trash);
-    // Rail height changes the create-item fit, so resync on resize.
-    new ResizeObserver(() => this.sync(this.lastSel, this.lastEdit)).observe(this.itemsEl);
+    // Overflow padding clears the pinned trash, so re-check on resize.
+    new ResizeObserver(() => this.syncScrolls()).observe(this.itemsEl);
+    this.itemsEl.addEventListener('scroll', () => this.syncScrolls());
     this.sync([], null);
   }
 
@@ -318,67 +302,45 @@ export class Rail {
   // Re-renders only when the rail signature changes. editing is the element
   // whose edit session is open, or null.
   sync(sel: Element[], editing: Element | null) {
-    this.lastSel = sel;
-    this.lastEdit = editing;
     const edit = editing && EDIT_TOOLS[editing.type] ? editing : null;
     const items = edit || sel.length ? null : paletteItems(this.palette.order, this.palette.hidden);
-    const fit = items ? this.fitEstimate(items.length) : 0;
     const sig = edit
       ? `e:${edit.type}`
       : items
-        ? `c${this.palette.sig}:${fit}`
+        ? `c${this.palette.sig}`
         : sel.length === 1
           ? `t:${sel[0]!.type}${sigFor(sel)}`
           : `m:${toolsFor(sel).join('.')}`;
-    if (sig === this.signature) return;
+    if (sig === this.signature) {
+      this.syncScrolls();
+      return;
+    }
     this.signature = sig;
     this.itemsEl.textContent = '';
     this.toolBtns.clear();
     if (edit) {
       for (const id of EDIT_TOOLS[edit.type]!) this.itemsEl.appendChild(this.toolButton(id));
     } else if (items) {
-      let n = fit;
-      while (this.buildCreates(items, n) && n > 0) n -= 1;
+      for (const item of items) this.itemsEl.appendChild(this.paletteButton(item));
+      const div = document.createElement('div');
+      div.className = 'rail-div';
+      this.itemsEl.appendChild(div);
+      this.itemsEl.appendChild(this.actionButton(ICONS.image, t('addImage'), () => this.events.onAddImage()));
+      this.itemsEl.appendChild(this.actionButton(ICONS.upload, t('uploadFile'), () => this.events.onUpload()));
+      this.itemsEl.appendChild(this.actionButton(ICONS.draw, t('railDraw'), () => this.events.onDraw()));
+      this.itemsEl.appendChild(
+        this.actionButton(ICONS.inbox, t('railCapture'), () => this.events.onCapture(this.itemsEl)),
+      );
     } else {
       for (const id of toolsFor(sel)) this.itemsEl.appendChild(this.toolButton(id));
     }
     this.applyDisabled();
+    this.syncScrolls();
   }
 
-  // Create rows that fit the items box: measured item height + gap,
-  // minus the pinned bottom zone (trash overlap) and the 4 action
-  // buttons. Returns count when nothing is measurable yet.
-  private fitEstimate(count: number): number {
-    const item = this.itemsEl.querySelector<HTMLElement>('.rail-item');
-    const box = this.itemsEl.clientHeight;
-    if (!item || !box) return count;
-    const gap = parseFloat(getComputedStyle(this.itemsEl).rowGap) || 0;
-    const ir = this.itemsEl.getBoundingClientRect();
-    const tr = this.trash.getBoundingClientRect();
-    const bottom = tr.height ? Math.max(0, ir.bottom - tr.top) + gap : 0;
-    const room = box - bottom - 4 * (item.offsetHeight + gap) - 1 - gap * 2;
-    return Math.max(0, Math.min(count, Math.floor((room + gap) / (item.offsetHeight + gap))));
-  }
-
-  // Renders n creates (+ '...' overflow, divider, 4 action buttons);
-  // returns true while the last item scrolls or sits under the pinned
-  // trash so the caller lowers n.
-  private buildCreates(items: CreateItem[], n: number): boolean {
-    this.itemsEl.textContent = '';
-    for (const item of items.slice(0, n)) this.itemsEl.appendChild(this.paletteButton(item));
-    if (items.length > n) this.itemsEl.appendChild(this.overflowButton(items.slice(n)));
-    const div = document.createElement('div');
-    div.className = 'rail-div';
-    this.itemsEl.appendChild(div);
-    this.itemsEl.appendChild(this.actionButton(ICONS.image, t('addImage'), () => this.events.onAddImage()));
-    this.itemsEl.appendChild(this.actionButton(ICONS.upload, t('uploadFile'), () => this.events.onUpload()));
-    this.itemsEl.appendChild(this.actionButton(ICONS.draw, t('railDraw'), () => this.events.onDraw()));
-    this.itemsEl.appendChild(
-      this.actionButton(ICONS.inbox, t('railCapture'), () => this.events.onCapture(this.itemsEl)),
-    );
-    const tr = this.trash.getBoundingClientRect();
-    if (tr.height && this.itemsEl.lastElementChild!.getBoundingClientRect().bottom > tr.top) return true;
-    return this.itemsEl.scrollHeight > this.itemsEl.clientHeight + 1;
+  // The top-edge fade shows only while the list is actually scrolled.
+  private syncScrolls() {
+    this.itemsEl.classList.toggle('scrolled', this.itemsEl.scrollTop > 0);
   }
 
   // Grey-out tools that need context (e.g. Link/Comment need a text
@@ -400,7 +362,7 @@ export class Rail {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'rail-item';
-    btn.title = item.label;
+    btn.title = item.label;    btn.setAttribute('aria-label', item.label);
     btn.innerHTML = item.icon;
     const lab = document.createElement('span');
     lab.textContent = item.label;
@@ -424,77 +386,11 @@ export class Rail {
     return btn;
   }
 
-  private overflowButton(rest: CreateItem[]): HTMLElement {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'rail-item rail-tool';
-    btn.title = t('moreTypes');
-    btn.innerHTML = ICONS.more;
-    const lab = document.createElement('span');
-    lab.textContent = t('moreTypes');
-    btn.appendChild(lab);
-    btn.addEventListener('pointerdown', (e) => e.preventDefault());
-    btn.addEventListener('click', () => this.openOverflow(btn, rest));
-    return btn;
-  }
-
-  private openOverflow(anchor: HTMLElement, rest: CreateItem[]) {
-    const node = document.createElement('div');
-    node.className = 'menu-body';
-    const pop = openToolPopup(anchor, node);
-    const add = (item: CreateItem) => {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'pop-row';
-      const ic = document.createElement('span');
-      ic.className = 'pop-icon';
-      ic.innerHTML = item.icon;
-      const lab = document.createElement('span');
-      lab.className = 'pop-label';
-      lab.textContent = item.label;
-      row.append(ic, lab);
-      row.addEventListener('pointerdown', (e) => {
-        dragGhost(
-          e,
-          () => {
-            const g = document.createElement('div');
-            g.innerHTML = `${item.icon}<span></span>`;
-            g.querySelector('span')!.textContent = item.label;
-            return g;
-          },
-          (ev, moved) => {
-            pop.close();
-            if (!moved) {
-              this.events.onDrop(item.type, null, item.kind);
-              return;
-            }
-            const over = document.elementFromPoint(ev.clientX, ev.clientY);
-            if (over?.closest('.rail, .rail-trash, .tool-pop')) return;
-            this.events.onDrop(item.type, ev, item.kind);
-          },
-        );
-      });
-      node.appendChild(row);
-    };
-    for (const item of rest) {
-      if (!MEDIA_KEYS.has(item.key) && !ADVANCED_KEYS.has(item.key)) add(item);
-    }
-    for (const [label, keys] of [
-      [t('groupMedia'), MEDIA_KEYS],
-      [t('groupAdvanced'), ADVANCED_KEYS],
-    ] as const) {
-      const items = rest.filter((i) => keys.has(i.key));
-      if (!items.length) continue;
-      node.appendChild(head(label));
-      for (const item of items) add(item);
-    }
-  }
-
   private actionButton(icon: string, label: string, onClick: () => void): HTMLElement {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'rail-item rail-tool';
-    btn.title = label;
+    btn.title = label;    btn.setAttribute('aria-label', label);
     btn.innerHTML = icon;
     const lab = document.createElement('span');
     lab.textContent = label;
@@ -508,7 +404,7 @@ export class Rail {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'rail-item rail-tool';
-    btn.title = def.label;
+    btn.title = def.label;    btn.setAttribute('aria-label', def.label);
     btn.innerHTML = def.icon;
     const lab = document.createElement('span');
     lab.textContent = def.label;

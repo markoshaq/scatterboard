@@ -63,12 +63,12 @@ export function openNewBoardPicker(anchor: HTMLElement | DOMRect, api: NewBoardA
         edit.type = 'button';
         edit.className = 'nbp-mini';
         edit.innerHTML = ICONS.draw;
-        edit.title = t('renameTemplate');
+        edit.title = t('renameTemplate');        edit.setAttribute('aria-label', t('renameTemplate'));
         const del = document.createElement('button');
         del.type = 'button';
         del.className = 'nbp-mini';
         del.innerHTML = ICONS.close;
-        del.title = t('deleteTemplate');
+        del.title = t('deleteTemplate');        del.setAttribute('aria-label', t('deleteTemplate'));
         edit.addEventListener('click', (e) => {
           e.stopPropagation();
           const input = document.createElement('input');

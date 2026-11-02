@@ -33,7 +33,7 @@ function inkWidths(s: Stroke, pressures: number[], times: number[]): number[] {
       f = 0.3 + p * 1.5;
     } else {
       const i0 = Math.max(0, i - 1);
-      const dist = Math.hypot(s.pts[i]![0] - s.pts[i0]![0], s.pts[i]![1] - s.pts[i0]![1]);
+      const dist = Math.hypot(s.pts[i]?.[0] - s.pts[i0]?.[0], s.pts[i]?.[1] - s.pts[i0]?.[1]);
       const dt = Math.max(4, (times[i] ?? 0) - (times[i0] ?? 0));
       const v = dist / dt; // px per ms
       f = Math.min(1.6, Math.max(0.3, 1.45 - v * 1.1));
@@ -288,7 +288,9 @@ export class DrawPad {
 
   private syncToolState() {
     for (const [tool, b] of this.toolBtns) b.classList.toggle('on', tool === this.tool);
-    this.sizeBtns.forEach((b, i) => b.classList.toggle('on', i === this.sizeIdx));
+    this.sizeBtns.forEach((b, i) => {
+      b.classList.toggle('on', i === this.sizeIdx);
+    });
     if (this.swatchEl) this.swatchEl.style.background = this.color;
     if (this.surface) this.surface.dataset.tool = this.tool;
   }

@@ -87,7 +87,7 @@ reactions, comments, unsorted, and trash.
     markdown autoformat, `richKeydown`, `isBlankSurface`.
   - `popup.ts` anchored tool popups (one open, Esc/outside-down close),
     `toolpopups.ts` colour/labels/reactions/menu/text-style/link
-    builders + `openViewMenu` (topbar View menu: zoom + presentation),
+    builders + `openViewMenu` (topbar View menu: presentation toggles),
     `duepopup.ts` the original dismiss pattern.
   - `panel.ts` slide-over chrome shared by Unsorted/Trash/Search
     (`openSearchPanel` in `search.ts`).
@@ -135,8 +135,20 @@ reactions, comments, unsorted, and trash.
   `blobs.ts` IndexedDB blob store {blobRef -> Blob} + objectURL cache +
   orphan purge; `blobRefsInDoc` covers elements, trash, board icons
   and template elements.
-- `src/app.ts`: wiring: selection, edit sessions, drag gestures, rail
-  tool dispatch, panels, chips/pins sync, autosave. Presentation mode:
+- `src/app.ts`: wiring: selection, drag gestures entry points, canvas
+  overlays (chips/pins/label pills/connect handle), render loop,
+  autosave. Collaborators live in `src/app/`: `editing.ts` (edit
+  sessions, text commits, sync groups, helper offers, link enrich),
+  `tools.ts` (rail tool dispatch + card ops incl. converts),
+  `panels.ts` (side panels: unsorted/trash/search/boards, board ops,
+  icons, templates, route filters), `gestures.ts` (drag/drop, trash +
+  column drop hints, resize, pan, overlap push), `export.ts` (PNG/PDF/
+  linear/zip/JSON export + import). Delegates reach App internals via
+  an `App` back-reference; App keeps public shims for outside callers.
+- `src/state/seed.ts`: first-run welcome board + test-harness seed
+  (was main.ts).
+- `src/ui/sanitize.ts`: whitelist HTML scrubber applied to richtext
+  fields on JSON import (note/heading/document/table cells).
   `presenting` body class hides chrome (DOM stays mounted), `dims()`
   drives the Focus-on-selected opacity pass over cards/lines/chips/
   annos, `lockedView()` (presenting + prevent-editing) is the single
@@ -190,7 +202,7 @@ reactions, comments, unsorted, and trash.
   comparable visual-board tools; never copy a third party's assets or
   text.
 - Compact idiomatic TS; no comments unless the code is non-obvious.
-- Budget: under 150KB JS gzip (currently ~81KB).
+- Budget: under 150KB JS gzip (currently ~113KB).
 - Dark mode: CSS vars on `body` flipped by `body.dark`; canvas colors
   from `theme.ts canvasColors()`; user card colours darken via
   `cardBg()` color-mix. UI scale is `--ui` on body; chrome font sizes

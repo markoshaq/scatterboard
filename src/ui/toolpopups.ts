@@ -118,13 +118,13 @@ export function openColorPopup(anchor: HTMLElement, onPick: (color: string | und
     b.type = 'button';
     b.className = 'cp-swatch';
     b.style.background = c;
-    b.title = c;
+    b.title = c;    b.setAttribute('aria-label', c);
     b.addEventListener('click', () => onPick(c));
     grid.appendChild(b);
   }
   const custom = document.createElement('label');
   custom.className = 'cp-swatch cp-custom';
-  custom.title = t('colorCustom');
+  custom.title = t('colorCustom');  custom.setAttribute('aria-label', t('colorCustom'));
   const well = document.createElement('input');
   well.type = 'color';
   well.name = 'custom-color';
@@ -180,7 +180,7 @@ export function openLabelsPopup(anchor: HTMLElement, api: LabelsApi): ToolPopup 
       del.type = 'button';
       del.className = 'lp-del';
       del.innerHTML = ICONS.close;
-      del.title = t('deleteLabel');
+      del.title = t('deleteLabel');      del.setAttribute('aria-label', t('deleteLabel'));
       del.addEventListener('click', (e) => {
         e.preventDefault();
         api.onDelete(label.id);
@@ -278,12 +278,14 @@ export function openReactionsPopup(
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'rp-tone';
-    b.textContent = m ? '👋' + m : '👋';
-    b.title = t('reactTone');
+    b.textContent = m ? `👋${m}` : '👋';
+    b.title = t('reactTone');    b.setAttribute('aria-label', t('reactTone'));
     b.classList.toggle('on', m === tone);
     b.addEventListener('click', () => {
       tone = m;
-      toneRow.querySelectorAll('.rp-tone').forEach((x) => x.classList.remove('on'));
+      toneRow.querySelectorAll('.rp-tone').forEach((x) => {
+        x.classList.remove('on');
+      });
       b.classList.add('on');
       render();
     });
@@ -375,7 +377,7 @@ function swatchRow(colors: (string | null)[], onPick: (c: string | null) => void
     b.className = 'cp-swatch';
     if (c === null) b.classList.add('cp-none');
     else b.style.background = c;
-    b.title = c ?? t('colorDefault');
+    b.title = c ?? t('colorDefault');    b.setAttribute('aria-label', c ?? t('colorDefault'));
     b.addEventListener('click', () => onPick(c));
     grid.appendChild(b);
   }
@@ -503,7 +505,7 @@ export function openLinkInfoPopup(anchor: HTMLElement, url: string, onCopy: () =
   const text = document.createElement('div');
   text.className = 'li-url';
   text.textContent = url;
-  text.title = url;
+  text.title = url;  text.setAttribute('aria-label', url);
   const copy = document.createElement('button');
   copy.type = 'button';
   copy.className = 'pop-row';
@@ -524,93 +526,16 @@ export function openLinkInfoPopup(anchor: HTMLElement, url: string, onCopy: () =
 }
 
 interface ViewMenuApi {
-  zoom(): number;
-  onZoomIn(): void;
-  onZoomOut(): void;
-  onReset(): void;
-  onFit(): void;
   presentOpts(): PresentOpts;
   onToggle(key: keyof PresentOpts): void;
-  onPresent(): void;
-  // The app reports zoom changes here while the popup is open so the
-  // readout stays live; called again with null on close.
-  onReadout(cb: ((z: number) => void) | null): void;
 }
 
-// Topbar View menu: zoom controls + the presentation section. Toggle
-// rows keep the popup open and flip their check in place; action rows
-// (reset/fit/present) close it like other menus.
+// Topbar View menu: the per-board presentation toggles. Rows keep the
+// popup open and flip their check in place.
 export function openViewMenu(anchor: HTMLElement, api: ViewMenuApi): ToolPopup {
   const node = document.createElement('div');
   node.className = 'menu-body';
   const pop = openToolPopup(anchor, node);
-  const close = pop.close.bind(pop);
-  pop.close = () => {
-    api.onReadout(null);
-    close();
-  };
-
-  const head = document.createElement('div');
-  head.className = 'ts-head';
-  head.textContent = t('zoomSection');
-  node.appendChild(head);
-
-  const zoomRow = document.createElement('div');
-  zoomRow.className = 'vm-zoom';
-  const zout = document.createElement('button');
-  zout.type = 'button';
-  zout.title = t('zoomOut');
-  zout.textContent = '−';
-  zout.addEventListener('click', api.onZoomOut);
-  const pct = document.createElement('span');
-  pct.className = 'vm-pct';
-  const zin = document.createElement('button');
-  zin.type = 'button';
-  zin.title = t('zoomIn');
-  zin.textContent = '+';
-  zin.addEventListener('click', api.onZoomIn);
-  zoomRow.append(zout, pct, zin);
-  node.appendChild(zoomRow);
-  api.onReadout((z) => {
-    pct.textContent = `${Math.round(z * 100)}%`;
-  });
-
-  const actionRow = (label: string, onPick: () => void, hint?: string) => {
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'pop-row';
-    const lab = document.createElement('span');
-    lab.className = 'pop-label';
-    lab.textContent = label;
-    row.appendChild(lab);
-    if (hint) {
-      const h = document.createElement('span');
-      h.className = 'pop-hint';
-      h.textContent = hint;
-      row.appendChild(h);
-    }
-    row.addEventListener('click', () => {
-      pop.close();
-      onPick();
-    });
-    node.appendChild(row);
-  };
-  actionRow(t('resetZoom'), api.onReset);
-  actionRow(t('scaleToFit'), api.onFit);
-  const tip = document.createElement('div');
-  tip.className = 'vm-tip';
-  tip.textContent = t('zoomTip');
-  node.appendChild(tip);
-
-  const phead = document.createElement('div');
-  phead.className = 'ts-head';
-  phead.textContent = t('presentSection');
-  node.appendChild(phead);
-  const phint = document.createElement('div');
-  phint.className = 'vm-tip';
-  phint.textContent = t('presentHint');
-  node.appendChild(phint);
-  actionRow(t('present'), api.onPresent, 'Cmd+Opt+P');
 
   const toggleRow = (label: string, key: keyof PresentOpts) => {
     const row = document.createElement('button');

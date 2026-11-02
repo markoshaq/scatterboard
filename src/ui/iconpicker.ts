@@ -51,7 +51,7 @@ export function openIconPicker(anchor: HTMLElement | DOMRect, api: IconPickerApi
     b.type = 'button';
     b.className = 'bip-ic';
     b.innerHTML = svg;
-    b.title = iconId;
+    b.title = iconId;    b.setAttribute('aria-label', iconId);
     b.addEventListener('click', () => api.onPick(`g:${iconId}`));
     return b;
   }

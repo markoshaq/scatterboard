@@ -25,6 +25,21 @@ host). `base` is `./` relative by default; override with
 `SCATTERBOARD_BASE=/some/path/` (the legacy `PLANBOARD_BASE` is
 still read).
 
+## Test and lint
+
+```
+npm test            # vitest suite in test/
+npm run typecheck   # tsc --noEmit
+npm run lint        # biome
+```
+
+## Browsers
+
+Needs a recent Chrome/Edge (108+), Firefox (111+) or Safari (16.4+):
+persistence uses SQLite WASM on the OPFS sync-access-handle pool, with
+localStorage as fallback. Node 22 is the pinned dev toolchain
+(`>=20.19` required by Vite).
+
 ## Controls
 
 - Pan: Space + drag, middle-mouse drag, or trackpad scroll.

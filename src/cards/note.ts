@@ -15,6 +15,10 @@ export interface CardEvents {
   onEditField: (id: string, field?: string) => void;
   // Card-internal focus moved (table cell vs field): rail re-syncs.
   onCellFocus?: (id: string) => void;
+  // Shared layer ResizeObserver hooks: a view registers its root node
+  // once instead of owning an observer per card.
+  observeNode?: (v: CardView) => void;
+  unobserveNode?: (v: CardView) => void;
 }
 
 export interface CardView {
@@ -31,6 +35,8 @@ export interface CardView {
   readHtml?(): string;
   editSurface?(): HTMLElement | null;
   findView?(id: string): CardView | undefined;
+  // Live embed iframe: the layer keeps the view mounted off-screen.
+  playing?: boolean;
   syncInner?(sel: Set<string>, editingId: string | null): void;
   destroy(): void;
 }
@@ -45,10 +51,10 @@ export class NoteCard implements CardView {
   editing = false;
   private textEl: HTMLElement;
   private handle: HTMLElement;
-  private ro: ResizeObserver;
   private events: CardEvents;
   private lastText = '';
   private lastHtml: string | undefined;
+  private htmlTimer = 0;
 
   constructor(el: Element, events: CardEvents) {
     this.id = el.id;
@@ -74,16 +80,20 @@ export class NoteCard implements CardView {
     this.textEl.addEventListener('keydown', (e) => {
       richKeydown(this.textEl, e, { openLink: () => this.events.onLinkPopup(this.id) });
     });
-    this.ro = new ResizeObserver(() => {
-      this.events.onMeasure(this.id, this.node.offsetHeight);
-    });
-    this.ro.observe(this.node);
+    this.events.observeNode?.(this);
     this.update(el);
   }
 
   private pushSurface() {
     this.lastText = this.readText();
-    this.lastHtml = this.textEl.innerHTML;
+    // innerHTML serializes the whole note DOM: capture it on a short
+    // debounce instead of per keystroke (endEdit reads it live anyway).
+    if (!this.htmlTimer) {
+      this.htmlTimer = window.setTimeout(() => {
+        this.htmlTimer = 0;
+        this.lastHtml = this.textEl.innerHTML;
+      }, 200);
+    }
     this.events.onTextInput(this.id, this.lastText, this.lastHtml);
   }
 
@@ -170,7 +180,11 @@ export class NoteCard implements CardView {
   }
 
   destroy() {
-    this.ro.disconnect();
+    if (this.htmlTimer) {
+      clearTimeout(this.htmlTimer);
+      this.htmlTimer = 0;
+    }
+    this.events.unobserveNode?.(this);
     this.node.remove();
   }
 }

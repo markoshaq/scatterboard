@@ -14,7 +14,7 @@ export class ColumnCard implements CardView {
   private countEl: HTMLElement;
   private body: HTMLElement;
   private members = new Map<ID, CardView>();
-  private ro: ResizeObserver;
+  private topOff = -1;
   private lastTitle = '';
 
   constructor(el: Element, ctx: CardCtx) {
@@ -55,10 +55,7 @@ export class ColumnCard implements CardView {
     this.titleEl.addEventListener('blur', () => {
       if (this.editing) this.ctx.events.onEditEnd(this.id);
     });
-    this.ro = new ResizeObserver(() => {
-      this.ctx.events.onMeasure(this.id, this.node.offsetHeight);
-    });
-    this.ro.observe(this.node);
+    this.ctx.events.observeNode?.(this);
     this.update(el);
   }
 
@@ -82,6 +79,7 @@ export class ColumnCard implements CardView {
     const seen = new Set(list.map((m) => m.id));
     for (const [mid, v] of this.members) {
       if (!seen.has(mid)) {
+        this.ctx.unregisterView?.(v);
         v.destroy();
         this.members.delete(mid);
       }
@@ -92,6 +90,7 @@ export class ColumnCard implements CardView {
       if (!v) {
         v = createCard(m, this.ctx);
         this.members.set(m.id, v);
+        this.ctx.registerView?.(v);
       }
       if (v.node.parentNode !== this.body || v.node.previousSibling !== prev) {
         this.body.insertBefore(v.node, prev ? prev.nextSibling : this.body.firstChild);
@@ -148,10 +147,24 @@ export class ColumnCard implements CardView {
     }
   }
 
+  // Member-stack top in column space (.col-body's offsetTop), measured
+  // inside the layer's RO callback where the read is free. -1 until
+  // the first measurement; CardsLayer falls back to a head estimate.
+  noteBodyTop() {
+    this.topOff = this.body.offsetTop;
+  }
+
+  bodyTop(): number {
+    return this.topOff;
+  }
+
   destroy() {
-    for (const v of this.members.values()) v.destroy();
+    for (const v of this.members.values()) {
+      this.ctx.unregisterView?.(v);
+      v.destroy();
+    }
     this.members.clear();
-    this.ro.disconnect();
+    this.ctx.events.unobserveNode?.(this);
     this.node.remove();
   }
 }

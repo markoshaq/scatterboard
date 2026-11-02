@@ -125,7 +125,7 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
   }
 
   // Display scale: fit the natural-size stage into the editor area.
-  function fit(): number {
+  function fitScale(): number {
     const maxW = Math.min(880, innerWidth - 240);
     const maxH = innerHeight - 220;
     return Math.min(2, Math.min(maxW / natW, maxH / natH));
@@ -208,7 +208,7 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
   // Draw on: the image is the pad background, strokes live in the
   // image's natural pixel space (svg viewBox does the scaling).
   function mountDraw(): () => void {
-    const s = fit();
+    const s = fitScale();
     const stage = document.createElement('div');
     stage.className = 'im-pad';
     stage.style.width = `${natW * s}px`;
@@ -353,7 +353,7 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
   // Background: checkerboard preview with a remove-background toggle;
   // the cutout is computed once per session and baked on Save.
   function mountBg(): () => void {
-    const s = fit();
+    const s = fitScale();
     const wrap = document.createElement('div');
     wrap.className = 'im-checker';
     const img = document.createElement('img');

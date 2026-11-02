@@ -57,8 +57,7 @@ export class LinkCard implements CardView {
   private capEl: HTMLElement;
   private heroImg: HTMLImageElement | null = null;
   private handle: HTMLElement;
-  private ro: ResizeObserver;
-  private playing = false;
+  playing = false;
   private noPreview = false;
   private selected = false;
   private downSelected = false;
@@ -174,10 +173,7 @@ export class LinkCard implements CardView {
       });
     }
 
-    this.ro = new ResizeObserver(() => {
-      this.ctx.events.onMeasure(this.id, this.node.offsetHeight);
-    });
-    this.ro.observe(this.node);
+    this.ctx.events.observeNode?.(this);
     this.update(el);
   }
 
@@ -304,7 +300,7 @@ export class LinkCard implements CardView {
     const host = hostOf(c.url);
     if (this.chipEl.textContent !== host) {
       this.chipEl.textContent = host;
-      this.chipEl.title = c.url;
+      this.chipEl.title = c.url;      this.chipEl.setAttribute('aria-label', c.url);
     }
     if (!this.editing && c.title !== this.lastTitle) {
       this.titleEl.textContent = c.title;
@@ -361,7 +357,7 @@ export class LinkCard implements CardView {
   }
 
   destroy() {
-    this.ro.disconnect();
+    this.ctx.events.unobserveNode?.(this);
     this.node.remove();
   }
 }

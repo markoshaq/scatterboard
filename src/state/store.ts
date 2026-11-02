@@ -22,6 +22,9 @@ function flatten(a: Action): Action[] {
 
 export class Store {
   doc: Doc;
+  // Bumped on every emit so caches keyed on doc contents can lazily
+  // invalidate (BoardIndex, per-render rect caches).
+  rev = 0;
   private past: HistoryEntry[] = [];
   private future: HistoryEntry[] = [];
   private group: Group | null = null;
@@ -38,6 +41,7 @@ export class Store {
   }
 
   private emit(c: Change) {
+    this.rev++;
     for (const fn of this.changeListeners) fn(c);
   }
 
