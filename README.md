@@ -10,20 +10,22 @@ and icons.
 npm install && npm run dev    # then open http://localhost:5173
 ```
 
+First steps: double-click the canvas for a note, drag more card types
+from the left rail, and press `/` for the full shortcut map. The seeded
+"Test harness" board at `#/b/test` shows one of everything.
+
 ## Why it is different
 
-- Storage is real, not a cache: the whole workspace is one document in
-  SQLite WASM on the OPFS sync-access-handle pool (no SharedArrayBuffer
-  needed), with localStorage as the migration source and fallback, and
-  media blobs in IndexedDB.
-- Zero runtime dependencies. Vanilla TypeScript + Vite; the production
-  JS bundle is ~115 KB gzipped against a 150 KB budget.
-- Installable PWA: the service worker (production builds only) caches
-  the shell and every hashed asset at runtime, so the app and the
-  sqlite wasm keep working offline after first load.
-- Full surface, offline: 17 card types, nested boards, rich text, table
-  formulas, drawing tools, comments, search, grouped undo history, and
-  export to PNG, PDF, Word, Markdown, plain text, zip, and JSON.
+- Your boards are yours: the whole workspace lives in the browser's
+  storage, works fully offline, and never phones home. No account,
+  no sync server, no telemetry.
+- Boards nest like folders: a board card on a board opens a child
+  board, so big plans stay tidy without leaving the canvas.
+- It is a real app, not a sketch: 17 card types, rich text, table
+  formulas, drawing tools, comments, search, undo history, and export
+  to PNG, PDF, Word, Markdown, plain text, zip, and JSON.
+- Installable: pin it as an app and it keeps working offline after
+  the first load.
 
 ## The tour
 
@@ -136,29 +138,6 @@ Press `/` in the app for the full map. Essentials:
 | Dark mode / UI scale | Cmd/Ctrl+Shift+D / Cmd/Ctrl+Shift+,/. |
 | Parent board / history | Cmd/Ctrl+U / Cmd/Ctrl+[ and ] |
 
-## Develop
-
-```
-npm install        # Node 22 pinned (.nvmrc); >=20.19 required
-npm run dev        # Vite dev server
-npm run build      # prebuild runs typecheck + tests first
-npm test           # vitest suite in test/
-npm run typecheck  # tsc --noEmit
-npm run lint       # biome lint src test
-npm run preview    # serve the build
-```
-
-Open `http://localhost:5173/#/b/test` for a seeded harness board that
-exercises every card type, labels, reactions, comments, Unsorted, and
-Trash. `window.__app` exposes the App instance: `__app.selectOnly(id)`,
-`__app.store.doc`, `__app.vp`.
-
-Deploy `dist/` to any static host as-is.
-
-| Variable | Default | Effect |
-|---|---|---|
-| `SCATTERBOARD_BASE` | `./` | Vite base path for the build (`PLANBOARD_BASE` still read for old deploy scripts) |
-
 ## Privacy
 
 The default path makes no network calls. Two optional features do,
@@ -172,32 +151,56 @@ only when used:
 
 Both degrade silently to manual titles and placeholders offline.
 
+## Requirements
+
+- A current desktop Chrome/Edge, Firefox, or Safari. Boards are stored
+  in SQLite on OPFS where available, falling back to localStorage.
+- Desktop-first by design: mouse, trackpad, and keyboard. Touch and
+  small screens are not a design goal yet.
+- To run from source: Node >=20.19 (22 pinned in `.nvmrc`).
+
+## Develop
+
+```
+npm install        # Node 22 pinned (.nvmrc); >=20.19 required
+npm run dev        # Vite dev server
+npm run build      # prebuild runs typecheck + tests first
+npm test           # vitest suite in test/
+npm run typecheck  # tsc --noEmit
+npm run lint       # biome lint src test
+npm run preview    # serve the build
+```
+
+`window.__app` exposes the App instance for poking:
+`__app.selectOnly(id)`, `__app.store.doc`, `__app.vp`.
+
+Deploy `dist/` to any static host as-is.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SCATTERBOARD_BASE` | `./` | Vite base path for the build (`PLANBOARD_BASE` still read for old deploy scripts) |
+
 ## Architecture
 
-Two render layers: Canvas2D draws the dot grid, connectors, marquee,
-and selection chrome; plain DOM renders cards and editing so text
-stays crisp at any zoom. Every mutation is a typed action through one
-store with an auto-inverse, which is what makes batched undo groups
-possible. Persistence sits behind a storage adapter (SQLite worker,
-localStorage fallback), with JSON serialization off the main thread
-in its own worker.
+Vanilla TypeScript + Vite, zero runtime dependencies; the production JS
+bundle is ~115 KB gzipped against a 150 KB budget. Two render layers:
+Canvas2D draws the dot grid, connectors, marquee, and selection chrome;
+plain DOM renders cards and editing so text stays crisp at any zoom.
+Every mutation is a typed action through one store with an
+auto-inverse, which is what makes batched undo groups possible.
+Persistence sits behind a storage adapter: SQLite WASM on the OPFS
+sync-access-handle pool in a worker, localStorage as migration source
+and fallback, media blobs in IndexedDB. The service worker (production
+builds only) caches the shell and hashed assets for offline use.
 
 - [FEATURES.md](FEATURES.md): the feature spec, card by card
 - [AGENTS.md](AGENTS.md): current source layout and conventions
 - [ARCHITECTURE.md](ARCHITECTURE.md): the original design proposal,
   kept for context
+- [CHANGELOG.md](CHANGELOG.md): release history
 - [CONTRIBUTING.md](CONTRIBUTING.md): ground rules and PR checklist
 - [SECURITY.md](SECURITY.md): reporting vulnerabilities
 - [NOTICE.md](NOTICE.md): vendored third-party components
-
-## Requirements
-
-- Node >=20.19 (22 pinned in `.nvmrc`).
-- A current desktop Chrome/Edge, Firefox, or Safari. The SQLite store
-  needs OPFS sync access handles; where unavailable it falls back to
-  localStorage.
-- Desktop-first by design: mouse, trackpad, and keyboard. Touch and
-  small screens are not a design goal yet.
 
 ## Contributing and license
 
