@@ -4,11 +4,32 @@ import type { Action } from '../state/actions';
 import { pointInRect, unionRect } from '../canvas/hit';
 import type { Rect } from '../canvas/viewport';
 import { snapDelta } from '../canvas/snap';
+import { ColumnCard } from '../cards/column';
 import { NOTE_MAX_W, NOTE_MIN_W } from '../state/schema';
 export class Gestures {
   constructor(private a: App) {}
 
   dropColId: ID | null = null;
+
+  // Member reorder drag-in-progress: the card is lifted onto the
+  // pointer, a marker bar marks the slot, and z commits on endDrag.
+  private memberReorder: { colId: ID; memberId: ID; z: number; dx: number; dy: number } | null = null;
+
+  // Drop-slot inside the hinted column: filing lands mid-stack here
+  // instead of appending at the end.
+  private dropInsert: {
+    colId: ID;
+    beforeId: ID | null;
+    prevZ: number | undefined;
+    nextZ: number | undefined;
+  } | null = null;
+
+  // The board-space offset of a lifted member card, so selection
+  // chrome can follow the card instead of its open slot.
+  liftDelta(id: ID): { dx: number; dy: number } | null {
+    const r = this.memberReorder;
+    return r && r.memberId === id ? { dx: r.dx, dy: r.dy } : null;
+  }
 
   trashRect: DOMRect | null | undefined;
 
@@ -34,13 +55,16 @@ export class Gestures {
     const soloParent = ids.length === 1 ? this.a.doc.elements[ids[0]!]?.parentId : null;
     const colEl = soloParent ? this.a.doc.elements[soloParent] : undefined;
     if (colEl && pointInRect(cur.x, cur.y, this.a.layer.rectOf(colEl))) {
-      this.reorderMember(soloParent!, ids[0]!, cur);
+      this.memberHover(soloParent!, ids[0]!, cur, start);
       this.updateDropTarget(null, ids);
       this.setTrashHint(this.overTrashRect(ids), ids);
-      this.a.guides = [];
       this.a.requestRender();
       return;
     }
+
+    // The pointer left the column: drop the lift affordance, the card
+    // refiles to the canvas and drags like any other.
+    if (this.memberReorder) this.clearMemberReorder();
 
     const refile = ids.filter((id) => this.a.doc.elements[id]?.parentId !== null);
     if (refile.length) {
@@ -138,23 +162,35 @@ export class Gestures {
       }
       if (top?.type === 'column') col = top.id;
     }
+    // Slot marker inside the target column: the same bar a same-column
+    // reorder shows, so the drop can land mid-stack instead of only
+    // appending to the end.
+    if (col && pt) {
+      const slot = this.memberSlot(col, dragged, pt);
+      this.dropInsert = { colId: col, ...slot };
+      const v = this.a.layer.view(col);
+      if (v instanceof ColumnCard) v.showInsert(slot.beforeId);
+    } else {
+      this.dropInsert = null;
+    }
     if (col === this.dropColId) return;
-    if (this.dropColId) this.a.layer.view(this.dropColId)?.node.classList.remove('drop-hint');
+    if (this.dropColId) {
+      const pv = this.a.layer.view(this.dropColId);
+      if (pv instanceof ColumnCard) pv.hideInsert();
+      pv?.node.classList.remove('drop-hint');
+    }
     if (col) this.a.layer.view(col)?.node.classList.add('drop-hint');
     this.dropColId = col;
   }
 
 
-  // Insertion index comes from which member midpoints the pointer has
-  // passed; the dragged card keeps its slot until the index moves, then
-  // re-seats by taking a z between its new neighbours (fractional z).
-  reorderMember(colId: ID, memberId: ID, pt: { x: number; y: number }) {
-    const members = this.a.layer.members(colId).filter(
-      (m) => m.type !== 'line' && m.type !== 'annotation',
-    );
-    const idx = members.findIndex((m) => m.id === memberId);
-    if (idx < 0) return;
-    const others = members.filter((m) => m.id !== memberId);
+  // Where a dragged member would land inside its column: the z it will
+  // take on drop (fractional, between its new neighbours) and the
+  // member the insertion marker seats in front of.
+  private memberSlot(colId: ID, exclude: readonly ID[], pt: { x: number; y: number }) {
+    const others = this.a.layer
+      .members(colId)
+      .filter((m) => m.type !== 'line' && m.type !== 'annotation' && !exclude.includes(m.id));
     let insert = others.length;
     for (let i = 0; i < others.length; i++) {
       const r = this.a.layer.rectOf(others[i]!);
@@ -163,17 +199,53 @@ export class Gestures {
         break;
       }
     }
-    if (insert === idx) return;
-    const prevZ = others[insert - 1]?.z;
-    const nextZ = others[insert]?.z;
-    const z = prevZ === undefined ? (nextZ ?? 0) - 1 : nextZ === undefined ? prevZ + 1 : (prevZ + nextZ) / 2;
-    this.a.store.dispatch({ type: 'element.patch', id: memberId, patch: { z } });
+    const prev = others[insert - 1];
+    const next = others[insert];
+    const z =
+      prev === undefined ? (next?.z ?? 0) - 1 : next === undefined ? prev.z + 1 : (prev.z + next.z) / 2;
+    return { z, beforeId: next?.id ?? null, prevZ: prev?.z, nextZ: next?.z };
+  }
+
+  // While a member drags inside its own column the card lifts onto the
+  // pointer and a marker bar opens the slot it will land in; the z
+  // commit waits for endDrag so the move stays one undoable step.
+  private memberHover(colId: ID, memberId: ID, pt: { x: number; y: number }, start: { x: number; y: number }) {
+    const { z, beforeId } = this.memberSlot(colId, [memberId], pt);
+    const dx = pt.x - start.x;
+    const dy = pt.y - start.y;
+    this.memberReorder = { colId, memberId, z, dx, dy };
+    const node = this.a.layer.view(memberId)?.node;
+    if (node) {
+      node.style.transform = `translate(${dx}px, ${dy}px)`;
+      node.classList.add('drag-lift');
+    }
+    const colView = this.a.layer.view(colId);
+    if (colView instanceof ColumnCard) colView.showInsert(beforeId);
+    this.a.guides = [];
+  }
+
+  private clearMemberReorder() {
+    const r = this.memberReorder;
+    this.memberReorder = null;
+    if (!r) return;
+    const colView = this.a.layer.view(r.colId);
+    if (colView instanceof ColumnCard) colView.hideInsert();
+    const node = this.a.layer.view(r.memberId)?.node;
+    if (node) {
+      node.style.transform = '';
+      node.classList.remove('drag-lift');
+    }
   }
 
 
   clearDropHint() {
-    if (this.dropColId) this.a.layer.view(this.dropColId)?.node.classList.remove('drop-hint');
+    if (this.dropColId) {
+      const v = this.a.layer.view(this.dropColId);
+      if (v instanceof ColumnCard) v.hideInsert();
+      v?.node.classList.remove('drop-hint');
+    }
     this.dropColId = null;
+    this.dropInsert = null;
   }
 
 
@@ -193,14 +265,28 @@ export class Gestures {
       });
       if (this.overTrashRect(dragged)) {
         this.clearDropHint();
+        this.clearMemberReorder();
         this.a.guides = [];
         this.a.deleteSelection();
         this.a.requestRender();
         return;
       }
     }
+    // A member dragged inside its own column commits its new slot
+    // here, inside the move group, as a single undoable z patch.
+    const rr = this.memberReorder;
+    this.clearMemberReorder();
+    if (rr) {
+      const el = this.a.doc.elements[rr.memberId];
+      if (el && el.parentId === rr.colId && el.z !== rr.z) {
+        this.a.store.dispatch({ type: 'element.patch', id: rr.memberId, patch: { z: rr.z } });
+      }
+    }
     if (this.dropColId) {
       const colId = this.dropColId;
+      // The slot marker's gap: inserted elements spread evenly between
+      // its neighbour z values so multi-drops keep pointer order.
+      const slot = this.dropInsert?.colId === colId ? this.dropInsert : null;
       this.clearDropHint();
       const actions: Action[] = [...this.a.sel]
         .map((id) => this.a.doc.elements[id])
@@ -213,7 +299,15 @@ export class Gestures {
             !e.locked &&
             !(e.type === 'comment' && e.anchorId !== undefined),
         )
-        .map((e) => ({ type: 'element.patch', id: e.id, patch: { parentId: colId, z: ++this.a.doc.seq } }));
+        .map((e, i, arr) => {
+          let z = ++this.a.doc.seq;
+          if (slot) {
+            const lo = slot.prevZ ?? (slot.nextZ ?? 0) - 1;
+            const hi = slot.nextZ ?? lo + arr.length + 1;
+            z = lo + ((hi - lo) * (i + 1)) / (arr.length + 1);
+          }
+          return { type: 'element.patch', id: e.id, patch: { parentId: colId, z } };
+        });
       if (actions.length) this.a.store.dispatch({ type: 'batch', actions });
     } else {
       this.pushOverlaps();
@@ -226,6 +320,7 @@ export class Gestures {
   // pointercancel mid-drag: clear the in-flight drop/gesture chrome.
   abortDrag() {
     this.trashRect = undefined;
+    this.clearMemberReorder();
     this.clearDropHint();
     this.setTrashHint(false);
     this.a.guides = [];

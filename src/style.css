@@ -490,6 +490,21 @@ body.pan-mode .viewport {
   flex: none;
 }
 
+/* Member reorder drag: the card rides the pointer above its slot
+   while .col-insert opens the gap it will land in. */
+.col-body > .card.drag-lift {
+  z-index: 5;
+  box-shadow: 0 8px 24px var(--shadow-2);
+}
+
+.col-insert {
+  flex: none;
+  height: 1.5px;
+  border-radius: 1px;
+  margin: 0 8px;
+  background: var(--accent);
+}
+
 .card.column.drop-hint {
   box-shadow: 0 0 0 2px var(--accent), 0 2px 8px var(--shadow-1);
 }

@@ -10,6 +10,7 @@ import {
   type Doc,
 } from '../src/state/schema';
 import { CardsLayer } from '../src/cards/layer';
+import { ColumnCard } from '../src/cards/column';
 import { Viewport } from '../src/canvas/viewport';
 import type { CardEvents } from '../src/cards/note';
 
@@ -196,6 +197,36 @@ describe('column members', () => {
     const grid = layer.view(tb.id)!.node.querySelector('.tb-grid') as HTMLElement;
     // member width = 300 - 20 col pad; grid space = that - 20 table pad.
     expect(grid.style.gridTemplateColumns).toBe('130px 130px');
+  });
+});
+
+describe('column insert marker', () => {
+  it('seats the marker before the target member and hides it', () => {
+    const d = doc();
+    const col = createColumn(d, 'home', 0, 0, 'col');
+    const m1 = createNote(d, 'home', 0, 0, 'one');
+    const m2 = createNote(d, 'home', 0, 0, 'two');
+    m1.parentId = col.id;
+    m2.parentId = col.id;
+    m2.z = m1.z + 1;
+    d.elements[col.id] = col;
+    d.elements[m1.id] = m1;
+    d.elements[m2.id] = m2;
+    const { layer, bump } = harness(d);
+    bump();
+    layer.sync(new Set(), null, false);
+    const view = layer.view(col.id)!;
+    expect(view).toBeInstanceOf(ColumnCard);
+    const colView = view as ColumnCard;
+    colView.showInsert(m2.id);
+    const body = view.node.querySelector('.col-body')!;
+    const marker = body.querySelector('.col-insert')!;
+    expect(marker).toBeTruthy();
+    expect(marker.nextElementSibling).toBe(layer.view(m2.id)!.node);
+    colView.showInsert(null);
+    expect(body.querySelector('.col-insert')!.nextElementSibling).toBeNull();
+    colView.hideInsert();
+    expect(body.querySelector('.col-insert')).toBeNull();
   });
 });
 

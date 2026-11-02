@@ -14,6 +14,7 @@ export class ColumnCard implements CardView {
   private countEl: HTMLElement;
   private body: HTMLElement;
   private members = new Map<ID, CardView>();
+  private insertEl: HTMLElement | null = null;
   private topOff = -1;
   private lastTitle = '';
 
@@ -61,6 +62,24 @@ export class ColumnCard implements CardView {
 
   private readTitle(): string {
     return this.titleEl.innerText.replace(/\n/g, '');
+  }
+
+  // Reorder-drag indicator: a bar seated as a flex child before the
+  // member `beforeId` (or at the end) so the stack opens a visible
+  // slot. It is not a member, so update() leaves it in place.
+  showInsert(beforeId: ID | null) {
+    if (!this.insertEl) {
+      this.insertEl = document.createElement('div');
+      this.insertEl.className = 'col-insert';
+    }
+    const el = this.insertEl;
+    const ref = beforeId ? (this.members.get(beforeId)?.node ?? null) : null;
+    if (el.parentNode !== this.body || el.nextSibling !== ref) this.body.insertBefore(el, ref);
+  }
+
+  hideInsert() {
+    this.insertEl?.remove();
+    this.insertEl = null;
   }
 
   update(el: Element) {

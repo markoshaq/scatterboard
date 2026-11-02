@@ -616,12 +616,16 @@ export class App {
           !(e.type === 'comment' && e.anchorId !== undefined) &&
           !this.gestures.trashHover,
       )
-      .map((e) => ({
-        rect: this.layer.rectOf(e),
-        // .card / .card.column / .card.board-card radii, so the selection
-        // ring hugs the card's actual corner.
-        radius: e.type === 'column' || e.type === 'board' ? 10 : 8,
-      }));
+      .map((e) => {
+        const r = this.layer.rectOf(e);
+        const lift = this.gestures.liftDelta(e.id);
+        return {
+          rect: lift ? { x: r.x + lift.dx, y: r.y + lift.dy, w: r.w, h: r.h } : r,
+          // .card / .card.column / .card.board-card radii, so the selection
+          // ring hugs the card's actual corner.
+          radius: e.type === 'column' || e.type === 'board' ? 10 : 8,
+        };
+      });
     const lines = this.resolvedLines();
     this.renderer.setScene({
       grid: board?.grid ?? true,
