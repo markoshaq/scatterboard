@@ -8,6 +8,17 @@ app (boards, cards, connectors, viewport, undo, PNG snapshots).
 
 ## Install
 
+Devin CLI (user scope — required; project scope is ignored by
+IDE-embedded sessions):
+
+```
+devin mcp add -s user scatterboard -- npx -y scatterboard-mcp
+```
+
+Or add this to `mcpServers` in the user config
+(`%APPDATA%\devin\config.json` on Windows, `~/.config/devin/config.json`
+elsewhere) or Windsurf's `mcp_config.json`:
+
 ```json
 {
   "mcpServers": {
@@ -19,7 +30,7 @@ app (boards, cards, connectors, viewport, undo, PNG snapshots).
 }
 ```
 
-Or with Devin CLI: `devin mcp add scatterboard -- npx -y scatterboard-mcp`
+No restart needed; the `sb_*` tools appear in the current session.
 
 ## Pairing
 
