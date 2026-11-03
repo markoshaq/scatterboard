@@ -6,10 +6,11 @@ system and no Scatterboard server.
 
 ## Reporting a vulnerability
 
-Please do not open a public issue for security problems. Contact the
-maintainers privately first (see the repository profile for contact
-details) and include reproduction steps. We will acknowledge reports
-as quickly as we can.
+Please do not open a public issue for security problems. Report them
+through GitHub private vulnerability reporting (Security tab on the
+repository) or the contact details on the maintainer profile, and
+include reproduction steps. We will acknowledge reports as quickly as
+we can.
 
 ## Notes
 

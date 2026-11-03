@@ -26,7 +26,8 @@
   },
   "javascript": {
     "globals": [
-      "__BUILD_ID__"
+      "__BUILD_ID__",
+      "__APP_VERSION__"
     ]
   },
   "files": {

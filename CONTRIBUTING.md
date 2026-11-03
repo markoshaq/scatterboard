@@ -11,9 +11,7 @@ npm run dev
 
 `npm run typecheck` and `npm run lint` must pass before you open a PR.
 `npm test` runs the vitest suite in `test/`; add cases when you change
-state logic, schema migration, import/export, or parsing. The seeded
-"Test harness" board at `#/b/test` exercises every card type for
-manual checks.
+state logic, schema migration, import/export, or parsing.
 
 ## Rules of the road
 

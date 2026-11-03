@@ -5,6 +5,8 @@ Fixed, Removed.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-02
+
 ### Added
 
 - Initial release: infinite-canvas planning boards with 17 card types,
@@ -27,4 +29,4 @@ Fixed, Removed.
   Word/Markdown/plain text, media zip, and full-board JSON.
 - Optional online extras: link-card enrichment and YouTube, Vimeo,
   Spotify, SoundCloud, and Google Maps embeds.
-- UI in English, Español, Français, and Português.
+- UI in English, Deutsch, Español, Français, and Português.

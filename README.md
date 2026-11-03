@@ -1,8 +1,8 @@
 # Scatterboard
 
 Local-first infinite-canvas planning board: notes, to-dos, tables,
-documents, drawings, embeds, files, and nested boards on one endless
-dot grid. No accounts, no servers, no tracking; the workspace lives in
+documents, drawings, embeds, files, and nested boards on one dot
+grid. No accounts, no servers, no tracking; the workspace lives in
 the browser and works offline. MIT licensed, original code, copy, art,
 and icons.
 
@@ -11,19 +11,17 @@ npm install && npm run dev    # then open http://localhost:5173
 ```
 
 First steps: double-click the canvas for a note, drag more card types
-from the left rail, and press `/` for the full shortcut map. The seeded
-"Test harness" board at `#/b/test` shows one of everything.
+from the left rail, and press `/` for the full shortcut map.
 
 ## Why it is different
 
 - Your boards are yours: the whole workspace lives in the browser's
-  storage, works fully offline, and never phones home. No account,
-  no sync server, no telemetry.
+  storage, works offline, and never phones home.
 - Boards nest like folders: a board card on a board opens a child
   board, so big plans stay tidy without leaving the canvas.
-- It is a real app, not a sketch: 17 card types, rich text, table
-  formulas, drawing tools, comments, search, undo history, and export
-  to PNG, PDF, Word, Markdown, plain text, zip, and JSON.
+- 17 card types, rich text, table formulas, drawing tools, comments,
+  search, undo history, and export to PNG, PDF, Word, Markdown, plain
+  text, zip, and JSON.
 - Installable: pin it as an app and it keeps working offline after
   the first load.
 
@@ -47,7 +45,7 @@ from the left rail, and press `/` for the full shortcut map. The seeded
   board, including table cells, link URLs, and comments, skipping
   Unsorted, and sorts by relevance, modified, or last viewed.
 
-### Seventeen card types
+### 17 card types
 
 | Card | Holds |
 |---|---|
@@ -109,8 +107,8 @@ the copies identical), overlap prevention that pushes neighbours when
 a card grows, a per-board dot-grid toggle, a customizable create
 palette, dark mode (Cmd/Ctrl+Shift+D), UI scale (Cmd/Ctrl+Shift+,/.),
 and a presentation mode (Cmd/Ctrl+Alt+P) with "Focus on selected
-cards" and "Prevent editing". The UI ships in English, Español,
-Français, and Português.
+cards" and "Prevent editing". The UI ships in English, Deutsch,
+Español, Français, and Português.
 
 ### In and out
 
@@ -178,12 +176,29 @@ Deploy `dist/` to any static host as-is.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `SCATTERBOARD_BASE` | `./` | Vite base path for the build (`PLANBOARD_BASE` still read for old deploy scripts) |
+| `SCATTERBOARD_BASE` | `./` | Vite base path for the build |
+
+## Releases
+
+The version lives in `package.json` and is baked into the build; the
+app shows it under Help > About. To cut a release:
+
+1. Update `CHANGELOG.md`: rename `Unreleased` to the new version with
+   the date (`## [0.2.0] - 2026-01-15`) and open a fresh `Unreleased`.
+2. `npm version patch|minor|major`: bumps `package.json`, commits, and
+   tags `v*`. (For a first release where `package.json` already holds
+   the target version, run `npm version 0.1.0` or tag by hand with
+   `git tag v0.1.0`; `patch` would produce the next version instead.)
+3. `git push --follow-tags`
+
+Pushing a `v*` tag runs the release workflow: it checks the tag
+matches `package.json`, builds, extracts the matching CHANGELOG
+section into the GitHub release notes, and deploys `dist/` to Pages.
 
 ## Architecture
 
 Vanilla TypeScript + Vite, zero runtime dependencies; the production JS
-ships in lazy chunks with the largest at ~85 KB gzipped against a 150 KB
+ships in lazy chunks with the largest at ~87 KB gzipped against a 150 KB
 budget. Two render layers:
 Canvas2D draws the dot grid, connectors, marquee, and selection chrome;
 plain DOM renders cards and editing so text stays crisp at any zoom.

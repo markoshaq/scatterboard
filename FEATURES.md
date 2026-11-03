@@ -1,7 +1,7 @@
 # Scatterboard feature spec
 
-An open-source, local-first infinite-canvas planning board for gamedev
-projects. Feature-for-feature parity with commercial visual-board
+An open-source, local-first infinite-canvas planning board.
+Feature-for-feature parity with commercial visual-board
 tools; original code, copy, art and name.
 
 Legal guardrails: implement features and interactions freely (not
@@ -187,7 +187,7 @@ Position, Bring to Front/Send to Back, created-by attribution}.
   (pressure/speed-sensitive pen width), undo/redo arrows toggle.
 - Table numbers/dates are locale-aware (Use browser language) +
   currency-aware (per-user currency setting).
-- i18n: ships English, Español, Français, Português.
+- i18n: ships English, Deutsch, Español, Français, Português.
 
 ## 6. Export
 

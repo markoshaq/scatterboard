@@ -12,11 +12,14 @@ calls; fully offline.
 - `npm run typecheck`: `tsc --noEmit`; must pass before finishing work
 - `npm test`: `vitest run`; unit tests live in `test/`
 - `npm run preview`: serve `dist/`
+- Releases: `npm version patch|minor|major` bumps `package.json`,
+  commits and tags `v*`; pushing the tag runs `release.yml` (tag must
+  match the package version, CHANGELOG section required) and
+  `pages.yml`. `__APP_VERSION__` is injected via vite `define` from
+  `package.json` and shown in Help > About.
 
 `window.__app` exposes the App instance on the dev page for poking
-(`__app.selectOnly(id)`, `__app.store.doc`, `__app.vp`). A seeded
-"Test harness" board at `#/b/test` exercises every card type, labels,
-reactions, comments, unsorted, and trash.
+(`__app.selectOnly(id)`, `__app.store.doc`, `__app.vp`).
 
 ## Layout
 
@@ -72,7 +75,8 @@ reactions, comments, unsorted, and trash.
   `imgeditor.ts` image editor: one overlay with mode chips
   {Draw on, Edit, Background} at `#/e/<id>?editing-drawing|editing|
   editing-background`, chips swap the hash and `setMode` re-mounts the
-  body; `export.ts` html -> markdown/plaintext. Route `#/e/<id>` mounts
+  body (`imgmode.ts` maps mode <-> hash param);
+  `export.ts` html -> markdown/plaintext. Route `#/e/<id>` mounts
   them via `App.applyRoute`; Esc/back exits, document edits live-commit
   inside one store group, sketch/image saves land as one content patch.
 - `src/canvas/imgops.ts`: raster ops for the image editor + More's
@@ -99,25 +103,32 @@ reactions, comments, unsorted, and trash.
     Letters & numbers, Upload an image, clear).
   - `newboard.ts` new-board template picker (empty, presets, saved
     templates with inline rename + delete).
-  - `settings.ts` settings popup {theme, language, UI scale, canvas
-    prefs, formatting, toolbar-palette editor, templates, storage
-    meter}; `theme.ts` light/dark state, `canvasColors()`, `cardBg()`,
-    `setUiScale`. `toast.ts` also has `hint()` (dismissible) and
+  - `settings.ts` settings popup {theme incl. System, language incl.
+    Auto, UI scale, canvas prefs, formatting, toolbar-palette editor,
+    templates} + `openAboutPopup` (Help > About: `__APP_VERSION__`,
+    storage meter, source link); `theme.ts` light/dark/system state
+    (unset follows the OS, `systemDark()`), `canvasColors()`,
+    `cardBg()`, `setUiScale`. `toast.ts` also has `hint()` (dismissible) and
     `choice()` (one action + dismiss). `locale.ts` holds number/
     currency/date formatting prefs (browserLang + currency) read by
     table cells. `capture.ts` is the quick-capture popup (text ->
     Unsorted note). Language switches persist + reload; strings.ts
-    bootLang() reads the saved pref before module-level label tables
-    are captured.
+    bootLang() reads the saved pref, else the browser language list,
+    before module-level label tables are captured.
   - `chips.ts` label/reaction chips overlay, `pins.ts` comment pins
     (both seated into `.cards` after their card to honour el.z; member
     anchors stay in the host),
     `shortcutpanel.ts` `/` modal, `topbar.ts` crumbs/zoom/unsorted
-    chip/Export + View menus,
+    chip/Export + View + Help menus,
     `icons.ts` all SVG icon strings, `util.ts` `dragGhost`,
     `files.ts` file/image ingest + paste parsing + `fmtSize`,
     `embeds.ts` provider URL -> iframe src parsing (YouTube/Vimeo/
-    Spotify/SoundCloud/Maps; no fetch).
+    Spotify/SoundCloud/Maps; no fetch). `shortcuts.ts` is the global
+    keydown map (modal surfaces own their keys); `unfurl.ts` is the
+    link-preview fetch through api.allorigins.win, the only fetch in
+    the codebase besides embed iframes.
+- `src/lang/`: lazy locale tables (de/es/fr/pt) loaded by
+  `strings.loadLang`; en lives inline in strings.ts.
 - `src/export/`: board-level export writers, all client-side:
   `boardpng.ts` raster (offscreen CardsLayer mounts every card, svg
   foreignObject snapshot via a data-URL image; blob: svg URLs taint
@@ -136,7 +147,11 @@ reactions, comments, unsorted, and trash.
   is the first-boot migration source and fallback),
   `blobs.ts` IndexedDB blob store {blobRef -> Blob} + objectURL cache +
   orphan purge; `blobRefsInDoc` covers elements, trash, board icons
-  and template elements.
+  and template elements. All storage ids are `scatterboard:*`; the
+  remaining `planboard:*` literals exist only for the one-time
+  copy-forward from pre-rename installs. `scatterboard:lang` and
+  `scatterboard:theme` mirror explicit prefs so boot can resolve
+  them synchronously; unset means follow the browser/OS.
 - `src/app.ts`: wiring: selection, drag gestures entry points, canvas
   overlays (chips/pins/label pills/connect handle), render loop,
   autosave. Collaborators live in `src/app/`: `editing.ts` (edit
@@ -149,8 +164,15 @@ reactions, comments, unsorted, and trash.
   pins, annotation seating, connect handle, coveredByCard). Delegates
   reach App internals via
   an `App` back-reference; App keeps public shims for outside callers.
-- `src/state/seed.ts`: first-run welcome board + test-harness seed
-  (was main.ts).
+- `src/main.ts` + `src/boot.ts`: entry. main.ts loads the boot locale
+  (`strings.loadLang`) before importing boot so module-level label
+  tables capture the right strings, then registers `sw.js` in prod
+  only (`?v=__BUILD_ID__` busts the runtime cache per deploy). boot.ts
+  runs `migrateStorageKeys`, picks the adapter (sqlite OPFS else
+  localStorage), loads/seeds/migrates the doc, mounts App, and applies
+  the initial `#/b/`/`#/e/` route; `window.__app` is dev-only.
+- `src/state/seed.ts`: first-run welcome board + `seedPerfDoc(n)`
+  profiling doc (dev-only `?seed=N`).
 - `src/ui/sanitize.ts`: whitelist HTML scrubber applied to richtext
   fields on JSON import (note/heading/document/table cells).
   `presenting` body class hides chrome (DOM stays mounted), `dims()`
@@ -223,8 +245,8 @@ reactions, comments, unsorted, and trash.
   comparable visual-board tools; never copy a third party's assets or
   text.
 - Compact idiomatic TS; no comments unless the code is non-obvious.
-- Budget: under 150KB JS gzip per chunk (currently ~90KB initial;
-  largest ~85KB). `npm run sizecheck` gates it after `vite build`;
+- Budget: under 150KB JS gzip per chunk (currently ~95KB initial;
+  largest ~87KB). `npm run sizecheck` gates it after `vite build`;
   editors, export writers, seed and non-en locales are lazy chunks.
 - Dark mode: CSS vars on `body` flipped by `body.dark`; canvas colors
   from `theme.ts canvasColors()`; user card colours darken via
