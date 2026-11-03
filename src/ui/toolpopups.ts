@@ -528,39 +528,60 @@ export function openLinkInfoPopup(anchor: HTMLElement, url: string, onCopy: () =
 interface ViewMenuApi {
   presentOpts(): PresentOpts;
   onToggle(key: keyof PresentOpts): void;
+  grid(): boolean;
+  onToggleGrid(): void;
+  onPresent(): void;
 }
 
-// Topbar View menu: the per-board presentation toggles. Rows keep the
-// popup open and flip their check in place.
+// Topbar View menu: present entry, the per-board dot-grid toggle and
+// the presentation toggles. Check rows keep the popup open and flip
+// their check in place.
 export function openViewMenu(anchor: HTMLElement, api: ViewMenuApi): ToolPopup {
   const node = document.createElement('div');
   node.className = 'menu-body';
   const pop = openToolPopup(anchor, node, true);
 
-  const toggleRow = (label: string, key: keyof PresentOpts) => {
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'pop-row';
+  const row = (label: string) => {
+    const r = document.createElement('button');
+    r.type = 'button';
+    r.className = 'pop-row';
     const lab = document.createElement('span');
     lab.className = 'pop-label';
     lab.textContent = label;
+    r.appendChild(lab);
+    node.appendChild(r);
+    return r;
+  };
+  const toggleRow = (label: string, checked: () => boolean, onPick: () => void) => {
+    const r = row(label);
     const ck = document.createElement('span');
     ck.className = 'pop-check';
     ck.innerHTML = ICONS.check;
     const sync = () => {
-      ck.style.visibility = api.presentOpts()[key] ? 'visible' : 'hidden';
+      ck.style.visibility = checked() ? 'visible' : 'hidden';
     };
     sync();
-    row.append(lab, ck);
-    row.addEventListener('click', () => {
-      api.onToggle(key);
+    r.appendChild(ck);
+    r.addEventListener('click', () => {
+      onPick();
       sync();
     });
-    node.appendChild(row);
   };
-  toggleRow(t('focusSelected'), 'focus');
-  toggleRow(t('hideComments'), 'comments');
-  toggleRow(t('preventEditing'), 'edit');
+
+  const present = row(t('viewPresent'));
+  const hint = document.createElement('span');
+  hint.className = 'pop-hint';
+  hint.textContent = 'Cmd+Opt+P';
+  present.appendChild(hint);
+  present.addEventListener('click', () => {
+    pop.close();
+    api.onPresent();
+  });
+
+  toggleRow(t('viewGrid'), api.grid, api.onToggleGrid);
+  toggleRow(t('focusSelected'), () => !!api.presentOpts().focus, () => api.onToggle('focus'));
+  toggleRow(t('hideComments'), () => !!api.presentOpts().comments, () => api.onToggle('comments'));
+  toggleRow(t('preventEditing'), () => !!api.presentOpts().edit, () => api.onToggle('edit'));
 
   return pop;
 }

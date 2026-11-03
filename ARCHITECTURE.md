@@ -25,7 +25,7 @@ No framework lock-in, minimal dependencies, instant cold start.
      cards intersecting the viewport (plus margin) are mounted; the DOM
      holds the visible set, the model holds everything.
 - **State**: plain object graph (boards/elements/comments/labels per the
-  schema in FEATURES.md) + a tiny event emitter. Mutations are typed
+  schema in `src/state/schema.ts`) + a tiny event emitter. Mutations are typed
   action objects `{type, payload}` applied to state, appended to an
   undo stack, and queued for persistence, so undo/redo and future sync
   share one code path.

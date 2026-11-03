@@ -11,9 +11,6 @@ import { canvasBlob, cropImage, oriented, removeBackground, type CropRect } from
 
 import type { ImgMode } from './imgmode';
 
-export type { ImgMode } from './imgmode';
-export { imgModeFromHash, imgModeParam } from './imgmode';
-
 interface ImgEditorCtx {
   doc(): ImageDoc | null;
   patch(doc: ImageDoc): void;

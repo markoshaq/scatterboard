@@ -214,6 +214,8 @@ const table: Partial<Record<StringKey, string>> = {
   focusSelected: 'Foco nos cartões selecionados',
   hideComments: 'Ocultar comentários',
   preventEditing: 'Bloquear edição',
+  viewPresent: 'Apresentar',
+  viewGrid: 'Grade de pontos',
   exportMenu: 'Exportar',
   exImgHead: 'Layout do quadro',
   exPng: 'Quadro como PNG',

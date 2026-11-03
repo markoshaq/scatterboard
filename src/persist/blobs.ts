@@ -200,20 +200,6 @@ export async function purgeOrphanBlobs(doc: Doc): Promise<void> {
   }
 }
 
-// Release blobs held by trash entries that are being purged, unless a live
-// element still shares the ref.
-export async function releaseTrashBlobs(doc: Doc, ids: ID[]): Promise<void> {
-  const refs = new Set<ID>();
-  for (const id of ids) {
-    const r = blobRefOf(doc.trash[id]!.el);
-    if (r) refs.add(r);
-  }
-  const live = blobRefsInDoc({ ...doc, trash: {} });
-  for (const id of refs) {
-    if (!live.has(id)) await deleteBlob(id).catch(() => {});
-  }
-}
-
 // Total bytes across stored blobs, for the settings storage meter.
 export async function blobTotalSize(): Promise<number> {
   try {

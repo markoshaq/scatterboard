@@ -217,6 +217,8 @@ const en = {
   focusSelected: 'Focus on selected cards',
   hideComments: 'Hide comments',
   preventEditing: 'Prevent editing',
+  viewPresent: 'Present',
+  viewGrid: 'Dot grid',
   exportMenu: 'Export',
   exImgHead: 'Board layout',
   exPng: 'Board as PNG',

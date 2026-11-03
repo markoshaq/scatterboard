@@ -209,7 +209,6 @@ sync-access-handle pool in a worker, localStorage as migration source
 and fallback, media blobs in IndexedDB. The service worker (production
 builds only) caches the shell and hashed assets for offline use.
 
-- [FEATURES.md](FEATURES.md): the feature spec, card by card
 - [AGENTS.md](AGENTS.md): current source layout and conventions
 - [ARCHITECTURE.md](ARCHITECTURE.md): the original design proposal,
   kept for context

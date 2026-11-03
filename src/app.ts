@@ -581,6 +581,9 @@ export class App {
     openViewMenu(anchor, {
       presentOpts: () => this.board()?.presentOpts ?? {},
       onToggle: (key) => this.togglePresentOpt(key),
+      grid: () => this.board()?.grid ?? true,
+      onToggleGrid: () => this.toggleGrid(),
+      onPresent: () => this.enterPresent(),
     });
   }
 

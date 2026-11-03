@@ -216,6 +216,8 @@ const table: Partial<Record<StringKey, string>> = {
   focusSelected: 'Auf ausgewählte Karten fokussieren',
   hideComments: 'Kommentare ausblenden',
   preventEditing: 'Bearbeiten verhindern',
+  viewPresent: 'Präsentieren',
+  viewGrid: 'Punktraster',
   exportMenu: 'Exportieren',
   exImgHead: 'Boardlayout',
   exPng: 'Board als PNG',

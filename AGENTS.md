@@ -93,7 +93,8 @@ calls; fully offline.
     markdown autoformat, `richKeydown`, `isBlankSurface`.
   - `popup.ts` anchored tool popups (one open, Esc/outside-down close),
     `toolpopups.ts` colour/labels/reactions/menu/text-style/link
-    builders + `openViewMenu` (topbar View menu: presentation toggles),
+    builders + `openViewMenu` (topbar View menu: Present entry, per-board
+    dot-grid toggle, presentation toggles),
     `duepopup.ts` the original dismiss pattern.
   - `panel.ts` slide-over chrome shared by Unsorted/Trash/Search
     (`openSearchPanel` in `search.ts`).
