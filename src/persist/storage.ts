@@ -37,6 +37,11 @@ export interface Prefs {
   recentBoards?: ID[];
   // Online extra (off by default): fetch link-card previews.
   unfurl?: boolean;
+  // Local agent (off by default): let a localhost bridge drive the
+  // board over WebSocket. agentBridge holds the paired bridge identity
+  // so later sessions reconnect without a fresh pairing URL.
+  agent?: boolean;
+  agentBridge?: { id: string; key: string };
 }
 
 export interface PersistedWorkspace {

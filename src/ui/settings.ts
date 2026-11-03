@@ -16,8 +16,10 @@ interface SettingsApi {
   onBrowserLang(v: boolean): void;
   currency(): Currency;
   onCurrency(c: Currency): void;
-  flag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl'): boolean;
-  onFlag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl', v: boolean): void;
+  flag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl' | 'agent'): boolean;
+  onFlag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl' | 'agent', v: boolean): void;
+  // Whether the agent bridge socket is live right now.
+  agentStatus(): boolean;
   // Alignment-guide opacity: 1 full, 0.5 faint, 0 hidden.
   guideAlpha(): number;
   onGuideAlpha(v: number): void;
@@ -33,6 +35,21 @@ interface SettingsApi {
 
 export const SCALE_STEPS = [0.85, 1, 1.15];
 const CURRENCIES: Currency[] = ['USD', 'EUR', 'GBP', 'JPY'];
+
+// The agent bridge socket lives in the lazy agent chunk; it posts this
+// event on connect/drop so an open settings popup can refresh the
+// status line without importing the chunk.
+let agentStatusRow: HTMLElement | null = null;
+let agentStatusApi: SettingsApi | null = null;
+window.addEventListener('sb-agent-status', () => {
+  if (agentStatusRow && !agentStatusRow.isConnected) {
+    agentStatusRow = null;
+    agentStatusApi = null;
+  }
+  if (agentStatusRow && agentStatusApi) {
+    agentStatusRow.textContent = agentStatusApi.agentStatus() ? t('agentStatusOn') : t('agentStatusOff');
+  }
+});
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -194,6 +211,19 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
 
   group(t('setOnline'));
   toggle(t('setUnfurl'), () => api.flag('unfurl'), (v) => api.onFlag('unfurl', v));
+  agentStatusApi = api;
+  agentStatusRow = document.createElement('div');
+  agentStatusRow.className = 'ts-head';
+  const syncAgentStatus = () => {
+    agentStatusRow!.style.display = api.flag('agent') ? '' : 'none';
+    agentStatusRow!.textContent = api.agentStatus() ? t('agentStatusOn') : t('agentStatusOff');
+  };
+  toggle(t('setAgent'), () => api.flag('agent'), (v) => {
+    api.onFlag('agent', v);
+    syncAgentStatus();
+  });
+  syncAgentStatus();
+  node.appendChild(agentStatusRow);
 
   const tbRow = document.createElement('button');
   tbRow.type = 'button';

@@ -67,6 +67,14 @@ export async function boot() {
     app.applyRoute();
   }
 
+  // Agent surface is a lazy chunk: ?do= command links and ?agent=
+  // pairing plus the stored Local agent pref all boot it on demand.
+  const q = new URLSearchParams(location.search);
+  if (q.has('do') || q.has('agent') || app.prefs.agent) {
+    const { init } = await import('./agent/index');
+    init(app);
+  }
+
   window.addEventListener('hashchange', () => app.applyRoute());
   window.addEventListener('pagehide', () => void app.flush());
   document.addEventListener('visibilitychange', () => {

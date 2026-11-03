@@ -1,5 +1,5 @@
 import type { App } from '../app';
-import { blobRefOf, UNSORTED, type Element } from '../state/schema';
+import { blobRefOf, UNSORTED, type Element, type ID } from '../state/schema';
 import { getBlob } from '../persist/blobs';
 import { Viewport, type Rect } from '../canvas/viewport';
 import { CardsLayer } from '../cards/layer';
@@ -139,10 +139,19 @@ export class BoardExport {
   }
 
 
-  async exportPng() {
+  // Shared raster path for the Export menu and the agent snapshot
+  // command: opens the board first when the caller targets another one.
+  async snapshotPng(boardId?: ID): Promise<Blob | null> {
+    if (boardId && boardId !== this.a.boardId) this.a.openBoard(boardId);
     const cv = await this.boardRaster(2);
+    if (!cv) return null;
     const { toBlob } = await import('../export/boardpng');
-    const blob = cv && (await toBlob(cv, 'image/png'));
+    return toBlob(cv, 'image/png');
+  }
+
+
+  async exportPng() {
+    const blob = await this.snapshotPng();
     if (!blob) {
       toast(t('exFail'));
       return;

@@ -130,6 +130,10 @@ export class App {
 
   prefs: Prefs = {};
 
+  // Live bridge socket state, driven by the lazy agent client; read by
+  // the settings status line.
+  agentConnected = false;
+
 
   get overlayOpen() {
     return this.overlay !== null || this.boardDraw !== null;
@@ -1951,7 +1955,9 @@ export class App {
         this.prefs[k] = v;
         save();
         this.requestRender();
+        if (k === 'agent') void import('./agent/index').then((m) => m.setAgentEnabled(this, v));
       },
+      agentStatus: () => this.agentConnected,
       guideAlpha: () => this.prefs.guideAlpha ?? 0,
       onGuideAlpha: (v) => {
         this.prefs.guideAlpha = v;
