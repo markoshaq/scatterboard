@@ -119,6 +119,31 @@ Markdown, or plain text with an "Include sub-boards" toggle, a zip of
 every image and file, and full-board JSON. JSON export/import doubles
 as device-to-device sync.
 
+### Agents & MCP
+
+External AI agents can drive a live board: create, patch, connect, and
+remove cards, read boards and elements, select, pan/zoom, undo/redo,
+and take PNG snapshots, all as normal undoable history. Two entry
+points, both opt-in:
+
+- Command links. `?do=<base64url JSON>` in the URL runs a command list
+  once at boot inside one undo entry; a bad command leaves the board
+  untouched. The payload is `{commands:[{method,params}]}` or a bare
+  array; methods: `boards`, `openBoard`, `elements`, `get`, `create`,
+  `patch`, `remove`, `connect`, `select`, `view`, `snapshot`, `undo`,
+  `redo`, `batch`, `dispatch`.
+- Local bridge + MCP. `bridge/agent.mjs` (Node >=20,
+  `cd bridge && npm install` once) pairs with the app over
+  `ws://127.0.0.1` and speaks MCP on stdio:
+  `devin mcp add scatterboard -- node bridge/agent.mjs`. Call `sb_open`
+  to open the pairing URL in a browser; pairing once stores a key, so
+  later sessions reconnect without it. The `sb_*` tools mirror the
+  command methods above, and the same JSON-RPC works directly on the
+  WebSocket for non-MCP agents.
+
+Every mutating command lands in the undo history and is refused while
+presenting with editing locked.
+
 ## Keyboard
 
 Press `/` in the app for the full map. Essentials:
@@ -149,6 +174,12 @@ only when used:
   page's title through the same proxy.
 
 Both degrade silently to manual titles and placeholders offline.
+
+- "Local agent" (off by default, Settings > Online extras) connects
+  the app to a bridge you run yourself over `ws://127.0.0.1` only. The
+  bridge pairs via a per-run token, never leaves the loopback
+  interface, and stores one key for tokenless reconnects. While
+  enabled, a local agent process can read and edit boards.
 
 ## Requirements
 

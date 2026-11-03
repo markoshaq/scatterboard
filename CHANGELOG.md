@@ -4,6 +4,13 @@ Notable changes per release, newest first. Sections: Added, Changed, Fixed, Remo
 
 ## [Unreleased]
 
+### Added
+
+- Agent API (lazy chunk): external tools can create, patch, connect, and remove cards, read boards and elements, select, pan/zoom, undo/redo, and take PNG snapshots, all as ordinary undoable history and refused while presenting with editing locked.
+- `?do=` command links: a base64url JSON command list in the URL runs once at boot inside one undo entry; a bad command leaves the board untouched.
+- "Local agent" setting (off by default) connects the app to a localhost bridge over WebSocket once it is paired, with a live status line in Settings > Online extras.
+- `bridge/agent.mjs`: a Node bridge that pairs with the app on `ws://127.0.0.1` and serves MCP on stdio (`sb_*` tools mirror the command set); the same JSON-RPC also works directly on the WebSocket.
+
 ## [0.1.1] - 2026-11-03
 
 Bug fixes and small feature polish on 0.1.0.

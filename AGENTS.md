@@ -178,6 +178,24 @@ calls; fully offline.
   the initial `#/b/`/`#/e/` route; `window.__app` is dev-only.
 - `src/state/seed.ts`: first-run welcome board + `seedPerfDoc(n)`
   profiling doc (dev-only `?seed=N`).
+- `src/agent/` (lazy chunk, loaded by boot on `?do=`/`?agent=`/
+  `prefs.agent` or by the settings toggle): `api.ts`
+  `createAgentApi(app)` over a structural `AgentHost` interface;
+  commands plan-validate first, then run inside one store group
+  (abort = endGroup + undo + future cleared; nested batches join the
+  outer group). `validate.ts` `AgentError {code,message}` + field/ref/
+  shape checks; `cmdurl.ts` `?do=<base64url JSON>` one-shot command
+  lists; `client.ts` persistent `ws://127.0.0.1` session (token pair,
+  stored-key reconnect, backoff, serialized requests,
+  `sb-agent-status` window event for the settings status line);
+  `index.ts` `init` + `setAgentEnabled`.
+- `bridge/agent.mjs`: node >=20 localhost bridge + MCP stdio server
+  (`ws` + `@modelcontextprotocol/sdk` in `bridge/package.json`, a
+  separate manifest from the app). One app session at a time: Origin
+  allowlist on upgrade, token pair then `{bridgeId,key}` reconnect,
+  identity in `~/.config/scatterboard-agent`
+  (`%APPDATA%\scatterboard-agent` on Windows). Agent sockets and the
+  `sb_*` MCP tools relay `{id,method,params}` to the app.
 - `src/ui/sanitize.ts`: whitelist HTML scrubber applied to richtext
   fields on JSON import (note/heading/document/table cells).
   `presenting` body class hides chrome (DOM stays mounted), `dims()`
