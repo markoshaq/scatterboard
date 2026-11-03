@@ -27,506 +27,498 @@ import {
 import { putBlob } from '../persist/blobs';
 import { t } from '../strings';
 
+function circlePts(cx: number, cy: number, r: number, n = 48, from = 0): [number, number][] {
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= n; i++) {
+    const a = from + (i / n) * Math.PI * 2;
+    pts.push([Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r)]);
+  }
+  return pts;
+}
+
+function ellipsePts(cx: number, cy: number, rx: number, ry: number, n = 56, from = 0): [number, number][] {
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= n; i++) {
+    const a = from + (i / n) * Math.PI * 2;
+    pts.push([Math.round(cx + Math.cos(a) * rx), Math.round(cy + Math.sin(a) * ry)]);
+  }
+  return pts;
+}
+
+function wavePts(x1: number, x2: number, y: number, amp: number, period: number): [number, number][] {
+  const pts: [number, number][] = [];
+  for (let x = x1; x <= x2; x += 8) pts.push([x, Math.round(y + Math.sin((x - x1) / period) * amp)]);
+  return pts;
+}
+
+// Cover art shipped with the welcome board: scattered card shapes over
+// a gradient nightfall. Drawn as SVG so the seeded blob stays tiny.
+const COVER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640">
+<defs>
+<linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#101832"/>
+<stop offset=".55" stop-color="#2a4a86"/>
+<stop offset="1" stop-color="#e08a54"/>
+</linearGradient>
+<radialGradient id="s" cx=".5" cy=".5" r=".5">
+<stop offset="0" stop-color="#ffe2b0" stop-opacity=".85"/>
+<stop offset="1" stop-color="#ffe2b0" stop-opacity="0"/>
+</radialGradient>
+</defs>
+<rect width="960" height="640" fill="url(#g)"/>
+<g fill="#fff" opacity=".18">
+<rect x="120" y="80" width="96" height="62" rx="8" transform="rotate(-8 168 111)"/>
+<rect x="420" y="56" width="96" height="62" rx="8" transform="rotate(6 468 87)"/>
+<rect x="700" y="110" width="96" height="62" rx="8" transform="rotate(-5 748 141)"/>
+</g>
+<g stroke="#fff" stroke-width="1.5" opacity=".3">
+<line x1="150" y1="150" x2="220" y2="90"/>
+<line x1="220" y1="90" x2="300" y2="140"/>
+<line x1="300" y1="140" x2="360" y2="80"/>
+<line x1="560" y1="170" x2="640" y2="110"/>
+<line x1="640" y1="110" x2="730" y2="160"/>
+<line x1="820" y1="70" x2="880" y2="130"/>
+</g>
+<g fill="#fff">
+<circle cx="150" cy="150" r="4" opacity=".9"/>
+<circle cx="220" cy="90" r="3" opacity=".7"/>
+<circle cx="300" cy="140" r="4" opacity=".9"/>
+<circle cx="360" cy="80" r="2.5" opacity=".6"/>
+<circle cx="560" cy="170" r="3" opacity=".7"/>
+<circle cx="640" cy="110" r="4" opacity=".9"/>
+<circle cx="730" cy="160" r="2.5" opacity=".6"/>
+<circle cx="820" cy="70" r="3" opacity=".8"/>
+<circle cx="880" cy="130" r="4" opacity=".9"/>
+<circle cx="90" cy="220" r="2.5" opacity=".6"/>
+<circle cx="430" cy="190" r="2" opacity=".5"/>
+<circle cx="510" cy="70" r="3" opacity=".8"/>
+<circle cx="70" cy="60" r="3" opacity=".7"/>
+<circle cx="910" cy="230" r="2.5" opacity=".6"/>
+<circle cx="250" cy="230" r="2" opacity=".5"/>
+</g>
+<circle cx="700" cy="404" r="170" fill="url(#s)"/>
+<circle cx="700" cy="404" r="76" fill="#ffdca6"/>
+<path d="M0 470 L160 330 L300 440 L430 350 L560 470 L700 390 L840 480 L960 410 L960 640 L0 640 Z" fill="#26365e"/>
+<path d="M0 545 L120 430 L260 525 L400 450 L560 555 L720 470 L880 565 L960 505 L960 640 L0 640 Z" fill="#1a2745"/>
+<path d="M0 605 L200 515 L380 590 L560 525 L760 605 L960 545 L960 640 L0 640 Z" fill="#111c33"/>
+</svg>`;
+
+const GUIDE_MD = `# Scatterboard 101
+
+- Double-click any card to edit it
+- Drag cards to move them, drop them into columns to file them
+- Pull a line out from any card edge to connect ideas
+- Space + drag pans, scroll zooms, Z fits the whole board
+- / opens every shortcut
+- Cards file to Unsorted and recover from Trash, both in the top bar
+- Everything saves locally, all the time
+`;
+
+// The welcome board references two generated blobs; writes go through
+// the normal IndexedDB store so image/file cards resolve like any
+// ingest. Best-effort: a failed write just leaves a placeholder.
+function seedBlobs(): { imgRef: string; fileRef: string; fileSize: number } {
+  const imgRef = uid();
+  const fileRef = uid();
+  const file = new Blob([GUIDE_MD], { type: 'text/markdown' });
+  void putBlob(imgRef, new Blob([COVER_SVG], { type: 'image/svg+xml' })).catch(() => {});
+  void putBlob(fileRef, file).catch(() => {});
+  return { imgRef, fileRef, fileSize: file.size };
+}
+
 export function seedDoc(): Doc {
   const doc = emptyDoc();
-  const home = createBoard({ id: 'home', title: t('homeTitle') });
+  const home = createBoard({ id: 'home', title: t('homeTitle'), icon: 'g:rocket', color: '#e8734a' });
   doc.boards[home.id] = home;
+  const bid = home.id;
+  const { imgRef, fileRef, fileSize } = seedBlobs();
 
-  // First-run welcome board: a polished launch plan that doubles as a
-  // tour of every card type, laid out like a real working board.
+  // First-open camera, written as the saved transform restore() picks
+  // up: the board point that lands on screen centre so the framing
+  // holds at any window size.
+  const cam = { x: 1.0893690280176525, y: 81.20198682296765, z: 0.9477688080966911 };
+  home.position = {
+    x: innerWidth / 2 - cam.x * cam.z,
+    y: innerHeight / 2 - cam.y * cam.z,
+    z: cam.z,
+  };
+
+  // First-run welcome board: a poster that is also a working tour of
+  // every card type and trick, centred on the origin so the default
+  // view opens on the hero.
   const now = Date.now();
   const put = (el: Element) => {
     doc.elements[el.id] = el;
     return el;
   };
+  const note = (x: number, y: number, text: string, w?: number) => {
+    const el = put(createNote(doc, bid, x, y, text));
+    if (w !== undefined) el.w = w;
+    return el;
+  };
 
-  const wHead = put(createHeading(doc, home.id, 0, 0, 1));
-  wHead.content = { heading: { text: 'Mercury launch', level: 1 } };
-  const wSub = put(createHeading(doc, home.id, 0, 58, 2));
-  wSub.content = { heading: { text: 'One board, every card type. Double-click anything to edit.', level: 2 } };
+  const lblFeature = createLabel(bid, 'Feature', '#3d84e0');
+  const lblTip = createLabel(bid, 'Tip', '#5f9e5f');
+  const lblTry = createLabel(bid, 'Try me', '#e8734a');
+  const lblIdea = createLabel(bid, 'Idea', '#d6508f');
+  doc.labels[lblFeature.id] = lblFeature;
+  doc.labels[lblTip.id] = lblTip;
+  doc.labels[lblTry.id] = lblTry;
+  doc.labels[lblIdea.id] = lblIdea;
 
-  const intro = put(createNote(doc, home.id, 0, 130));
+  // --- Hero ---
+  const h1 = put(createHeading(doc, bid, -520, -280, 1));
+  h1.w = 560;
+  h1.content = { heading: { text: 'Scatterboard', level: 1 } };
+  put(createAnnotation(doc, bid, [{ pts: wavePts(-512, -16, -230, 6, 60), color: '#e8734a', size: 5 }]));
+  const h2 = put(createHeading(doc, bid, -516, -210, 2));
+  h2.w = 560;
+  h2.content = { heading: { text: 'An infinite canvas where every idea gets a card', level: 2 } };
+
+  const intro = note(-516, -160, '', 300);
   intro.content = {
     note: {
-      text: 'Welcome to Scatterboard\nDrag cards anywhere, double-click to write, draw a line between ideas, label what matters and react where it lands. Everything here is a real card.',
-      html: '<p>Welcome to <b>Scatterboard</b></p><p>Drag cards anywhere, <b>double-click</b> to write, draw a line between ideas, label what matters and react where it lands. Everything here is a real card.</p>',
+      text: 'Welcome aboard\nA local-first planning wall. Everything on this page is a real card: move it, edit it, delete it. Nothing ever leaves your machine.',
+      html: '<p><b>Welcome aboard</b></p><p>A local-first planning wall. Everything on this page is a real card: move it, edit it, delete it. Nothing ever leaves your machine.</p>',
     },
   };
-  intro.reactions = ['🚀', '💡', '👀'];
+  intro.reactions = ['🚀', '💡', '✨'];
+  intro.labels = [lblFeature.id];
 
-  const howTo = put(createNote(doc, home.id, 300, 130));
+  const howTo = note(-516, 17, '', 280);
   howTo.color = '#e8f0fe';
   howTo.content = {
     note: {
-      text: 'Get around fast\nSpace + drag to pan, scroll to zoom, / for every shortcut.',
-      html: '<div class="tx-check">Space + drag to pan, scroll to zoom</div><div class="tx-check">/ for every shortcut</div>',
+      text: 'Get around\nSpace + drag to pan\nScroll to zoom\nZ to fit the board\n/ for every shortcut',
+      html: '<p><b>Get around</b></p><div class="tx-check">Space + drag to pan</div><div class="tx-check">Scroll to zoom</div><div class="tx-check">Z to fit the board</div><div class="tx-check">/ for every shortcut</div>',
     },
   };
-  howTo.labels = [];
+  howTo.labels = [lblTip.id];
 
-  const lblShip = createLabel(home.id, 'Ship it', '#d6508f');
-  const lblRisk = createLabel(home.id, 'At risk', '#e8734a');
-  const lblWin = createLabel(home.id, 'On track', '#5f9e5f');
-  doc.labels[lblShip.id] = lblShip;
-  doc.labels[lblRisk.id] = lblRisk;
-  doc.labels[lblWin.id] = lblWin;
-  intro.labels = [lblShip.id];
-
-  const colNow = put(createColumn(doc, home.id, 0, 330, 'This week'));
-  const nowMembers: [string, string | undefined][] = [
-    ['Freeze the release branch', '#e9f5ec'],
-    ['QA pass on install flow', '#fdf2e0'],
-    ['Draft launch notes', undefined],
-  ];
-  for (const [text, color] of nowMembers) {
-    const m = createNote(doc, home.id, 0, 0, text);
-    m.parentId = colNow.id;
-    if (color) m.color = color;
-    doc.elements[m.id] = m;
-  }
-  const colNext = put(createColumn(doc, home.id, 300, 330, 'Next up'));
-  for (const text of ['Record the 45s demo', 'Update the press kit']) {
-    const m = createNote(doc, home.id, 0, 0, text);
-    m.parentId = colNext.id;
-    doc.elements[m.id] = m;
-  }
-  const colLater = put(createColumn(doc, home.id, 600, 330, 'Later'));
-  for (const text of ['Localization sweep', 'Post-launch retro']) {
-    const m = createNote(doc, home.id, 0, 0, text);
-    m.parentId = colLater.id;
-    doc.elements[m.id] = m;
-  }
-
-  const wTodo = put(createTodo(doc, home.id, 900, 330));
-  wTodo.labels = [lblRisk.id];
-  wTodo.content = {
-    todo: {
-      title: 'Launch checklist',
-      showTitle: true,
-      items: [
-        { id: 'w-t1', text: 'Tag the release build', done: true },
-        { id: 'w-t2', text: 'Freeze the changelog', done: false, dueAt: now + 86400000 },
-        { id: 'w-t3', text: 'Brief support on top issues', done: false, assignee: 'self' as const },
-        { id: 'w-t4', text: 'Flip the pricing page', done: false },
-        { id: 'w-t5', text: 'Schedule the announcement', done: false },
+  const heroImg = put(createImage(doc, bid, 18, -268, imgRef, 'cover.svg', 1.5, 960, 640));
+  heroImg.w = 480;
+  heroImg.content = {
+    image: {
+      blobRef: imgRef,
+      name: 'cover.svg',
+      caption: 'Draw right on images',
+      aspect: 1.5,
+      natW: 960,
+      natH: 640,
+      strokes: [
+        { pts: ellipsePts(700, 404, 122, 122, 64), color: '#e8734a', size: 14 },
+        { pts: [[500, 240], [560, 300], [604, 344]], color: '#e8734a', size: 10 },
+        { pts: [[604, 344], [566, 332]], color: '#e8734a', size: 10 },
+        { pts: [[604, 344], [596, 304]], color: '#e8734a', size: 10 },
       ],
     },
   };
 
-  const archive = createBoard({ title: 'Archive', parentId: home.id });
-  doc.boards[archive.id] = archive;
-  ['Cut features', 'Old brainstorms', 'Retro notes'].forEach((text, i) => {
-    const n = createNote(doc, archive.id, 120, 100 + i * 120, text);
-    doc.elements[n.id] = n;
-  });
-  const archiveCard = put(createBoardCard(doc, home.id, archive.id, 1220, 340));
+  const heroPin = put(createComment(doc, bid, 240, -345, heroImg.id));
+  heroPin.content = {
+    comment: {
+      items: [
+        { id: 'w-c1', text: 'Pins are comment threads anchored to a card.', createdAt: now - 5400000 },
+        { id: 'w-c2', text: 'Click me to read or reply.', createdAt: now - 4800000 },
+      ],
+    },
+  };
 
-  const secTools = put(createHeading(doc, home.id, 0, 700, 2));
-  secTools.content = { heading: { text: 'Everything is a card', level: 2 } };
+  const lineIntro = createLine(doc, bid, { el: intro.id, x: intro.x, y: intro.y }, { el: heroImg.id, x: heroImg.x, y: heroImg.y });
+  lineIntro.content = { line: { ...lineDoc(lineIntro)!, label: 'draw on me' } };
+  put(lineIntro);
 
-  const wDoc = put(createDocument(doc, home.id, 0, 760));
+  // --- The card gallery ---
+  const h2gal = put(createHeading(doc, bid, 640, -280, 2));
+  h2gal.w = 440;
+  h2gal.content = { heading: { text: 'Every idea gets a card', level: 2 } };
+
+  const demoNote = note(640, -242, '', 240);
+  demoNote.color = '#fdf2e0';
+  demoNote.labels = [lblTip.id];
+  demoNote.reactions = ['👍'];
+  demoNote.content = {
+    note: {
+      text: 'Notes carry rich text: bold, italic, inline code, lists and links.',
+      html: '<p><b>Notes</b> carry <i>rich text</i>, <code>inline code</code>, lists and links.</p>',
+    },
+  };
+
+  const wTodo = put(createTodo(doc, bid, 920, -242));
+  wTodo.w = 260;
+  wTodo.labels = [lblFeature.id];
+  wTodo.content = {
+    todo: {
+      title: 'Try me first',
+      showTitle: true,
+      items: [
+        { id: 'w-t1', text: 'Double-click a card to edit', done: true },
+        { id: 'w-t2', text: 'Drag me into a column below', done: true },
+        { id: 'w-t3', text: 'Press / to see every shortcut', done: false, dueAt: now + 86400000 },
+        { id: 'w-t4', text: 'Pull a line from my edge', done: false, assignee: 'self' as const, reactions: ['👀'] },
+        { id: 'w-t5', text: 'File a card to Unsorted', done: false },
+        { id: 'w-t6', text: 'Make this board yours', done: false },
+      ],
+    },
+  };
+
+  const wTbl = put(createTable(doc, bid, 1220, -242));
+  wTbl.w = 360;
+  wTbl.content = {
+    table: {
+      title: 'Launch metrics',
+      caption: 'Typed cells and live formulas',
+      widths: [130, 80, 80, 70],
+      cells: [
+        [{ text: 'Metric', color: '#e8f0fe' }, { text: 'This week', color: '#e8f0fe' }, { text: 'Last week', color: '#e8f0fe' }, { text: 'Hit?', color: '#e8f0fe' }],
+        [{ text: 'Signups' }, { text: '1890', type: 'number' }, { text: '1240', type: 'number' }, { text: '1', type: 'checkbox' }],
+        [{ text: 'Revenue' }, { text: '4600', type: 'currency' }, { text: '3200', type: 'currency' }, { text: '1', type: 'checkbox' }],
+        [{ text: 'Churn' }, { text: '0.02', type: 'percent' }, { text: '0.04', type: 'percent' }, { text: '0', type: 'checkbox' }],
+        [{ text: 'Trend' }, { text: 'up' }, { text: '=IF(B2>C2,"grew","flat")' }, { text: '2026-11-14', type: 'datetime' }],
+      ],
+    },
+  };
+
+  const wDoc = put(createDocument(doc, bid, 1655, -228));
   wDoc.content = {
     document: {
       title: 'Launch brief',
-      text: 'Goal\nShip Mercury 1.0 on Friday, no scope creep.\n\nWatchouts\nInstaller on older macs, empty-state copy, pricing page cutover.',
-      html: '<h3>Goal</h3><p>Ship <b>Mercury 1.0</b> on Friday, no scope creep.</p><h3>Watchouts</h3><ul><li>Installer on older macs</li><li>Empty-state copy</li><li>Pricing page cutover</li></ul>',
+      text: 'The idea\nOne canvas, every kind of card, zero servers.\n\nWhy it works\nCards stay sharp at any zoom\nUndo goes all the way back\nExports to PNG, PDF, Markdown and zip',
+      html: '<h3>The idea</h3><p>One canvas, every kind of card, <b>zero servers</b>.</p><h3>Why it works</h3><ul><li>Cards stay sharp at any zoom</li><li>Undo goes all the way back</li><li>Exports to PNG, PDF, Markdown and zip</li></ul>',
       displayMode: 'detail',
       caption: 'Documents open as a full editor',
     },
   };
 
-  const wTbl = put(createTable(doc, home.id, 340, 760));
-  wTbl.content = {
-    table: {
-      title: 'Capacity',
-      caption: 'Hours by area this week',
-      cells: [
-        [{ text: 'Area' }, { text: 'Owner' }, { text: 'Hours', color: '#fdf2e0' }],
-        [{ text: 'Engine' }, { text: 'Ana' }, { text: '9', type: 'number' }],
-        [{ text: 'Content' }, { text: 'Lev' }, { text: '6', type: 'number' }],
-        [{ text: 'Total' }, { text: '' }, { text: '=SUM(C2:C3)' }],
-      ],
-    },
-  };
-
-  const wSketch = put(createSketch(doc, home.id, 700, 760));
-  wSketch.content = {
-    sketch: {
-      strokes: [
-        { pts: [[30, 200], [120, 60], [210, 140], [300, 40], [390, 160], [470, 90]], color: '#323b4a', size: 4 },
-        { pts: [[60, 280], [180, 240], [300, 270], [420, 230]], color: '#d6504a', size: 6 },
-      ],
-    },
-  };
-
-  const wLink = put(createLink(doc, home.id, 1080, 760, 'https://example.com'));
-  wLink.content = { link: { url: 'https://example.com', title: 'Status page', caption: 'Watch it during the launch window', showPreview: true } };
-
-  const wVid = put(createEmbed(doc, home.id, 'video', 1380, 760));
-  wVid.content = {
-    embed: {
-      kind: 'video',
-      url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-      title: 'Demo reference',
-      caption: 'Tone to match for our cut',
+  const wLink = put(createLink(doc, bid, 640, 160, 'https://example.com'));
+  wLink.content = {
+    link: {
+      url: 'https://example.com',
+      title: 'Link cards',
+      caption: 'Paste any URL onto the board',
+      desc: 'A saved link with a title, a caption and a preview slot.',
       showPreview: true,
     },
   };
 
-  const sw1 = put(createSwatch(doc, home.id, 0, 1140, '#e8734a'));
-  sw1.content = { swatch: { color: '#e8734a', caption: 'Accent', showValue: true } };
-  const sw2 = put(createSwatch(doc, home.id, 240, 1140, '#3d84e0'));
-  sw2.content = { swatch: { color: '#3d84e0', caption: 'Link blue', showValue: true } };
-  const sw3 = put(createSwatch(doc, home.id, 480, 1140, '#5f9e5f'));
-  sw3.content = { swatch: { color: '#5f9e5f', caption: 'Go green', showValue: true } };
-  const swNote = put(createNote(doc, home.id, 760, 1140, 'Drag these onto the palette well to restyle the board'));
-  swNote.color = '#fdf2e0';
-
-  const wl = createLine(doc, home.id, { el: wTodo.id, x: wTodo.x, y: wTodo.y }, { el: colNow.id, x: colNow.x, y: colNow.y });
-  wl.content = { line: { ...lineDoc(wl)!, label: 'pull into' } };
-  doc.elements[wl.id] = wl;
-  const wl2 = createLine(
-    doc,
-    home.id,
-    { el: archiveCard.id, x: archiveCard.x, y: archiveCard.y },
-    { x: archiveCard.x + 80, y: archiveCard.y + 240 },
-  );
-  doc.elements[wl2.id] = wl2;
-  const wl3 = createLine(doc, home.id, { el: howTo.id, x: howTo.x, y: howTo.y }, { el: intro.id, x: intro.x, y: intro.y });
-  doc.elements[wl3.id] = wl3;
-
-  const wPin = put(createComment(doc, home.id, wTodo.x + 290, wTodo.y + 40, wTodo.id));
-  wPin.content = {
-    comment: {
-      items: [
-        { id: 'w-c1', text: 'Demo recording still blocked on the new icon?', createdAt: now - 3600000 },
-        { id: 'w-c2', text: 'Icon landed this morning, we are good', createdAt: now - 900000 },
-      ],
+  const wVid = put(createEmbed(doc, bid, 'video', 960, 160));
+  wVid.content = {
+    embed: {
+      kind: 'video',
+      url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      title: 'Video embeds',
+      caption: 'YouTube and Vimeo play in place',
+      showPreview: true,
     },
   };
-  const wFree = put(createComment(doc, home.id, 1080, 1140));
-  wFree.content = {
-    comment: { items: [{ id: 'w-c3', text: 'Parking this thought for the retro', createdAt: now - 7200000 }] },
-  };
-
-  const wFiled = createNote(doc, home.id, 0, 0, 'Filed here until it has a home');
-  wFiled.parentId = UNSORTED;
-  doc.elements[wFiled.id] = wFiled;
-
-  const test = createBoard({ id: 'test', title: 'Test harness' });
-  doc.boards[test.id] = test;
-  const colors = [undefined, '#fdf2e0', '#e8f0fe', '#fdebee', '#e9f5ec', '#f3eafd'];
-  const bodies = [
-    'Short note',
-    'A slightly longer note that wraps onto a second line when the card is narrow',
-    'Multi line\nnote with\nthree rows',
-    'Idea: sketch the level flow here',
-    '',
-  ];
-  let i = 0;
-  const seeded: Element[] = [];
-  for (let row = 0; row < 6; row++) {
-    for (let col = 0; col < 10; col++) {
-      const el = createNote(doc, test.id, -1400 + col * 300, -800 + row * 160, `${bodies[i % bodies.length]} ${i + 1}`);
-      const color = colors[i % colors.length];
-      if (color) el.color = color;
-      doc.elements[el.id] = el;
-      seeded.push(el);
-      i++;
-    }
-  }
-
-  const heading = createHeading(doc, test.id, -1400, -1060, 1);
-  heading.content = { heading: { text: 'Sprint plan', level: 1 } };
-  doc.elements[heading.id] = heading;
-
-  const swatch = createSwatch(doc, test.id, -1080, -1080, '#e8734a');
-  swatch.content = { swatch: { color: '#e8734a', caption: 'Primary accent', showValue: true } };
-  doc.elements[swatch.id] = swatch;
-
-  const todo = createTodo(doc, test.id, -760, -1120);
-  todo.content = {
-    todo: {
-      title: 'Launch checklist',
-      showTitle: true,
-      items: [
-        { id: 'seed-t1', text: 'Reserve playtest slot', done: true },
-        { id: 'seed-t2', text: 'Draft patch notes', done: false },
-        {
-          id: 'seed-t3',
-          text: 'Lock store assets',
-          done: false,
-          dueAt: Date.now() + 86400000,
-        },
-        { id: 'seed-t4', text: 'Trim tutorial copy', done: false, assignee: 'self' as const },
-        { id: 'seed-t5', text: 'Smoke test build', done: false },
-      ],
+  const wAud = put(createEmbed(doc, bid, 'audio', 1280, 160));
+  wAud.content = {
+    embed: {
+      kind: 'audio',
+      url: 'https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC',
+      title: 'Audio embeds',
+      caption: 'Spotify and SoundCloud too',
+      showPreview: true,
     },
   };
-  doc.elements[todo.id] = todo;
-
-  const a = seeded[12]!;
-  const b = seeded[14]!;
-  const cNote = seeded[33]!;
-  const linkLine = createLine(doc, test.id, { el: a.id, x: a.x, y: a.y }, { el: b.id, x: b.x, y: b.y });
-  const lc = lineDoc(linkLine)!;
-  linkLine.content = { line: { ...lc, label: 'then' } };
-  doc.elements[linkLine.id] = linkLine;
-
-  const freeLine = createLine(
-    doc,
-    test.id,
-    { el: cNote.id, x: cNote.x, y: cNote.y },
-    { x: cNote.x + 420, y: cNote.y + 120 },
-  );
-  doc.elements[freeLine.id] = freeLine;
-
-  const nested = createBoard({ title: 'Nested demo', parentId: test.id });
-  doc.boards[nested.id] = nested;
-  const nestedTexts = ['Level ideas', 'Boss fight beats', 'Palette refs', 'Open questions'];
-  nestedTexts.forEach((text, idx) => {
-    const n = createNote(doc, nested.id, 160 + idx * 280, 160, text);
-    doc.elements[n.id] = n;
-  });
-
-  const rich = createNote(doc, test.id, 340, -160);
-  rich.content = {
-    note: {
-      text: 'Roadmap\nKickoff with the team on Friday. No slip.\nOrder matters:\nAlpha gates\nBeta sweep\nKeep scope tight.',
-      html: '<h2>Roadmap</h2><p>Kickoff <b>with the team</b> on <i>Friday</i>. <s>No slip.</s></p><p>Order matters:</p><ul><li>Alpha gates</li><li>Beta sweep</li></ul><p class="tx-co">Keep scope tight.</p>',
+  const wMap = put(createEmbed(doc, bid, 'map', 1600, 160));
+  wMap.content = {
+    embed: {
+      kind: 'map',
+      url: 'https://www.google.com/maps/place/Crater+Lake',
+      title: 'Map embeds',
+      caption: 'Drop a Google Maps link',
+      showPreview: true,
     },
   };
-  doc.elements[rich.id] = rich;
 
-  const checklist = createNote(doc, test.id, 620, -160);
-  checklist.content = {
-    note: {
-      text: 'Run the tutorial\nCheck the credits roll',
-      html: '<div class="tx-check">Run the tutorial</div><div class="tx-check">Check the credits roll</div>',
-    },
-  };
-  doc.elements[checklist.id] = checklist;
+  put(createFile(doc, bid, 1680, 439, fileRef, 'scatterboard-101.md', fileSize, 'text/markdown'));
 
-  const col = createColumn(doc, test.id, 340, -480, 'Backlog');
-  doc.elements[col.id] = col;
-  for (let m = 0; m < 3; m++) {
-    const member = createNote(doc, test.id, 0, 0, `Column member ${m + 1}`);
-    member.parentId = col.id;
-    doc.elements[member.id] = member;
-  }
-  const colDoc = createDocument(doc, test.id, 0, 0);
-  colDoc.parentId = col.id;
-  colDoc.content = {
-    document: { title: 'Spec draft', text: 'Column document body', displayMode: 'icon', caption: '' },
-  };
-  doc.elements[colDoc.id] = colDoc;
-  const boardCard = createBoardCard(doc, test.id, nested.id, 700, -470);
-  doc.elements[boardCard.id] = boardCard;
-
-  const ship = createLabel(test.id, 'Ship', '#d6508f');
-  const blocked = createLabel(test.id, 'Blocked', '#3d84e0');
-  doc.labels[ship.id] = ship;
-  doc.labels[blocked.id] = blocked;
-  seeded[0]!.labels = [ship.id];
-  seeded[5]!.labels = [ship.id, blocked.id];
-
-  const anchorNote = seeded[20]!;
-  const pinned = createComment(doc, test.id, anchorNote.x + 260, anchorNote.y, anchorNote.id);
-  pinned.content = {
-    comment: {
-      items: [
-        { id: 'seed-c1', text: 'Does this still match the mock?', createdAt: Date.now() - 3600000 },
-        { id: 'seed-c2', text: 'Updated it, take another look', createdAt: Date.now() - 600000 },
-      ],
-    },
-  };
-  doc.elements[pinned.id] = pinned;
-
-  const freeComment = createComment(doc, test.id, 1080, -200);
-  freeComment.content = {
-    comment: { items: [{ id: 'seed-c3', text: 'Park this until Friday', createdAt: Date.now() - 7200000 }] },
-  };
-  doc.elements[freeComment.id] = freeComment;
-
-  seeded[7]!.reactions = ['🔥', '🎉'];
-
-  const filed = createNote(doc, test.id, 0, 0, 'Filed for later sorting');
-  filed.parentId = UNSORTED;
-  doc.elements[filed.id] = filed;
-
-  const trashNote = createNote(doc, test.id, 0, 0, 'Deleted brainstorm note');
-  const trashTodo = createTodo(doc, test.id, 0, 0);
-  trashTodo.content = { todo: { title: 'Old checklist', showTitle: true, items: [{ id: 'seed-tx', text: 'Stale item', done: false }] } };
-  doc.trash[trashNote.id] = { el: trashNote, deletedAt: Date.now() - 3600000 };
-  doc.trash[trashTodo.id] = { el: trashTodo, deletedAt: Date.now() - 90000000 };
-
-  const link = createLink(doc, test.id, 1100, 160, 'https://example.com');
-  link.content = { link: { url: 'https://example.com', title: 'example.com', caption: '', showPreview: true } };
-  doc.elements[link.id] = link;
-
-  const vid = createEmbed(doc, test.id, 'video', 1480, 160);
-  vid.content = {
-    embed: { kind: 'video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', title: 'YouTube video', caption: '', showPreview: true },
-  };
-  doc.elements[vid.id] = vid;
-
-  const docCard = createDocument(doc, test.id, 1100, 520);
-  docCard.content = {
-    document: {
-      title: 'Launch brief',
-      text: 'Goals\nShip the vertical slice by Friday.\nKeep the scope tight.\nNotes\nPlaytest with two new users.\nFix the worst five bugs only.',
-      html: '<h3>Goals</h3><p>Ship the vertical slice by Friday.</p><p>Keep the scope tight.</p><h3>Notes</h3><p>Playtest with two new users.</p><p>Fix the worst five bugs only.</p>',
-      displayMode: 'icon',
-      caption: '',
-    },
-  };
-  doc.elements[docCard.id] = docCard;
-
-  const sk = createSketch(doc, test.id, 1480, 480);
-  sk.content = {
+  const wSketch = put(createSketch(doc, bid, 640, 440));
+  wSketch.content = {
     sketch: {
       strokes: [
-        {
-          pts: [
-            [80, 340],
-            [160, 180],
-            [260, 120],
-            [340, 180],
-            [420, 320],
-          ],
-          color: '#323b4a',
-          size: 4,
-        },
-        {
-          pts: [
-            [120, 380],
-            [240, 360],
-            [380, 380],
-            [500, 350],
-          ],
-          color: '#d6504a',
-          size: 8,
-        },
-        {
-          pts: [
-            [450, 140],
-            [470, 160],
-            [490, 130],
-          ],
-          color: '#3d84e0',
-          size: 4,
-        },
+        { pts: ellipsePts(300, 205, 62, 105, 56), color: '#323b4a', size: 5 },
+        { pts: circlePts(300, 195, 26, 32), color: '#3d84e0', size: 6 },
+        { pts: [[238, 272], [186, 344], [252, 306]], color: '#e8734a', size: 6 },
+        { pts: [[362, 272], [414, 344], [348, 306]], color: '#e8734a', size: 6 },
+        { pts: [[272, 306], [282, 372], [296, 318], [310, 374], [326, 306]], color: '#e8734a', size: 7 },
+        { pts: [[140, 96], [140, 124]], color: '#f2b25c', size: 4 },
+        { pts: [[126, 110], [154, 110]], color: '#f2b25c', size: 4 },
+        { pts: [[470, 96], [470, 124]], color: '#f2b25c', size: 4 },
+        { pts: [[456, 110], [484, 110]], color: '#f2b25c', size: 4 },
+        { pts: [[505, 292], [505, 314]], color: '#f2b25c', size: 4 },
+        { pts: [[494, 303], [516, 303]], color: '#f2b25c', size: 4 },
       ],
     },
   };
-  doc.elements[sk.id] = sk;
+  wSketch.labels = [lblIdea.id];
 
-  const anno = createAnnotation(doc, test.id, [
-    {
-      pts: [
-        [2160, 560],
-        [2210, 520],
-        [2280, 510],
-        [2330, 560],
-        [2310, 620],
-        [2240, 630],
-        [2160, 560],
-      ],
-      color: '#323b4a',
-      size: 4,
-    },
-    {
-      pts: [
-        [2360, 520],
-        [2390, 560],
-        [2420, 520],
-      ],
-      color: '#5f9e5f',
-      size: 4,
-    },
-  ]);
-  doc.elements[anno.id] = anno;
+  const sw1 = put(createSwatch(doc, bid, 960, 440, '#e8734a'));
+  sw1.content = { swatch: { color: '#e8734a', caption: 'Sunset', showValue: true } };
+  const sw2 = put(createSwatch(doc, bid, 1200, 440, '#3d84e0'));
+  sw2.content = { swatch: { color: '#3d84e0', caption: 'Ocean', showValue: true } };
+  const sw3 = put(createSwatch(doc, bid, 1440, 440, '#5f9e5f'));
+  sw3.content = { swatch: { color: '#5f9e5f', caption: 'Meadow', showValue: true } };
+  const paletteNote = note(1080, 640, 'Swatches hold a palette. Drag one onto the rail colour well to restyle this board.', 480);
+  paletteNote.color = '#fdf2e0';
+  paletteNote.labels = [lblTip.id];
 
-  const tbl = createTable(doc, test.id, 1100, 920);
-  tbl.content = {
-    table: {
-      title: 'Sprint capacity',
-      caption: 'Hours per feature',
-      cells: [
-        [{ text: 'Feature' }, { text: 'Owner' }, { text: 'Hours', color: '#fdf2e0' }],
-        [{ text: 'Combat pass' }, { text: 'Ana' }, { text: '8', type: 'number' }],
-        [{ text: 'Boss AI' }, { text: 'Lev' }, { text: '13', type: 'number' }],
-        [{ text: 'Ship?' }, { text: '1', type: 'checkbox' }, { text: '=SUM(C2:C3)' }],
+  const playground = createBoard({ title: 'The Playground', parentId: bid, icon: 'g:gamepad', color: '#7c5cd6' });
+  doc.boards[playground.id] = playground;
+  const pg1 = createHeading(doc, playground.id, 0, 0, 1);
+  pg1.w = 340;
+  pg1.content = { heading: { text: 'The Playground', level: 1 } };
+  doc.elements[pg1.id] = pg1;
+  const pg2 = createNote(doc, playground.id, 0, 90, 'Nested boards keep big maps tidy. This one lives inside Welcome.');
+  doc.elements[pg2.id] = pg2;
+  const pgCol = createColumn(doc, playground.id, 320, 90, 'Experiments');
+  doc.elements[pgCol.id] = pgCol;
+  const pgM = createNote(doc, playground.id, 0, 0, 'Break things safely in here');
+  pgM.parentId = pgCol.id;
+  doc.elements[pgM.id] = pgM;
+  const pgBack = createBoardCard(doc, playground.id, bid, 320, 320);
+  doc.elements[pgBack.id] = pgBack;
+
+  put(createBoardCard(doc, bid, playground.id, 1960, 449));
+  const boardNote = note(1960, 530, 'Boards nest inside boards. Click through to peek.', 240);
+  boardNote.labels = [lblFeature.id];
+
+  // --- Organize ---
+  const h2org = put(createHeading(doc, bid, -520, 240, 2));
+  h2org.w = 440;
+  h2org.content = { heading: { text: 'Organize the mess', level: 2 } };
+
+  const colCollect = put(createColumn(doc, bid, -520, 280, 'Collect'));
+  const colShape = put(createColumn(doc, bid, -220, 280, 'Shape'));
+  const colShip = put(createColumn(doc, bid, 80, 280, 'Ship'));
+  const members: [Element, [string, string?][]][] = [
+    [colCollect, [['Paste links, images and files straight in'], ['Stray thought? Quick-capture it']]],
+    [colShape, [['Drag cards onto a column'], ['Colour sets the mood', '#e9f5ec'], ['Label what matters']]],
+    [colShip, [['Focus mode fades the rest'], ['Export: PNG, PDF, Markdown, zip']]],
+  ];
+  for (const [col, list] of members) {
+    for (const [text, color] of list) {
+      const m = createNote(doc, bid, 0, 0, text);
+      m.parentId = col.id;
+      if (color) m.color = color;
+      doc.elements[m.id] = m;
+    }
+  }
+  colShip.labels = [lblFeature.id];
+
+  const noteUns = note(393, 320, 'Cards file to Unsorted, deleted cards wait in Trash. Both open from the top bar.', 220);
+  noteUns.color = '#fdf2e0';
+
+  // --- Power moves ---
+  const h2pow = put(createHeading(doc, bid, -520, 690, 2));
+  h2pow.w = 400;
+  h2pow.content = { heading: { text: 'Power moves', level: 2 } };
+
+  const syncGroup = uid();
+  const syncText = 'We are synced notes. Edit either of us and both change.';
+  const syncA = note(-520, 730, syncText, 280);
+  syncA.syncGroup = syncGroup;
+  syncA.labels = [lblFeature.id];
+  const syncB = note(-220, 730, syncText, 280);
+  syncB.syncGroup = syncGroup;
+  syncB.color = '#e9f5ec';
+
+  const locked = note(130, 720, 'I am locked in place. Select me and unlock from the rail to move me.', 240);
+  locked.locked = true;
+  locked.color = '#fae3e3';
+  put(
+    createAnnotation(doc, bid, [
+      { pts: ellipsePts(250, 765, 175, 125, 64), color: '#d6504a', size: 5 },
+      { pts: ellipsePts(250, 765, 166, 117, 64, 0.4), color: '#d6504a', size: 5 },
+    ]),
+  );
+
+  const demoLbl = note(450, 730, 'Labels and reactions stick to any card. This one wears both.', 280);
+  demoLbl.labels = [lblIdea.id, lblTry.id];
+  demoLbl.reactions = ['❤️', '🔥', '👀'];
+
+  const freeCom = put(createComment(doc, bid, 461, 931));
+  freeCom.content = {
+    comment: {
+      items: [
+        { id: 'w-c3', text: 'Comments float free anywhere on the canvas,', createdAt: now - 7200000 },
+        { id: 'w-c4', text: 'or pin to a card, like the cover art above.', createdAt: now - 7000000 },
       ],
     },
   };
-  doc.elements[tbl.id] = tbl;
+
+  const lineNote = note(1030, 840, 'Lines take labels, arrowheads, dots and dashes. Pull one out from any card edge.', 280);
+  lineNote.labels = [lblTip.id];
+
+  const lineSync = createLine(doc, bid, { el: syncA.id, x: syncA.x, y: syncA.y }, { el: syncB.id, x: syncB.x, y: syncB.y });
+  lineSync.content = { line: { ...lineDoc(lineSync)!, label: 'synced', dashed: true, weight: 'thin', fromMarker: 'dot', toMarker: 'dot' } };
+  put(lineSync);
+  const lineCite = createLine(doc, bid, { el: wTbl.id, x: wTbl.x, y: wTbl.y }, { el: wDoc.id, x: wDoc.x, y: wDoc.y });
+  lineCite.content = { line: { ...lineDoc(lineCite)!, label: 'cite', weight: 'thin' } };
+  put(lineCite);
+  const lineFloat = createLine(doc, bid, { el: demoLbl.id, x: demoLbl.x, y: demoLbl.y }, { el: freeCom.id, x: freeCom.x, y: freeCom.y });
+  lineFloat.content = { line: { ...lineDoc(lineFloat)!, label: 'or float', dashed: true, weight: 'thin' } };
+  put(lineFloat);
+
+  const sl1 = createLine(doc, bid, { x: 1000, y: 1020 }, { x: 1340, y: 980 });
+  sl1.content = { line: { ...lineDoc(sl1)!, label: 'thick', weight: 'thick' } };
+  put(sl1);
+  const sl2 = createLine(doc, bid, { x: 1000, y: 1080 }, { x: 1340, y: 1040 });
+  sl2.content = { line: { ...lineDoc(sl2)!, label: 'dashed', dashed: true } };
+  put(sl2);
+  const sl3 = createLine(doc, bid, { x: 1000, y: 1140 }, { x: 1340, y: 1100 });
+  sl3.content = { line: { ...lineDoc(sl3)!, label: 'dots', weight: 'thin', fromMarker: 'dot', toMarker: 'dot' } };
+  put(sl3);
+  note(1380, 995, 'Weights, dashes, markers and labels, all from the rail.', 260);
+
+  // --- Footer ---
+  const h2foot = put(createHeading(doc, bid, -516, 961, 2));
+  h2foot.w = 440;
+  h2foot.content = { heading: { text: 'Now make it yours', level: 2 } };
+  note(
+    -516,
+    1000,
+    'This board is your sandbox: move it, break it, rebuild it. Everything saves locally as you work. Press Z to see the whole thing.',
+    480,
+  );
+
+  // Unsorted, Trash and a saved template round out the tour: something
+  // is already waiting in each surface the app offers.
+  const wFiled = createNote(doc, bid, 0, 0, 'Filed to Unsorted until it has a home');
+  wFiled.parentId = UNSORTED;
+  doc.elements[wFiled.id] = wFiled;
+  const trashed = createNote(doc, bid, 0, 0, 'Deleted cards wait in Trash. Restore me or empty it out.');
+  doc.trash[trashed.id] = { el: trashed, deletedAt: now };
+
+  const tplLabels = [
+    createLabel('tpl-retro', 'Keep', '#5f9e5f'),
+    createLabel('tpl-retro', 'Drop', '#e8734a'),
+    createLabel('tpl-retro', 'Try', '#3d84e0'),
+  ];
+  const tplEls: Element[] = [];
+  const tplHead = createHeading(doc, 'tpl-retro', 0, 0, 1);
+  tplHead.w = 340;
+  tplHead.content = { heading: { text: 'Retro', level: 1 } };
+  tplEls.push(tplHead);
+  ['Went well', 'To change', 'Try next'].forEach((title, i) => {
+    const c = createColumn(doc, 'tpl-retro', i * 320, 80, title);
+    tplEls.push(c);
+    const m = createNote(doc, 'tpl-retro', 0, 0, 'First card here');
+    m.parentId = c.id;
+    m.labels = [tplLabels[i]!.id];
+    tplEls.push(m);
+  });
+  doc.templates['tpl-retro'] = {
+    id: 'tpl-retro',
+    name: 'Retro',
+    board: { ...createBoard({ title: 'Retro', icon: 'g:wave' }), id: 'tpl-retro' },
+    elements: tplEls,
+    labels: tplLabels,
+    createdAt: now,
+  };
 
   return doc;
-}
-
-// Media seeds need real blobs in IndexedDB; run once on a fresh doc.
-export async function seedMedia(doc: Doc) {
-  const test = doc.boards.test;
-  if (!test) return;
-  const cv = document.createElement('canvas');
-  cv.width = 40;
-  cv.height = 40;
-  const ctx = cv.getContext('2d')!;
-  ctx.fillStyle = '#3d84e0';
-  ctx.fillRect(0, 0, 40, 40);
-  ctx.fillStyle = '#f2d15c';
-  ctx.fillRect(10, 10, 20, 20);
-  const png = await new Promise<Blob | null>((res) => cv.toBlob(res, 'image/png'));
-  if (png) {
-    const ref = uid();
-    await putBlob(ref, png).catch(() => {});
-    const img = createImage(doc, test.id, 1860, 160, ref, 'dot.png', 1, 40, 40);
-    doc.elements[img.id] = img;
-  }
-
-  // Second image: flat background + shapes so Remove background has
-  // something to cut, with draw-on strokes exercising the svg overlay.
-  const cv2 = document.createElement('canvas');
-  cv2.width = 360;
-  cv2.height = 240;
-  const c2 = cv2.getContext('2d')!;
-  c2.fillStyle = '#e8edf3';
-  c2.fillRect(0, 0, 360, 240);
-  c2.fillStyle = '#d6508f';
-  c2.beginPath();
-  c2.arc(120, 120, 58, 0, Math.PI * 2);
-  c2.fill();
-  c2.fillStyle = '#5f9e5f';
-  c2.fillRect(206, 78, 92, 84);
-  const png2 = await new Promise<Blob | null>((res) => cv2.toBlob(res, 'image/png'));
-  if (png2) {
-    const ref = uid();
-    await putBlob(ref, png2).catch(() => {});
-    const img = createImage(doc, test.id, 1860, 480, ref, 'shapes.png', 360 / 240, 360, 240);
-    if ('image' in img.content) {
-      img.content.image.strokes = [
-        { pts: [[24, 216], [88, 160], [140, 200]], color: '#d6504a', size: 7 },
-        {
-          pts: [
-            [300, 40],
-            [336, 40],
-            [336, 76],
-            [300, 76],
-            [300, 40],
-          ],
-          color: '#323b4a',
-          size: 4,
-        },
-      ];
-    }
-    doc.elements[img.id] = img;
-  }
-  const txt = new Blob(['A small seeded file.\n'], { type: 'text/plain' });
-  const fileRef = uid();
-  await putBlob(fileRef, txt).catch(() => {});
-  const file = createFile(doc, test.id, 2160, 160, fileRef, 'notes.txt', txt.size, 'text/plain');
-  doc.elements[file.id] = file;
 }
 
 // Dev-only profiling board (?seed=N): reproduces the perf-harness mix

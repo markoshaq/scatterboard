@@ -92,6 +92,12 @@ function onCardDown(e: PointerEvent, app: App, cardId: ID) {
     if (ref) window.open(app.boardUrl(ref), '_blank', 'width=1280,height=840');
     return;
   }
+  startElementDrag(e, app, cardId);
+}
+
+// Select + drag wiring shared with annotation picks: their ink svg has
+// no card DOM, so they reach this without going through cardIdAt.
+export function startElementDrag(e: PointerEvent, app: App, cardId: ID) {
   const wasSelected = app.sel.has(cardId);
   if (e.shiftKey) {
     app.toggleSelect(cardId);
@@ -172,7 +178,10 @@ function onBackgroundDown(e: PointerEvent, app: App, hit: LineHit | null) {
   }
   if (hit?.kind === 'body') {
     if (e.shiftKey) app.toggleSelect(hit.id);
-    else app.selectOnly(hit.id);
+    else {
+      app.selectOnly(hit.id);
+      app.startLineDrag(hit.id, e);
+    }
     return;
   }
   const pid = e.pointerId;

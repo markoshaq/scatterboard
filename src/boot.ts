@@ -1,7 +1,7 @@
 import { App } from './app';
 import { Store } from './state/store';
 import { migrateDoc, type Doc } from './state/schema';
-import { LocalStorageAdapter } from './persist/local';
+import { LocalStorageAdapter, migrateStorageKeys } from './persist/local';
 import { SqliteAdapter } from './persist/sqlite';
 import { purgeOrphanBlobs } from './persist/blobs';
 import { toast } from './ui/toast';
@@ -21,12 +21,13 @@ export async function boot() {
   // sqlite in OPFS via the sah-pool VFS is the primary store; the
   // localStorage adapter stays as migration source and fallback when
   // the worker or OPFS is unavailable.
+  migrateStorageKeys();
   const local = new LocalStorageAdapter();
   const adapter = (await SqliteAdapter.create(local)) ?? local;
   if (adapter instanceof SqliteAdapter) adapter.onDegraded = () => toast(t('persistDegraded'));
   const persisted = await adapter.load();
   const fresh = !(persisted && persisted.version === 1 && Object.keys(persisted.doc.boards).length);
-  // The welcome/test seed chunk only loads when a fresh doc is needed;
+  // The welcome seed chunk only loads when a fresh doc is needed;
   // ?seed=N (dev only) builds the profiling board instead.
   const perfN = import.meta.env.DEV ? new URLSearchParams(location.search).get('seed') : null;
   let doc: Doc;
@@ -34,9 +35,8 @@ export async function boot() {
     const { seedPerfDoc } = await import('./state/seed');
     doc = seedPerfDoc(+perfN || 1600);
   } else if (fresh) {
-    const { seedDoc, seedMedia } = await import('./state/seed');
+    const { seedDoc } = await import('./state/seed');
     doc = seedDoc();
-    await seedMedia(doc);
   } else {
     doc = migrateDoc(persisted!.doc);
   }

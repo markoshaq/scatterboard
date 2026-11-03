@@ -4,14 +4,14 @@ import { ICONS } from './icons';
 import { openToolPopup, type ToolPopup } from './popup';
 
 interface SettingsApi {
-  theme(): 'light' | 'dark';
-  onTheme(mode: 'light' | 'dark'): void;
+  // 'system' = no saved pref, follows prefers-color-scheme.
+  theme(): 'light' | 'dark' | 'system';
+  onTheme(mode: 'light' | 'dark' | 'system'): void;
   scale(): number;
   onScale(s: number): void;
-  // Async storage figures: {doc bytes, blob bytes} or null while loading.
-  storage(): Promise<{ doc: number; blobs: number }>;
-  lang(): Lang;
-  onLang(l: Lang): void;
+  // null = no saved pref, follows the browser's language list.
+  lang(): Lang | null;
+  onLang(l: Lang | null): void;
   browserLang(): boolean;
   onBrowserLang(v: boolean): void;
   currency(): Currency;
@@ -163,10 +163,12 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   };
 
   group(t('setTheme'));
+  radio(t('setSystem'), () => api.theme() === 'system', () => api.onTheme('system'));
   radio(t('setLight'), () => api.theme() === 'light', () => api.onTheme('light'));
   radio(t('setDark'), () => api.theme() === 'dark', () => api.onTheme('dark'));
 
   group(t('setLanguage'));
+  radio(t('setAuto'), () => api.lang() === null, () => api.onLang(null));
   for (const l of LANGS) radio(l.label, () => api.lang() === l.id, () => api.onLang(l.id));
 
   group(t('setScale'));
@@ -218,20 +220,6 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   });
   node.appendChild(tplRow);
 
-  group(t('setStorage'));
-  const meter = document.createElement('div');
-  meter.className = 'stp-meter';
-  meter.textContent = t('storageLoading');
-  node.appendChild(meter);
-  void api
-    .storage()
-    .then(({ doc, blobs }) => {
-      meter.textContent = t('storageLine').replace('{doc}', fmtBytes(doc)).replace('{media}', fmtBytes(blobs));
-    })
-    .catch(() => {
-      meter.textContent = '';
-    });
-
   const resetRow = document.createElement('button');
   resetRow.type = 'button';
   resetRow.className = 'pop-row stp-danger';
@@ -246,4 +234,39 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   node.appendChild(resetRow);
 
   return pop;
+}
+
+// Help > About: version, storage usage and the source link.
+export function openAboutPopup(
+  anchor: HTMLElement,
+  api: { storage(): Promise<{ doc: number; blobs: number }> },
+): ToolPopup {
+  const node = document.createElement('div');
+  node.className = 'stp-body';
+  node.appendChild(head(`${t('appName')} v${__APP_VERSION__}`));
+  node.appendChild(head(t('setStorage')));
+  const meter = document.createElement('div');
+  meter.className = 'stp-meter';
+  meter.textContent = t('storageLoading');
+  node.appendChild(meter);
+  void api
+    .storage()
+    .then(({ doc, blobs }) => {
+      meter.textContent = t('storageLine').replace('{doc}', fmtBytes(doc)).replace('{media}', fmtBytes(blobs));
+    })
+    .catch(() => {
+      meter.textContent = '';
+    });
+  const ghRow = document.createElement('button');
+  ghRow.type = 'button';
+  ghRow.className = 'pop-row';
+  const ghLab = document.createElement('span');
+  ghLab.className = 'pop-label';
+  ghLab.textContent = t('aboutSource');
+  ghRow.appendChild(ghLab);
+  ghRow.addEventListener('click', () =>
+    window.open('https://github.com/markoshaq/scatterboard', '_blank', 'noopener'),
+  );
+  node.appendChild(ghRow);
+  return openToolPopup(anchor, node, true);
 }

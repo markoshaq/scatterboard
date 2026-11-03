@@ -254,6 +254,7 @@ const en = {
   createShortcut: 'Create Shortcut',
   settingsTitle: 'Settings',
   setTheme: 'Theme',
+  setSystem: 'System',
   setLight: 'Light',
   setDark: 'Dark',
   setScale: 'Interface scale',
@@ -272,6 +273,7 @@ const en = {
   welcomeChild2: 'Use the crumbs up top to find your way back',
   welcomeToast: 'Tip: press / anytime to see every shortcut',
   setLanguage: 'Language',
+  setAuto: 'Automatic',
   setFormat: 'Formatting',
   setBrowserLang: 'Use browser language',
   setCurrency: 'Currency',
@@ -293,6 +295,10 @@ const en = {
   resetAllAct: 'Reset',
   setOnline: 'Online extras',
   setUnfurl: 'Enrich link cards',
+  setAbout: 'About',
+  aboutSource: 'Source code (GitHub)',
+  helpTitle: 'Help',
+  helpIssue: 'Report an issue',
   railCapture: 'Quick capture',
   qcTitle: 'Quick capture',
   qcPh: 'Write it down...',
@@ -323,6 +329,49 @@ const en = {
   docsMany: '{n} documents',
   wordsOne: '1 word',
   wordsMany: '{n} words',
+  scNewNote: 'New note',
+  scNewNoteBelow: 'New note below (while editing)',
+  scPan: 'Pan',
+  scZoom: 'Zoom',
+  scSearch: 'Search',
+  scDelete: 'Delete selection',
+  scUnsorted: 'Send to Unsorted',
+  scNudge: 'Nudge (Shift for 10px)',
+  scEyedropper: 'Colour eyedropper',
+  scUndoRedo: 'Undo / redo',
+  scSelectAll: 'Select all',
+  scDeselect: 'Deselect',
+  scDuplicate: 'Duplicate (or Opt+drag)',
+  scCutCopyPaste: 'Cut / copy / paste',
+  scPasteStyles: 'Paste styles',
+  scReorderZ: 'Send to back / bring to front',
+  scBackFwd: 'Back / forward',
+  scBoardNewTab: 'Open board in new tab',
+  scParentBoard: 'Go to parent board',
+  scFit: 'Scale to fit',
+  scZoomInOut: 'Zoom in / out / 100%',
+  scPresent: 'Presentation mode',
+  scDark: 'Dark mode',
+  scUiScale: 'Interface scale',
+  scTodoTitle: 'To-do title (while editing)',
+  scTodoDue: 'To-do due date (while editing)',
+  scBoldItalic: 'Bold / italic / underline',
+  scStrike: 'Strikethrough',
+  scLink: 'Link',
+  scHighlight: 'Highlight',
+  scHeadings: 'Large heading / heading / normal / small',
+  scCodeBlock: 'Code block',
+  scQuote: 'Quote block',
+  scCallout: 'Callout',
+  scCenter: 'Center text',
+  scLists: 'Bullet / numbered list',
+  scListIndent: 'Indent / outdent in lists',
+  scTableRows: 'Table: row above / below',
+  scTableCols: 'Table: column left / right',
+  scDraw: 'Draw on the board',
+  scDrawTools: 'Draw: select / eraser / colour / previous colour',
+  scDrawSizes: 'Draw: pen size',
+  scDrawExit: 'Draw: save and exit',
 };
 
 export type StringKey = keyof typeof en;
@@ -359,21 +408,40 @@ const LANG_TAGS: Record<Lang, string> = { en: 'en', de: 'de', es: 'es', fr: 'fr'
 
 export function bootLang(): Lang {
   try {
-    // Storage keys keep the planboard name for data continuity.
-    // planboard:lang mirrors prefs.lang so the active language is
+    // scatterboard:lang mirrors prefs.lang so the active language is
     // readable before module-level label tables are captured, even
     // when the workspace lives in sqlite rather than localStorage.
-    const direct = localStorage.getItem('planboard:lang');
+    // The pre-rename planboard:* keys are still read once and moved
+    // forward for users upgrading before boot() runs the key rename.
+    const oldLang = localStorage.getItem('planboard:lang');
+    if (oldLang !== null) {
+      if (localStorage.getItem('scatterboard:lang') === null) localStorage.setItem('scatterboard:lang', oldLang);
+      localStorage.removeItem('planboard:lang');
+    }
+    const direct = localStorage.getItem('scatterboard:lang');
     const l =
       direct ??
       (() => {
-        const raw = localStorage.getItem('planboard:v1');
+        const raw = localStorage.getItem('scatterboard:v1') ?? localStorage.getItem('planboard:v1');
         return raw ? (JSON.parse(raw) as { prefs?: { lang?: Lang } }).prefs?.lang : undefined;
       })();
-    return l === 'de' || l === 'es' || l === 'fr' || l === 'pt' ? l : 'en';
+    if (l && l in LANG_TAGS) return l as Lang;
   } catch {
-    return 'en';
+    // Fall through to browser detection.
   }
+  // No saved choice: take the first supported tag from the browser's
+  // language list ('fr-CA' -> 'fr').
+  const navs =
+    typeof navigator === 'undefined'
+      ? []
+      : navigator.languages?.length
+        ? navigator.languages
+        : [navigator.language];
+  for (const tag of navs) {
+    const base = (tag ?? '').split('-')[0]!.toLowerCase();
+    if (base in LANG_TAGS) return base as Lang;
+  }
+  return 'en';
 }
 
 const active: Lang = bootLang();

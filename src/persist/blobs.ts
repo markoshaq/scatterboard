@@ -4,8 +4,9 @@ import { blobRefOf, iconBlobRef } from '../state/schema';
 // Binary assets live in IndexedDB, outside the doc JSON. blobRefs are
 // plain element content; the store is best-effort: a missing blob renders
 // a placeholder, never an error.
-// Database name keeps the planboard name for data continuity.
-const DB_NAME = 'planboard-blobs';
+const DB_NAME = 'scatterboard-blobs';
+// Pre-rename database; its contents are copied forward once.
+const OLD_DB_NAME = 'planboard-blobs';
 const STORE = 'blobs';
 
 let dbp: Promise<IDBDatabase> | null = null;
@@ -16,25 +17,80 @@ export async function clearBlobs() {
     (await dbp.catch(() => null))?.close();
     dbp = null;
   }
-  await new Promise<void>((res) => {
-    const req = indexedDB.deleteDatabase(DB_NAME);
-    req.onsuccess = req.onerror = req.onblocked = () => res();
+  for (const name of [DB_NAME, OLD_DB_NAME]) {
+    await new Promise<void>((res) => {
+      const req = indexedDB.deleteDatabase(name);
+      req.onsuccess = req.onerror = req.onblocked = () => res();
+    });
+  }
+}
+
+function openBlobDb(name: string, withStore: boolean): Promise<IDBDatabase> {
+  return new Promise<IDBDatabase>((res, rej) => {
+    const req = indexedDB.open(name, 1);
+    if (withStore) {
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore(STORE);
+      };
+    }
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
   });
 }
 
+// One-time rename: copy every entry out of the pre-rename database,
+// then delete it. Opening the old name on a fresh install creates an
+// empty database with no store; the store check skips the copy and
+// deleteDatabase drops the phantom.
+async function inheritOldBlobDb(next: IDBDatabase): Promise<void> {
+  const old = await openBlobDb(OLD_DB_NAME, false).catch(() => null);
+  if (!old) return;
+  try {
+    if (old.objectStoreNames.contains(STORE)) {
+      // Two phases: a write transaction fed from cursor callbacks would
+      // auto-commit between tasks and dead-lock the copy.
+      const entries = await new Promise<[IDBValidKey, unknown][]>((res, rej) => {
+        const tx = old.transaction(STORE, 'readonly');
+        const out: [IDBValidKey, unknown][] = [];
+        const cur = tx.objectStore(STORE).openCursor();
+        cur.onsuccess = () => {
+          const c = cur.result;
+          if (!c) return;
+          out.push([c.key, c.value]);
+          c.continue();
+        };
+        tx.oncomplete = () => res(out);
+        tx.onerror = tx.onabort = () => rej(tx.error);
+      });
+      await new Promise<void>((res, rej) => {
+        const tx = next.transaction(STORE, 'readwrite');
+        const st = tx.objectStore(STORE);
+        for (const [k, v] of entries) st.put(v, k);
+        tx.oncomplete = () => res();
+        tx.onerror = tx.onabort = () => rej(tx.error);
+      });
+    }
+  } finally {
+    old.close();
+  }
+  indexedDB.deleteDatabase(OLD_DB_NAME);
+}
+
 function db(): Promise<IDBDatabase> {
-  dbp ??= new Promise<IDBDatabase>((res, rej) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      req.result.createObjectStore(STORE);
-    };
-    req.onsuccess = () => res(req.result);
-    req.onerror = () => rej(req.error);
-  }).catch((e) => {
-    // A failed open must not poison every later op; next call retries.
-    dbp = null;
-    throw e;
-  });
+  dbp ??= openBlobDb(DB_NAME, true)
+    .then(async (d) => {
+      try {
+        await inheritOldBlobDb(d);
+      } catch {
+        // Best-effort: a failed copy leaves the old db for next boot.
+      }
+      return d;
+    })
+    .catch((e) => {
+      // A failed open must not poison every later op; next call retries.
+      dbp = null;
+      throw e;
+    });
   return dbp;
 }
 

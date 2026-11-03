@@ -564,3 +564,21 @@ export function openViewMenu(anchor: HTMLElement, api: ViewMenuApi): ToolPopup {
 
   return pop;
 }
+
+export interface HelpApi {
+  onShortcuts(): void;
+  onAbout(anchor: HTMLElement): void;
+}
+
+// Topbar help menu: shortcuts, issue reporting and About.
+export function openHelpMenu(anchor: HTMLElement, api: HelpApi): ToolPopup {
+  return openMenuPopup(anchor, [
+    { label: t('shortcutsTitle'), hint: '/', onPick: () => api.onShortcuts() },
+    {
+      label: t('helpIssue'),
+      onPick: () =>
+        window.open('https://github.com/markoshaq/scatterboard/issues', '_blank', 'noopener'),
+    },
+    { label: t('setAbout'), onPick: () => api.onAbout(anchor) },
+  ]);
+}

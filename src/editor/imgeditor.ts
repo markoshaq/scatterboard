@@ -298,11 +298,13 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
       const up = () => {
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', up);
         if (crop && (crop.w < 4 || crop.h < 4)) crop = null;
         render();
       };
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
     });
 
     const bar = mkBar();

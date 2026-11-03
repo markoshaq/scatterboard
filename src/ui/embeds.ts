@@ -28,15 +28,24 @@ function spotifyEmbed(url: string): string | null {
   return m ? `https://open.spotify.com/embed/${m[1]}/${m[2]}` : null;
 }
 
+// decodeURIComponent throws on truncated escapes like %E0 pasted raw.
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
 function mapQuery(url: string): string | null {
   const at = url.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
   if (at) return `${at[1]},${at[2]}`;
   const place = url.match(/\/maps\/place\/([^/@]+)/);
-  if (place) return decodeURIComponent(place[1]!).replace(/\+/g, ' ');
+  if (place) return safeDecode(place[1]!).replace(/\+/g, ' ');
   const search = url.match(/\/maps\/search\/([^/@]+)/);
-  if (search) return decodeURIComponent(search[1]!).replace(/\+/g, ' ');
+  if (search) return safeDecode(search[1]!).replace(/\+/g, ' ');
   const q = url.match(/[?&]q=([^&]+)/);
-  if (q) return decodeURIComponent(q[1]!).replace(/\+/g, ' ');
+  if (q) return safeDecode(q[1]!).replace(/\+/g, ' ');
   return url;
 }
 

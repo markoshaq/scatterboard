@@ -63,7 +63,16 @@ export function parseBoardExport(text: string): BoardExport | null {
   if (d?.version !== 1 || typeof d.board !== 'string') return null;
   if (!Array.isArray(d.boards) || !Array.isArray(d.elements)) return null;
   if (!d.boards.length || d.boards.some((b) => !b || typeof b.id !== 'string')) return null;
-  if (d.elements.some((e) => !e || typeof e.id !== 'string' || typeof e.type !== 'string' || !e.content)) {
+  if (
+    d.elements.some(
+      (e) =>
+        !e ||
+        typeof e.id !== 'string' ||
+        typeof e.type !== 'string' ||
+        !e.content ||
+        typeof e.content !== 'object',
+    )
+  ) {
     return null;
   }
   return {
@@ -140,12 +149,14 @@ export function importActions(
       if (m) clone.anchorId = m;
       else delete clone.anchorId;
     }
-    clone.labels = e.labels.map((l) => lmap.get(l)).filter((l): l is ID => !!l);
+    clone.labels = (e.labels ?? []).map((l) => lmap.get(l)).filter((l): l is ID => !!l);
     if ('boardRef' in clone.content) clone.content.boardRef = bmap.get(clone.content.boardRef)!;
     if ('line' in clone.content) {
+      const lc = clone.content.line;
+      if (!lc || typeof lc !== 'object' || !lc.from || !lc.to) continue;
       const remap = (end: LineEnd): LineEnd =>
         end.el !== undefined && created.has(end.el) ? { ...end, el: emap.get(end.el)! } : { x: end.x, y: end.y };
-      clone.content.line = { ...clone.content.line, from: remap(clone.content.line.from), to: remap(clone.content.line.to) };
+      clone.content.line = { ...lc, from: remap(lc.from), to: remap(lc.to) };
     }
     els.push(clone);
   }

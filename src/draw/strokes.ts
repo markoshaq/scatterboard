@@ -107,6 +107,10 @@ export function translateStroke(s: Stroke, dx: number, dy: number) {
   }
 }
 
+// Stroke colours come from the palette, but an imported doc could carry
+// anything: keep attribute interpolation to real colour values.
+const SVG_SAFE_COLOR = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|[a-z]+)$/i;
+
 // Standalone .svg file for the annotation Download SVG action.
 export function strokesToSvgFile(strokes: Stroke[], offsetX = 0, offsetY = 0): string {
   const box = strokesBBox(strokes);
@@ -114,13 +118,14 @@ export function strokesToSvgFile(strokes: Stroke[], offsetX = 0, offsetY = 0): s
   const h = Math.max(1, Math.ceil(box.h));
   const paths = strokes
     .map((s) => {
+      const color = SVG_SAFE_COLOR.test(s.color) ? s.color : '#000';
       const moved = {
         ...s,
         pts: s.pts.map(([x, y]): [number, number] => [x + offsetX - box.x, y + offsetY - box.y]),
       };
       return s.widths?.length
-        ? `<path d="${strokeOutlineD(moved)}" fill="${s.color}"/>`
-        : `<path d="${strokeD(moved)}" stroke="${s.color}" stroke-width="${s.size}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+        ? `<path d="${strokeOutlineD(moved)}" fill="${color}"/>`
+        : `<path d="${strokeD(moved)}" stroke="${color}" stroke-width="${s.size}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
     })
     .join('\n  ');
   return `<svg xmlns="${SVG_NS}" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">\n  ${paths}\n</svg>\n`;

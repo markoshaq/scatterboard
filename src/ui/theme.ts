@@ -10,7 +10,24 @@ export function isDark(): boolean {
 
 export function setTheme(m: ThemeMode) {
   mode = m;
+  // html.dark is what the pre-paint boot script in index.html sets;
+  // keep both in sync so runtime switches flip either origin.
+  document.documentElement.classList.toggle('dark', m === 'dark');
   document.body.classList.toggle('dark', m === 'dark');
+  document.documentElement.style.setProperty('color-scheme', m);
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', m === 'dark' ? '#1d1d19' : '#f6f6f2');
+}
+
+// OS-level dark preference; the app follows it while prefs.theme stays
+// unset (the "System" choice in Settings).
+export function systemDark(): boolean {
+  try {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  } catch {
+    return false;
+  }
 }
 
 export function setUiScale(s: number) {
@@ -69,3 +86,13 @@ export function cardBg(color: string | undefined): string {
 export function defaultTile(): string {
   return mode === 'dark' ? '#3a3a34' : '#ccd6ea';
 }
+
+// Resolve the theme at module eval, before saved prefs land in
+// applyPrefs: scatterboard:theme mirrors an explicit choice, and no
+// mirror means follow the OS. This way neither direction flashes the
+// wrong theme while the workspace loads.
+let savedTheme: string | null = null;
+try {
+  savedTheme = localStorage.getItem('scatterboard:theme');
+} catch {}
+setTheme(savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : systemDark() ? 'dark' : 'light');

@@ -253,6 +253,7 @@ const DEFAULT_WELL = '#ebedee';
 export class Rail {
   private itemsEl: HTMLElement;
   private well: HTMLInputElement;
+  private wellWrap: HTMLElement;
   private events: RailEvents;
   private signature = '';
   private toolBtns = new Map<ToolId, HTMLButtonElement>();
@@ -287,6 +288,7 @@ export class Rail {
     const wellLab = document.createElement('span');
     wellLab.textContent = t('boardColor');
     wellWrap.append(this.well, wellLab);
+    this.wellWrap = wellWrap;
     rail.append(this.itemsEl, wellWrap);
     // The can sits outside .rail: during a card-over-trash drag it drops
     // under the lifted viewport while the rest of the rail stays on top.
@@ -318,6 +320,7 @@ export class Rail {
           : `m:${toolsFor(sel).join('.')}`;
     if (sig === this.signature) return;
     this.signature = sig;
+    this.wellWrap.style.display = items ? '' : 'none';
     this.itemsEl.textContent = '';
     this.toolBtns.clear();
     if (edit) {

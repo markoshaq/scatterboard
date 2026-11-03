@@ -6,6 +6,8 @@ export type Currency = 'USD' | 'EUR' | 'GBP' | 'JPY';
 // Local preferences ride on the workspace record; additive since
 // version 1, loaders must default them for old saves.
 export interface Prefs {
+  // Unset follows the OS: prefers-color-scheme for theme, the browser
+  // language list for lang.
   theme?: 'light' | 'dark';
   uiScale?: number;
   welcomed?: boolean;

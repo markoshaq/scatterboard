@@ -66,7 +66,8 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-body.dark {
+body.dark,
+html.dark body {
   --bg: #1d1d19;
   --card: #2a2a25;
   --card-soft: #24241f;
@@ -105,9 +106,9 @@ body.dark {
   --co-edge: #8a7020;
   --warn: #d0a050;
   --danger: #d96a54;
-  --toast-bg: #e4e4d8;
-  --toast-hi: #f4f4ee;
-  --toast-ink: #26261f;
+  --toast-bg: #44443a;
+  --toast-hi: #55554a;
+  --toast-ink: #f4f4ee;
   --stage: #26261f;
   --tile-ink: rgba(228, 228, 216, 0.85);
   --knob: #e4e4d8;
@@ -238,7 +239,7 @@ body.pan-mode .viewport {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 14px;
+  padding: 0 14px 0 5px;
   pointer-events: none;
   z-index: 10;
 }
@@ -292,7 +293,8 @@ body.pan-mode .viewport {
   color: var(--faint);
 }.save-chip {
   position: fixed;
-  left: 90px;
+  left: 50%;
+  transform: translateX(-50%);
   bottom: 14px;
   font-size: calc(12px * var(--ui));
   color: var(--ink-4);
@@ -3269,7 +3271,7 @@ svg.anno.present-dim {
 
 .stp-meter {
   font-size: calc(12px * var(--ui));
-  color: var(--ink-4);
+  color: var(--ink);
   padding: 4px 8px 8px;
 }
 

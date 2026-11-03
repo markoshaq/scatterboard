@@ -303,6 +303,7 @@ export async function renderBoardShot(spec: ShotSpec, scale: number): Promise<HT
   cv.height = Math.max(1, Math.round(bounds.h * s));
   const ctx = cv.getContext('2d')!;
   ctx.scale(s, s);
+  ctx.translate(-bounds.x, -bounds.y);
   ctx.fillStyle = canvasColors().bg;
   ctx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
   if (spec.grid) drawDots(ctx, bounds);

@@ -1,9 +1,36 @@
 import type { PersistedWorkspace, StorageAdapter } from './storage';
 
-// Storage keys keep the planboard name for data continuity.
-const KEY = 'planboard:v1';
-const LAST_BOARD = 'planboard:last-board';
-const POS_PREFIX = 'planboard:pos:';
+const KEY = 'scatterboard:v1';
+const LAST_BOARD = 'scatterboard:last-board';
+const POS_PREFIX = 'scatterboard:pos:';
+const OLD_POS_PREFIX = 'planboard:pos:';
+
+// One-time rename from the pre-rename planboard:* keys. Runs in boot()
+// before the adapters so both only ever see the new names.
+export function migrateStorageKeys() {
+  try {
+    for (const [oldKey, newKey] of [
+      ['planboard:v1', KEY],
+      ['planboard:last-board', LAST_BOARD],
+      ['planboard:lang', 'scatterboard:lang'],
+    ]) {
+      const v = localStorage.getItem(oldKey);
+      if (v === null) continue;
+      if (localStorage.getItem(newKey) === null) localStorage.setItem(newKey, v);
+      localStorage.removeItem(oldKey);
+    }
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(OLD_POS_PREFIX)) continue;
+      const v = localStorage.getItem(k);
+      const nk = `${POS_PREFIX}${k.slice(OLD_POS_PREFIX.length)}`;
+      if (v !== null && localStorage.getItem(nk) === null) localStorage.setItem(nk, v);
+      localStorage.removeItem(k);
+    }
+  } catch {
+    // localStorage can throw in hardened modes; leave the keys alone.
+  }
+}
 
 export class LocalStorageAdapter implements StorageAdapter {
   async load(): Promise<PersistedWorkspace | null> {

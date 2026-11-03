@@ -16,7 +16,7 @@ import { attachPointer } from './canvas/input';
 import { attachShortcuts } from './ui/shortcuts';
 import { normRect, pointInRect, rectsIntersect, unionRect } from './canvas/hit';
 import { hitLines, resolveLine, type LineHit } from './canvas/lines';
-import { t } from './strings';
+import { lang as activeLang, t } from './strings';
 import { choice, hint, toast } from './ui/toast';
 import type { EditorHandle } from './editor/doceditor';
 import { imgModeFromHash, imgModeParam, type ImgMode } from './editor/imgmode';
@@ -26,13 +26,13 @@ import { openCapturePopup } from './ui/capture';
 import { setFormatting } from './ui/locale';
 import type { Currency, Lang } from './persist/storage';
 import { CREATE_ITEMS } from './ui/rail';
-import { openViewMenu } from './ui/toolpopups';
+import { openHelpMenu, openViewMenu } from './ui/toolpopups';
 import { closeBoardPopup, closeToolPopup } from './ui/popup';
 import { remapElements } from './state/clone';
 import { builtinTemplates } from './state/templates';
 import { openNewBoardPicker } from './ui/newboard';
-import { openSettings, SCALE_STEPS } from './ui/settings';
-import { isDark, setTheme, setUiScale } from './ui/theme';
+import { openAboutPopup, openSettings, SCALE_STEPS } from './ui/settings';
+import { isDark, setTheme, setUiScale, systemDark } from './ui/theme';
 import type { Prefs } from './persist/storage';
 import { BoardExport } from './app/export';
 import { Editing } from './app/editing';
@@ -88,6 +88,8 @@ export class App {
   private saveState: 'saved' | 'saving' = 'saved';
 
   private saveKind: 0 | 1 | 2 = 0;
+
+  private saveChip = false;
 
   private renderQueued = false;
 
@@ -175,6 +177,7 @@ export class App {
       onNavigate: (id) => this.openBoard(id),
       onUnsorted: () => this.panels.openUnsorted(),
       onView: (anchor) => this.openViewMenu(anchor),
+      onHelp: (anchor) => this.openHelp(anchor),
       onExport: (anchor) => this.exporter.openExportMenu(anchor),
       onSettings: (anchor) => this.openSettings(anchor),
       onCrumbIcon: (id, anchor) => this.panels.iconPickerFor(id, anchor),
@@ -248,6 +251,12 @@ export class App {
       this.refreshCards = true;
       this.requestRender();
     });
+    // Follow OS theme changes while the theme pref stays on System.
+    try {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (!this.prefs.theme) this.applyPrefs();
+      });
+    } catch {}
     this.layout();
   }
 
@@ -882,6 +891,89 @@ export class App {
 
   // --- line endpoint gestures ---
 
+  // Drag a line by its body: both ends translate together, detaching to
+  // free points while it moves; on drop each end re-anchors to whatever
+  // card it landed on.
+  startLineDrag(id: ID, e: PointerEvent) {
+    if (this.lockedView()) return;
+    const el = this.doc.elements[id];
+    const c = el ? lineDoc(el) : null;
+    if (!el || !c || el.locked) return;
+    const rl = resolveLine(el, this.doc, (x) => this.layer.rectOf(x));
+    if (!rl) return;
+    const pid = e.pointerId;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const p0 = this.boardPoint(e);
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_SLOP) return;
+      if (!moved) {
+        moved = true;
+        this.store.beginGroup();
+      }
+      const p = this.boardPoint(ev);
+      const dx = Math.round(p.x - p0.x);
+      const dy = Math.round(p.y - p0.y);
+      this.store.dispatch({
+        type: 'element.patch',
+        id,
+        patch: {
+          content: {
+            line: { ...c, from: { x: rl.x1 + dx, y: rl.y1 + dy }, to: { x: rl.x2 + dx, y: rl.y2 + dy } },
+          },
+        },
+      });
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+    };
+    const cancel = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      cleanup();
+      if (moved) {
+        // Restore the captured endpoints: a cancelled drag keeps the
+        // original anchors instead of stranding the line on free points.
+        const curEl = this.doc.elements[id];
+        if (curEl && lineDoc(curEl)) {
+          this.store.dispatch({ type: 'element.patch', id, patch: { content: { line: c } } });
+        }
+        this.store.endGroup('line-move');
+        this.requestRender();
+      }
+    };
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      cleanup();
+      if (moved) {
+        const curEl = this.doc.elements[id];
+        const cur = curEl ? lineDoc(curEl) : null;
+        if (cur) {
+          const snap = (pt: { x: number; y: number }): LineEnd => {
+            const s = this.vp.toScreen(pt.x, pt.y);
+            const tid = this.cardAtPoint(s.x, s.y);
+            const end: LineEnd = { x: Math.round(pt.x), y: Math.round(pt.y) };
+            if (tid && tid !== id) end.el = tid;
+            return end;
+          };
+          this.store.dispatch({
+            type: 'element.patch',
+            id,
+            patch: { content: { line: { ...cur, from: snap(cur.from), to: snap(cur.to) } } },
+          });
+        }
+        this.store.endGroup('line-move');
+        this.requestRender();
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+  }
+
   startEndpointGesture(id: ID, which: 'from' | 'to', e: PointerEvent) {
     if (this.lockedView()) return;
     const el = this.doc.elements[id];
@@ -1470,7 +1562,9 @@ export class App {
 
   fitView() {
     const r = unionRect(this.layer.elements().map((e) => this.layer.rectOf(e)));
-    this.vp.fit(r);
+    // Usable box inside the chrome: 76px rail + 16 gap on the left,
+    // 44px topbar + 14 gap up top, zoom HUD reserved at the bottom.
+    this.vp.fit(r, { l: 92, t: 58, r: 24, b: 64 });
   }
 
   dragMove(ids: ID[], origins: Map<ID, { x: number; y: number }>, start: { x: number; y: number }, ev: PointerEvent) {
@@ -1724,13 +1818,17 @@ export class App {
   // --- preferences ---
 
   applyPrefs() {
-    // Storage key keeps the planboard name for data continuity.
-    localStorage.setItem('planboard:lang', this.prefs.lang ?? 'en');
-    setTheme(this.prefs.theme === 'dark' ? 'dark' : 'light');
+    // The lang/theme mirrors only exist for explicit choices so the
+    // next boot can re-run browser/OS detection when a pref is unset.
+    if (this.prefs.lang) localStorage.setItem('scatterboard:lang', this.prefs.lang);
+    else localStorage.removeItem('scatterboard:lang');
+    if (this.prefs.theme) localStorage.setItem('scatterboard:theme', this.prefs.theme);
+    else localStorage.removeItem('scatterboard:theme');
+    setTheme(this.prefs.theme ?? (systemDark() ? 'dark' : 'light'));
     setUiScale(this.prefs.uiScale ?? 1);
     setFormatting({
       browserLang: this.prefs.browserLang ?? true,
-      lang: this.prefs.lang ?? 'en',
+      lang: this.prefs.lang ?? activeLang(),
       currency: this.prefs.currency ?? 'USD',
     });
     // Theme/scale change every card's colours and counter-scale, none
@@ -1759,12 +1857,24 @@ export class App {
   }
 
 
+  private openHelp(anchor: HTMLElement) {
+    openHelpMenu(anchor, {
+      onShortcuts: () => openShortcutsPanel(),
+      onAbout: (a) =>
+        openAboutPopup(a, {
+          storage: async () => ({ doc: this.adapter.docBytes(), blobs: await blobTotalSize() }),
+        }),
+    });
+  }
+
+
   private openSettings(anchor: HTMLElement) {
     const save = () => this.scheduleSave();
     openSettings(anchor, {
-      theme: () => (this.prefs.theme === 'dark' ? 'dark' : 'light'),
+      theme: () => this.prefs.theme ?? 'system',
       onTheme: (m) => {
-        this.prefs.theme = m;
+        if (m === 'system') delete this.prefs.theme;
+        else this.prefs.theme = m;
         this.applyPrefs();
         save();
       },
@@ -1774,14 +1884,17 @@ export class App {
         this.applyPrefs();
         save();
       },
-      storage: async () => ({ doc: this.adapter.docBytes(), blobs: await blobTotalSize() }),
-      lang: () => this.prefs.lang ?? 'en',
+      lang: () => this.prefs.lang ?? null,
       // Module-level label tables are captured at boot; switching
       // languages reloads the shell after the prefs flush.
-      onLang: (l: Lang) => {
-        this.prefs.lang = l;
-        // Storage key keeps the planboard name for data continuity.
-        localStorage.setItem('planboard:lang', l);
+      onLang: (l: Lang | null) => {
+        if (l) {
+          this.prefs.lang = l;
+          localStorage.setItem('scatterboard:lang', l);
+        } else {
+          delete this.prefs.lang;
+          localStorage.removeItem('scatterboard:lang');
+        }
         this.scheduleSave();
         void this.flush().then(() => location.reload());
       },
@@ -1873,7 +1986,8 @@ export class App {
   // then reload so the boot path re-seeds a fresh default doc.
   private async resetAll() {
     await this.flush();
-    localStorage.removeItem('planboard:lang');
+    localStorage.removeItem('scatterboard:lang');
+    localStorage.removeItem('scatterboard:theme');
     await this.adapter.clear();
     await clearBlobs();
     location.reload();
@@ -1906,8 +2020,11 @@ export class App {
 
   private markSave(kind: 1 | 2) {
     if (kind > this.saveKind) this.saveKind = kind;
-    if (this.saveState !== 'saving') {
-      this.saveState = 'saving';
+    this.saveState = 'saving';
+    // Camera-only saves (kind 1) write a small position row: persist
+    // them silently. The chip only reports real doc changes.
+    if (kind === 2 && !this.saveChip) {
+      this.saveChip = true;
       this.topbar.setSaveState('saving');
     }
     if (this.saveTimer !== null) clearTimeout(this.saveTimer);
@@ -1932,7 +2049,10 @@ export class App {
       return;
     }
     this.saveState = 'saved';
-    this.topbar.setSaveState('saved');
+    if (this.saveChip) {
+      this.saveChip = false;
+      this.topbar.setSaveState('saved');
+    }
   }
 
 

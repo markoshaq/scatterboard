@@ -706,6 +706,7 @@ export class TableCard implements CardView {
       e.stopPropagation();
       grip.setPointerCapture(e.pointerId);
       this.gripDrag = true;
+      const pid = e.pointerId;
       const centers = this.cellEls.map((row) => {
         const r = row[0]!.getBoundingClientRect();
         return r.top + r.height / 2;
@@ -713,6 +714,7 @@ export class TableCard implements CardView {
       let dst = ri;
       let moved = false;
       const move = (ev: PointerEvent) => {
+        if (ev.pointerId !== pid) return;
         moved = true;
         const raw = centers.findIndex((cy) => ev.clientY < cy);
         dst = raw < 0 ? centers.length - 1 : raw;
@@ -721,6 +723,7 @@ export class TableCard implements CardView {
         grip.classList.add('tb-grip-drag');
       };
       const up = (ev: PointerEvent) => {
+        if (ev.pointerId !== pid) return;
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
         window.removeEventListener('pointercancel', up);
@@ -763,10 +766,13 @@ export class TableCard implements CardView {
       const x0 = e.clientX;
       edge.setPointerCapture(e.pointerId);
       this.gripDrag = true;
+      const pid = e.pointerId;
       const move = (ev: PointerEvent) => {
+        if (ev.pointerId !== pid) return;
         this.setColWidth(ci, w0 + (ev.clientX - x0) / this.scale());
       };
-      const up = () => {
+      const up = (ev: PointerEvent) => {
+        if (ev.pointerId !== pid) return;
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
         window.removeEventListener('pointercancel', up);
@@ -787,6 +793,7 @@ export class TableCard implements CardView {
       const row0 = this.cellEls[0];
       if (!row0) return;
       this.gripDrag = true;
+      const pid = e.pointerId;
       const centers = row0.map((cell) => {
         const r = cell.getBoundingClientRect();
         return r.left + r.width / 2;
@@ -794,6 +801,7 @@ export class TableCard implements CardView {
       let dst = ci;
       let moved = false;
       const move = (ev: PointerEvent) => {
+        if (ev.pointerId !== pid) return;
         moved = true;
         const raw = centers.findIndex((cx) => ev.clientX < cx);
         dst = raw < 0 ? centers.length - 1 : raw;
@@ -802,6 +810,7 @@ export class TableCard implements CardView {
         grip.classList.add('tb-grip-drag');
       };
       const up = (ev: PointerEvent) => {
+        if (ev.pointerId !== pid) return;
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
         window.removeEventListener('pointercancel', up);

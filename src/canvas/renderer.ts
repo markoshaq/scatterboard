@@ -107,6 +107,8 @@ export class Renderer {
       if (lx > vr.x + vr.w || lx + lw < vr.x || ly > vr.y + vr.h || ly + lh < vr.y) continue;
       this.drawLine(l);
     }
+    // Outlines paint under .doc so pins and chips sit above the ring.
+    for (const o of scene.outlines) this.drawOutline(o.rect, o.radius);
 
     const chrome = this.chrome;
     chrome.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -121,7 +123,6 @@ export class Renderer {
     }
     if (scene.draft) this.drawDraft(scene.draft);
     for (const g of scene.guides) this.drawGuide(g);
-    for (const o of scene.outlines) this.drawOutline(o.rect, o.radius);
     if (scene.marquee) this.drawMarquee(scene.marquee);
     this.ctx = ctx;
   }

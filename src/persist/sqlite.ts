@@ -15,17 +15,18 @@ interface WReply {
   result?: Record<string, unknown>;
 }
 
-// Storage keys and the OPFS file keep the planboard name for data
-// continuity.
-const DB_FILE = 'file:planboard.sqlite3?vfs=opfs-sahpool';
+// Pre-rename installs keep their data under the planboard file/keys;
+// create() copies it forward once, then deletes the old file.
+const DB_FILE = 'file:scatterboard.sqlite3?vfs=opfs-sahpool';
+const OLD_DB_FILE = 'file:planboard.sqlite3?vfs=opfs-sahpool';
 const WORKER_URL = './jswasm/sqlite3-worker1.mjs';
 const WS_KEY = 'workspace';
 const LAST_KEY = 'last-board';
 const MIGRATED = 'migrated';
 const POS_PREFIX = 'pos:';
-const LS_KEY = 'planboard:v1';
-const LS_LAST = 'planboard:last-board';
-const LS_POS = 'planboard:pos:';
+const LS_KEY = 'scatterboard:v1';
+const LS_LAST = 'scatterboard:last-board';
+const LS_POS = 'scatterboard:pos:';
 
 // JSON parse off the main thread on load only. Saves stringify on the
 // main thread: cloning a 550KB workspace object into the worker cost
@@ -150,6 +151,7 @@ export class SqliteAdapter implements DocStorage {
       if (!a.dbId) return null;
       a.db = db;
       await db.exec(a.dbId, 'CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)');
+      if ((await a.get(WS_KEY)) === null) await a.inheritOldDb();
       await a.migrate();
       a.last = (await a.get(LAST_KEY)) ?? null;
       const posRows = await db.exec(a.dbId, 'SELECT key, value FROM kv WHERE key LIKE ?', [`${POS_PREFIX}%`]);
@@ -181,6 +183,27 @@ export class SqliteAdapter implements DocStorage {
       }
     });
     return this.queue;
+  }
+
+  // Copy kv rows out of the pre-rename OPFS file, then delete it.
+  // open() creates the file when it is absent, so the empty-schema
+  // check doubles as the "was it there" test and close(unlink) drops
+  // the phantom either way.
+  private async inheritOldDb() {
+    const open = await this.db!.call('open', { filename: OLD_DB_FILE }).catch(() => null);
+    const oldId = open?.dbId;
+    if (!oldId) return;
+    try {
+      const has = await this.db!.exec(oldId, "SELECT name FROM sqlite_master WHERE name = 'kv'");
+      if (has.length) {
+        const rows = await this.db!.exec(oldId, 'SELECT key, value FROM kv');
+        for (const r of rows) await this.put(String(r.key), String(r.value));
+      }
+    } catch {
+      // Unreadable old file: nothing to inherit.
+    } finally {
+      await this.db!.call('close', { unlink: true }, oldId).catch(() => {});
+    }
   }
 
   private async migrate() {

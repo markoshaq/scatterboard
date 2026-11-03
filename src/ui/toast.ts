@@ -15,7 +15,8 @@ export function toast(msg: string) {
 }
 
 // Sticky toast with one action button plus dismiss; used for the
-// "keep in sync?" and helper offers. onDone fires on any exit.
+// "keep in sync?" and helper offers. onDone fires only when the toast
+// exits without the action being taken.
 export function choice(msg: string, actionLabel: string, onAction: () => void, onDone?: () => void) {
   if (!host) {
     host = document.createElement('div');

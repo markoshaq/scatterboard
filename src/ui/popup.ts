@@ -4,6 +4,7 @@ export interface ToolPopup {
 }
 
 let current: ToolPopup | null = null;
+let currentAnchor: HTMLElement | null = null;
 let currentBoardAnchored = false;
 
 export function closeToolPopup() {
@@ -15,12 +16,14 @@ export function closeToolPopup() {
 export function claimToolPopup(pop: ToolPopup, boardAnchored = false) {
   closeToolPopup();
   current = pop;
+  currentAnchor = null;
   currentBoardAnchored = boardAnchored;
 }
 
 export function releaseToolPopup(pop: ToolPopup) {
   if (current === pop) {
     current = null;
+    currentAnchor = null;
     currentBoardAnchored = false;
   }
 }
@@ -62,7 +65,12 @@ function onDismissKey(e: KeyboardEvent) {
 // `below` drops the popup under the anchor instead of level with it,
 // so topbar menus do not cover the buttons that opened them.
 export function openToolPopup(anchor: HTMLElement | DOMRect, content: HTMLElement, below = false): ToolPopup {
+  // Re-clicking the element that opened the live popup toggles it shut:
+  // onDocDown leaves it up for the anchor, so the anchor's click handler
+  // lands back here and gets an already-closed stub.
+  const retoggle = anchor instanceof HTMLElement && anchor === currentAnchor;
   closeToolPopup();
+  if (retoggle) return { node: content, close() {} };
   const rect = anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;
   const boardAnchored = !(anchor instanceof HTMLElement) || !!anchor.closest('.doc');
   const node = document.createElement('div');
@@ -75,6 +83,7 @@ export function openToolPopup(anchor: HTMLElement | DOMRect, content: HTMLElemen
     close() {
       if (current === pop) {
         current = null;
+        currentAnchor = null;
         currentBoardAnchored = false;
       }
       releaseToolPopup(pop);
@@ -85,6 +94,8 @@ export function openToolPopup(anchor: HTMLElement | DOMRect, content: HTMLElemen
   };
 
   function onDocDown(e: PointerEvent) {
+    // The opening anchor is a toggle, not an outside click.
+    if (anchor instanceof HTMLElement && anchor.contains(e.target as Node)) return;
     if (!node.contains(e.target as Node)) pop.close();
   }
 
@@ -103,6 +114,7 @@ export function openToolPopup(anchor: HTMLElement | DOMRect, content: HTMLElemen
   window.addEventListener('pointerdown', onDocDown, true);
   pushDismiss(pop);
   current = pop;
+  currentAnchor = anchor instanceof HTMLElement ? anchor : null;
   currentBoardAnchored = boardAnchored;
   return pop;
 }

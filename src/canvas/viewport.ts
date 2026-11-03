@@ -63,15 +63,20 @@ export class Viewport {
     this.changed();
   }
 
-  fit(r: Rect | null, pad = 80) {
+  // Fit inside the usable box (viewport minus chrome insets): centered
+  // horizontally, top-anchored so wide boards hug the topbar instead of
+  // floating mid-screen.
+  fit(r: Rect | null, ins = { l: 80, t: 80, r: 80, b: 80 }) {
     if (!r || r.w <= 0 || r.h <= 0) {
       this.reset();
       return;
     }
-    const z = Math.min(MAX_Z, Math.max(MIN_Z, Math.min((this.vw - pad * 2) / r.w, (this.vh - pad * 2) / r.h)));
+    const uw = this.vw - ins.l - ins.r;
+    const uh = this.vh - ins.t - ins.b;
+    const z = Math.min(MAX_Z, Math.max(MIN_Z, Math.min(uw / r.w, uh / r.h)));
     this.z = z;
-    this.x = this.vw / 2 - (r.x + r.w / 2) * z;
-    this.y = this.vh / 2 - (r.y + r.h / 2) * z;
+    this.x = ins.l + (uw - r.w * z) / 2 - r.x * z;
+    this.y = ins.t - r.y * z;
     this.changed();
   }
 

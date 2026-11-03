@@ -7,6 +7,7 @@ import type { SceneLine } from '../canvas/renderer';
 import { ChipsLayer } from '../ui/chips';
 import { CommentPins } from '../ui/pins';
 import { AnnotationLayer } from '../ui/annotations';
+import { startElementDrag } from '../canvas/input';
 import { t } from '../strings';
 
 // Overlay cull pads in board units: cards cull at 240 but affordances
@@ -308,8 +309,7 @@ export class Overlays {
 
   private onAnnoPick(id: ID, e: PointerEvent) {
     this.a.editing.endEdit();
-    if (e.shiftKey) this.a.toggleSelect(id);
-    else this.a.selectOnly(id);
+    startElementDrag(e, this.a, id);
   }
 
 
