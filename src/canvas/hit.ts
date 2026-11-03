@@ -23,3 +23,27 @@ export function unionRect(rs: Rect[]): Rect | null {
   }
   return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }
+
+// Parametric segment-vs-rect clip (Liang-Barsky): the t range of the
+// segment that lies inside r, or null when it misses entirely.
+export function clipSeg(x1: number, y1: number, x2: number, y2: number, r: Rect): [number, number] | null {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  for (const [p, q] of [
+    [-dx, x1 - r.x],
+    [dx, r.x + r.w - x1],
+    [-dy, y1 - r.y],
+    [dy, r.y + r.h - y1],
+  ] as const) {
+    if (p === 0) {
+      if (q < 0) return null;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+  }
+  return t0 <= t1 ? [t0, t1] : null;
+}

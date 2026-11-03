@@ -280,6 +280,7 @@ const table: Partial<Record<StringKey, string>> = {
   setNoOverlap: 'Evitar solapamiento',
   setInk: 'Efecto de tinta',
   setUndoArrows: 'Flechas de deshacer y rehacer',
+  setAutoEdit: 'Editar tarjetas nuevas al soltar',
   setGuides: 'Guías de alineación',
   guideFull: 'Intensas',
   guideFaint: 'Tenues',

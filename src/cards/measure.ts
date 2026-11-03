@@ -21,10 +21,18 @@ import {
 // top margin, then members stacked with 8px gaps.
 export const COL_PAD = 10;
 export const COL_GAP = 8;
+// Chip rows (labels/reactions) render 6px under a member and ~18 tall;
+// members with chips get this much extra room below them so the row
+// lands in the gap instead of on the next card.
+export const COL_CHIPS = 20;
 const COL_COUNT_H = 18;
 const COL_BODY_TOP = 8;
 const COL_TITLE_MIN = 20;
 const COL_TITLE_LH = 20.3;
+
+export function memberChipPad(el: El): number {
+  return el.labels.length || el.reactions?.length ? COL_CHIPS : 0;
+}
 
 export function colHeadH(el: El, w = el.w ?? defaultWidth(el)): number {
   const title = columnTitle(el);
@@ -107,7 +115,7 @@ export function fallbackHeight(
     let h = colBodyTop(el, w) + COL_PAD;
     for (const m of members(el.id)) {
       if (m.type === 'line' || m.type === 'annotation') continue;
-      h += heightOf(m, memberW) + COL_GAP;
+      h += heightOf(m, memberW) + COL_GAP + memberChipPad(m);
     }
     return h;
   }

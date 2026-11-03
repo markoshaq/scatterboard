@@ -102,6 +102,10 @@ export class DrawPad {
     this.strokes = cloneStrokes(opts.initial ?? []);
     this.tools = document.createElement('div');
     this.tools.className = 'draw-tools';
+    // Board draw mounts the toolbar inside the capture surface itself:
+    // without this, a tool click starts a stroke and the capture steals
+    // the click away from the button.
+    this.tools.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.buildTools();
     window.addEventListener('keydown', this.onKey, true);
   }

@@ -48,13 +48,6 @@ export class RailTools {
         if (editing?.type === 'table') {
           const v = this.tableView();
           if (v) openMenuPopup(anchor, this.cellMoreItems(v));
-        } else if (editing && (editing.type === 'note' || editing.type === 'heading')) {
-          const surface = this.a.editing.editSurface();
-          if (!surface) return;
-          openMenuPopup(anchor, [
-            { label: t('toolInlineCode'), onPick: () => toggleInlineCode(surface) },
-            { label: t('toolUnderline'), onPick: () => execMark(surface, 'underline') },
-          ], true);
         } else {
           openMenuPopup(anchor, this.moreItems(sel));
         }
@@ -93,10 +86,19 @@ export class RailTools {
       }
       case 'tx-bold':
       case 'tx-italic':
-      case 'tx-strike': {
+      case 'tx-strike':
+      case 'tx-underline': {
         const surface = this.a.editing.editSurface();
         if (!surface) return;
-        execMark(surface, id === 'tx-bold' ? 'bold' : id === 'tx-italic' ? 'italic' : 'strikeThrough');
+        execMark(
+          surface,
+          id === 'tx-bold' ? 'bold' : id === 'tx-italic' ? 'italic' : id === 'tx-strike' ? 'strikeThrough' : 'underline',
+        );
+        break;
+      }
+      case 'tx-code': {
+        const surface = this.a.editing.editSurface();
+        if (surface) toggleInlineCode(surface);
         break;
       }
       case 'tx-bullet':

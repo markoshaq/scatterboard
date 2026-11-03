@@ -282,6 +282,7 @@ const table: Partial<Record<StringKey, string>> = {
   setNoOverlap: 'Überlappen verhindern',
   setInk: 'Tinteneffekt',
   setUndoArrows: 'Pfeile für Rückgängig und Wiederholen',
+  setAutoEdit: 'Neue Karten beim Ablegen bearbeiten',
   setGuides: 'Ausrichtungshilfen',
   guideFull: 'Deutlich',
   guideFaint: 'Dezent',

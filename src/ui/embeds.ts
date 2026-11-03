@@ -49,6 +49,17 @@ function mapQuery(url: string): string | null {
   return url;
 }
 
+// A human title derived from the URL itself, no fetch. Google Maps
+// carries the place in /maps/place/<name>/, search or ?q=; unlike
+// mapQuery the title prefers the name over the coordinates.
+export function urlTitle(url: string): string | null {
+  if (!/google\.[\w.]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps|maps\.google\./.test(url)) return null;
+  const place = url.match(/\/maps\/(?:place|search)\/([^/@]+)/) ?? url.match(/[?&]q=([^&]+)/);
+  if (place) return safeDecode(place[1]!).replace(/\+/g, ' ');
+  const at = url.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+  return at ? `${at[1]},${at[2]}` : null;
+}
+
 // The iframe src for a pasted URL, or null when the provider isn't
 // recognised for this embed kind.
 export function embedSrc(kind: EmbedKind, url: string): string | null {

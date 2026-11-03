@@ -304,12 +304,11 @@ export function indentList(root: HTMLElement, out: boolean) {
   touched(root);
 }
 
-const MD_TRIGGERS: Record<string, BlockStyle | 'ul' | 'ol' | 'check' | 'hr'> = {
+const MD_TRIGGERS: Record<string, BlockStyle | 'ul' | 'ol' | 'hr'> = {
   '#': 'h2',
   '##': 'h3',
   '*': 'ul',
   '1.': 'ol',
-  '[]': 'check',
   '>': 'quote',
   '```': 'code',
   '---': 'hr',
@@ -331,10 +330,7 @@ function mdAutoformat(root: HTMLElement): boolean {
   const action = MD_TRIGGERS[marker];
   if (!action) return false;
   pre.deleteContents();
-  if (action === 'check') {
-    block.classList.remove('tx-sm', 'tx-co');
-    block.classList.add('tx-check');
-  } else if (action === 'hr') {
+  if (action === 'hr') {
     const hr = document.createElement('hr');
     const p = document.createElement('p');
     p.appendChild(document.createElement('br'));

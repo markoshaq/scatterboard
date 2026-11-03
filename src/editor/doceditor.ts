@@ -105,6 +105,7 @@ export function openDocumentEditor(el: Element, ctx: DocEditorCtx): EditorHandle
     if (isBlankSurface(body)) body.innerHTML = '';
     commit();
   });
+
   body.addEventListener('keydown', (e) => {
     richKeydown(body, e, {
       openLink: () => {

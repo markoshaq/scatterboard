@@ -7,6 +7,9 @@ import { cardBg } from '../ui/theme';
 export interface CardEvents {
   onTextInput: (id: string, text: string, html?: string) => void;
   onContent: (id: string, content: TypeContent) => void;
+  // View-driven geometry patch (e.g. a card growing itself to fit
+  // its one-line rows); the only width writer besides the resize drag.
+  onPatch?: (id: string, patch: { w?: number }) => void;
   onMeasure: (id: string, h: number) => void;
   onResizeHandle: (id: string, e: PointerEvent) => void;
   onEditEnd: (id: string) => void;
@@ -15,6 +18,8 @@ export interface CardEvents {
   onEditField: (id: string, field?: string) => void;
   // Card-internal focus moved (table cell vs field): rail re-syncs.
   onCellFocus?: (id: string) => void;
+  // Mutation gate (presenting + prevent-editing); absent means editable.
+  editable?: () => boolean;
   // Shared layer ResizeObserver hooks: a view registers its root node
   // once instead of owning an observer per card.
   observeNode?: (v: CardView) => void;

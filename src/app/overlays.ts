@@ -6,6 +6,7 @@ import { midpoint } from '../canvas/lines';
 import type { SceneLine } from '../canvas/renderer';
 import { ChipsLayer } from '../ui/chips';
 import { CommentPins } from '../ui/pins';
+import { ColumnCard } from '../cards/column';
 import { AnnotationLayer } from '../ui/annotations';
 import { startElementDrag } from '../canvas/input';
 import { t } from '../strings';
@@ -172,14 +173,22 @@ export class Overlays {
     const push = (el: Element) => {
       if (el.type === 'line') return;
       if (el.type === 'comment' && (el.anchorId !== undefined || hideComments)) return;
-      const rect = layer.rectOf(el);
+      const r0 = layer.rectOf(el);
+      // A member mid-reorder rides the pointer: rectOf reports the open
+      // slot, so seat the row on the lifted position instead.
+      const lift = this.a.gestures.liftDelta(el.id);
+      const rect = lift ? { x: r0.x + lift.dx, y: r0.y + lift.dy, w: r0.w, h: r0.h } : r0;
       if (!visible || rectsIntersect(rect, visible)) out.push({ el, rect, dim: this.a.dims(el.id) });
     };
+    const lift = this.a.gestures.liftMember();
     for (const el of layer.elements()) {
       push(el);
       // Culled-column members report a stale pre-filing x/y; skip them.
+      // A member mid-reorder occludes its siblings: their chips hide
+      // rather than float above the card riding the pointer.
       if (el.type === 'column')
         for (const m of layer.members(el.id)) {
+          if (lift && lift.colId === el.id && m.id !== lift.memberId) continue;
           if (all || layer.view(m.id)) push(m);
         }
     }
@@ -187,13 +196,35 @@ export class Overlays {
   }
 
 
+  // Member-attached lines: the board-canvas stroke hides under the
+  // column's opaque surface, so each mounted column re-strokes the
+  // inside span inside its own box, under the member stack.
+  private syncColumnLines(lines: SceneLine[]) {
+    for (const v of this.a.layer.mounted()) {
+      if (!(v instanceof ColumnCard)) continue;
+      const col = this.a.doc.elements[v.id];
+      if (!col) continue;
+      const rect = this.a.layer.rectOf(col);
+      const inside: SceneLine[] = [];
+      for (const l of lines) {
+        const c = lineDoc(l.el);
+        if (!c) continue;
+        const memberEnd = [c.from, c.to].some((end) => end.el && this.a.doc.elements[end.el]?.parentId === col.id);
+        if (memberEnd) inside.push(l);
+      }
+      v.setLineSpans(rect, inside);
+    }
+  }
+
+
   private syncChips() {
     this.chips.sync(this.chipTargets(), (id) => {
       const el = this.a.doc.elements[id];
-      // Member rows stay in the host: inside .col-body their board-space
-      // coords land in card-local space and get clipped by contain:paint.
-      if (!el || el.parentId) return null;
-      return this.a.layer.view(id)?.node ?? null;
+      if (!el) return null;
+      // Member rows seat after their column: .cards shares board space,
+      // and cards above the column (a drag mid-air included) cover the
+      // chips like they cover the members.
+      return this.a.layer.view(el.parentId ?? id)?.node ?? null;
     });
   }
 
@@ -220,6 +251,7 @@ export class Overlays {
       seat: HTMLElement | null;
     }[] = [];
     const visible = all ? null : this.a.vp.viewRect(PIN_PAD);
+    const lifted = this.a.gestures.liftMember();
     for (const el of layer.elements()) {
       if (el.type !== 'comment' || el.anchorId === undefined) continue;
       const anchor = this.a.doc.elements[el.anchorId];
@@ -227,7 +259,10 @@ export class Overlays {
       // Member anchors use a DOM rect: an unmounted column member would
       // report its stale pre-filing x/y and leave an orphan pin.
       if (anchor.parentId && !layer.view(anchor.id)) continue;
-      const rect = layer.rectOf(anchor);
+      if (lifted && anchor.parentId === lifted.colId && anchor.id !== lifted.memberId) continue;
+      const r0 = layer.rectOf(anchor);
+      const lift = this.a.gestures.liftDelta(anchor.id);
+      const rect = lift ? { x: r0.x + lift.dx, y: r0.y + lift.dy, w: r0.w, h: r0.h } : r0;
       if (visible && !rectsIntersect(rect, visible)) continue;
       const c = commentDoc(el);
       const count = c?.items.length ?? 0;
@@ -239,9 +274,9 @@ export class Overlays {
         selected: this.a.sel.has(el.id),
         unread: Math.max(0, count - seen),
         color: el.color,
-        // Seated after the anchor card so covering cards hide the pin.
-        // Member anchors keep the host (same as member chip rows).
-        seat: anchor.parentId ? null : (layer.view(anchor.id)?.node ?? null),
+        // Seated after the anchor card so covering cards hide the pin;
+        // member anchors seat after their column for the same reason.
+        seat: layer.view(anchor.parentId ?? anchor.id)?.node ?? null,
       });
     }
     return out;
@@ -318,7 +353,15 @@ export class Overlays {
   syncConnectHandle() {
     const id = this.a.sel.size === 1 ? [...this.a.sel][0]! : null;
     const el = id ? this.a.doc.elements[id] : undefined;
-    if (!el || el.type === 'line' || el.type === 'comment' || this.a.editingId || el.locked || this.a.lockedView()) {
+    if (
+      !el ||
+      el.type === 'line' ||
+      el.type === 'comment' ||
+      this.a.editingId ||
+      el.locked ||
+      this.a.lockedView() ||
+      this.a.gestures.dragging
+    ) {
       this.connectHandle.style.display = 'none';
       return;
     }
@@ -359,6 +402,7 @@ export class Overlays {
   sync(lines: SceneLine[]) {
     this.syncConnectHandle();
     this.syncLabelPills(lines);
+    this.syncColumnLines(lines);
     this.syncChips();
     this.syncPins();
     this.syncAnno();

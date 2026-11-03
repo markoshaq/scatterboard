@@ -15,6 +15,17 @@ export class Gestures {
   // pointer, a marker bar marks the slot, and z commits on endDrag.
   private memberReorder: { colId: ID; memberId: ID; z: number; dx: number; dy: number } | null = null;
 
+  // True between the first dragMove and end/abort: overlays hide
+  // affordances (connect handle) that should not ride the drag.
+  dragging = false;
+
+  // The lifted member's identity for overlays: sibling member chrome
+  // hides while a card mid-reorder occludes it.
+  liftMember(): { colId: ID; memberId: ID } | null {
+    const r = this.memberReorder;
+    return r ? { colId: r.colId, memberId: r.memberId } : null;
+  }
+
   // Drop-slot inside the hinted column: filing lands mid-stack here
   // instead of appending at the end.
   private dropInsert: {
@@ -41,6 +52,7 @@ export class Gestures {
   // mid-drag (a client delta re-scaled by the new z would jump).
   dragMove(ids: ID[], origins: Map<ID, { x: number; y: number }>, start: { x: number; y: number }, ev: PointerEvent) {
     if (this.a.lockedView()) return;
+    this.dragging = true;
     // A mid-gesture delete (shortcut undo, Backspace) drops elements
     // out from under the drag; skip them instead of crashing on x/y.
     ids = ids.filter((id) => this.a.doc.elements[id] && origins.has(id));
@@ -250,6 +262,7 @@ export class Gestures {
 
 
   endDrag(ev?: PointerEvent) {
+    this.dragging = false;
     this.trashRect = undefined;
     this.setTrashHint(false);
     if (ev) {
@@ -319,6 +332,7 @@ export class Gestures {
 
   // pointercancel mid-drag: clear the in-flight drop/gesture chrome.
   abortDrag() {
+    this.dragging = false;
     this.trashRect = undefined;
     this.clearMemberReorder();
     this.clearDropHint();

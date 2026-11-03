@@ -55,6 +55,8 @@ export interface TodoItem {
   text: string;
   done: boolean;
   dueAt?: number;
+  // Whether dueAt's clock part is meaningful: day-only dues show no time.
+  dueTime?: boolean;
   assignee?: 'self';
   reactions?: string[];
 }

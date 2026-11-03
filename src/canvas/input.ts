@@ -19,6 +19,17 @@ export function attachPointer(root: HTMLElement, app: App) {
   };
   window.addEventListener('pointerup', release);
   window.addEventListener('pointercancel', release);
+  // Links inside rich text open externally; an editing card's caret
+  // still owns its clicks, so only non-editing cards are caught here.
+  root.addEventListener('click', (e) => {
+    const a = (e.target as HTMLElement).closest?.('.card:not(.editing) a[href]');
+    if (!(a instanceof HTMLAnchorElement)) return;
+    // Only real http(s) links open externally: mailto: triggers the
+    // mail client anyway and #/b/... is same-tab internal navigation.
+    if (!/^https?:/i.test(a.getAttribute('href') ?? '')) return;
+    e.preventDefault();
+    window.open(a.href, '_blank', 'noopener');
+  });
   root.addEventListener('dblclick', (e) => onDblClick(e, app));
   root.addEventListener('wheel', (e) => onWheel(e, app), { passive: false });
   root.addEventListener('contextmenu', (e) => onContextMenu(e));
@@ -158,7 +169,7 @@ export function startElementDrag(e: PointerEvent, app: App, cardId: ID) {
     if (grouped) app.store.endGroup('move');
     if (!moved && wasSelected) {
       if (app.sel.size > 1) app.selectOnly(cardId);
-      else if (app.clickEdits(cardId) && !(ev.target as HTMLElement).closest?.('[data-noclick]')) {
+      else if (app.clickEdits(cardId) && !(ev.target as HTMLElement).closest?.('[data-noclick], a[href]')) {
         app.beginEdit(cardId, { x: ev.clientX, y: ev.clientY });
       }
     }
@@ -220,6 +231,8 @@ function onBackgroundDown(e: PointerEvent, app: App, hit: LineHit | null) {
 }
 
 function onDblClick(e: MouseEvent, app: App) {
+  // A second click on a rich-text link stays a navigation, not editing.
+  if ((e.target as HTMLElement).closest?.('a[href]')) return;
   const cardId = app.cardIdAt(e as PointerEvent);
   if (cardId) {
     if (app.editingId === cardId) return;

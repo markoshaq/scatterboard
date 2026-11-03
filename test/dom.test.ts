@@ -6,7 +6,7 @@ import { embedSrc, hostOf } from '../src/ui/embeds';
 describe('sanitizeHtml', () => {
   it('keeps editor-produced markup intact', () => {
     const html =
-      '<p class="tx-check">task</p><h2>title</h2><blockquote>q</blockquote>' +
+      '<p class="tx-sm">task</p><h2>title</h2><blockquote>q</blockquote>' +
       '<pre>code</pre><code class="tx-ic">x</code><span style="color: #ff0000">red</span>' +
       '<p style="text-align: center">c</p><ul><li>a</li></ul><a href="https://x.com">l</a><hr><br>';
     expect(sanitizeHtml(html)).toBe(html);

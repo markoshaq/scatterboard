@@ -124,10 +124,12 @@ calls; fully offline.
     `icons.ts` all SVG icon strings, `util.ts` `dragGhost`,
     `files.ts` file/image ingest + paste parsing + `fmtSize`,
     `embeds.ts` provider URL -> iframe src parsing (YouTube/Vimeo/
-    Spotify/SoundCloud/Maps; no fetch). `shortcuts.ts` is the global
+    Spotify/SoundCloud/Maps; no fetch) plus `urlTitle` (URL-derived
+    titles, no fetch). `shortcuts.ts` is the global
     keydown map (modal surfaces own their keys); `unfurl.ts` is the
     link-preview fetch through api.allorigins.win, the only fetch in
-    the codebase besides embed iframes.
+    the codebase besides embed iframes. Embed cards fetch their page
+    title without the unfurl pref; link cards only with it.
 - `src/lang/`: lazy locale tables (de/es/fr/pt) loaded by
   `strings.loadLang`; en lives inline in strings.ts.
 - `src/export/`: board-level export writers, all client-side:
@@ -156,13 +158,15 @@ calls; fully offline.
 - `src/app.ts`: wiring: selection, drag gestures entry points, canvas
   overlays (chips/pins/label pills/connect handle), render loop,
   autosave. Collaborators live in `src/app/`: `editing.ts` (edit
-  sessions, text commits, sync groups, helper offers, link enrich),
+  sessions, text commits, sync groups, helper offers, link/embed
+  enrich),
   `tools.ts` (rail tool dispatch + card ops incl. converts),
   `panels.ts` (side panels: unsorted/trash/search/boards, board ops,
   icons, templates, route filters), `gestures.ts` (drag/drop, trash +
   column drop hints, resize, pan, overlap push), `export.ts` (PNG/PDF/
   linear/zip/JSON export + import), `overlays.ts` (label pills, chips,
-  pins, annotation seating, connect handle, coveredByCard). Delegates
+  pins, annotation seating, column member line spans, connect handle,
+  coveredByCard). Delegates
   reach App internals via
   an `App` back-reference; App keeps public shims for outside callers.
 - `src/main.ts` + `src/boot.ts`: entry. main.ts loads the boot locale

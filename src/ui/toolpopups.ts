@@ -298,7 +298,7 @@ export function openReactionsPopup(
     if (e.key === 'Escape') closeToolPopup();
   });
   render();
-  const pop = openToolPopup(anchor, node);
+  const pop = openToolPopup(anchor, node, true);
   if (!(anchor instanceof DOMRect)) search.focus();
   return pop;
 }

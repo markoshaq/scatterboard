@@ -144,12 +144,14 @@ body.pan-mode .viewport {
   pointer-events: none;
 }
 
+/* No will-change here: pinning the whole board as a composited layer
+   lets the compositor show a stale scaled raster between repaints,
+   which reads as blur during and after pan/zoom. */
 .doc {
   position: absolute;
   left: 0;
   top: 0;
   width: 0;
-  will-change: transform;
   height: 0;
   transform-origin: 0 0;
   pointer-events: none;
@@ -450,11 +452,14 @@ body.pan-mode .viewport {
 
 /* column card */
 
+/* Paint containment off the column: a member mid-reorder rides the
+   pointer outside the column's box and must not clip at its edge. */
 .card.column {
   background: var(--card-soft);
   border-radius: 10px;
   box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 1px var(--card-edge);
   padding: 10px;
+  contain: layout style;
 }
 
 .col-title {
@@ -476,6 +481,15 @@ body.pan-mode .viewport {
   margin-top: 2px;
 }
 
+/* Member-attached line spans: between the column surface and the
+   member stack (below positioned members), clipped to the column box. */
+.col-lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
 .col-body {
   margin-top: 8px;
   display: flex;
@@ -490,6 +504,14 @@ body.pan-mode .viewport {
   top: auto;
   width: 100%;
   flex: none;
+}
+
+/* Selection ring lives on the card itself: the canvas outline paints
+   under .doc, so it hides whenever another card covers the selected
+   one. An outline (not box-shadow) rides the card's own z and never
+   fights per-type shadows. */
+.card.selected {
+  outline: 2px solid var(--accent);
 }
 
 /* Member reorder drag: the card rides the pointer above its slot
@@ -621,7 +643,7 @@ body.pan-mode .viewport {
 
 .todo-item {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   min-height: 24px;
   padding: 2px 0;
@@ -631,7 +653,6 @@ body.pan-mode .viewport {
   flex: none;
   width: 15px;
   height: 15px;
-  margin-top: 3px;
   border-radius: 4px;
   border: 1.5px solid var(--ink-7);
   background: var(--card);
@@ -683,7 +704,6 @@ body.pan-mode .viewport {
   font-size: 11px;
   color: var(--ink-4);
   padding: 2px 4px;
-  margin-top: 1px;
   border-radius: 5px;
   cursor: pointer;
   display: flex;
@@ -696,8 +716,11 @@ body.pan-mode .viewport {
   display: block;
 }
 
-.card.todo:not(.editing) .todo-due:not(.has-due) {
-  display: none;
+/* Icon affordances (reaction/due with no value) reveal on row hover,
+   no edit session needed; visibility keeps their slot so the reveal
+   never shifts the row. */
+.card.todo:not(.editing) .todo-item:not(:hover) .todo-due:not(.has-due) {
+  visibility: hidden;
 }
 
 .todo-due.has-due {
@@ -1274,11 +1297,15 @@ body.over-trash .viewport * {
   pointer-events: none;
 }
 
+/* width:max-content pins the row to its content: the hosts are 0x0
+   inside .doc, and a shrink-to-fit width against them collapses to the
+   widest chip, stacking every child on its own line. */
 .chip-row {
   position: absolute;
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+  width: max-content;
   max-width: 280px;
 }
 
@@ -1870,21 +1897,7 @@ button.bpl-caret:hover {
   padding-left: 20px;
 }
 
-.note-text .tx-check {
-  position: relative;
-  padding-left: 22px;
-}
 
-.note-text .tx-check::before {
-  content: '';
-  position: absolute;
-  left: 3px;
-  top: 4px;
-  width: 11px;
-  height: 11px;
-  border: 1.5px solid var(--ink-5);
-  border-radius: 3px;
-}
 
 .note-text hr {
   border: 0;
@@ -3413,10 +3426,6 @@ svg.anno.present-dim {
 
 .todo-react {
   line-height: 1.2;
-}
-
-.card.todo:not(.editing) .todo-react-btn:not(.has-due) {
-  visibility: hidden;
 }
 
 .tb-grips {

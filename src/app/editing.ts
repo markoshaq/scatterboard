@@ -1,11 +1,12 @@
 import type { App } from '../app';
-import { boardRefOf, columnTitle, headingDoc, linkDoc, swatchDoc, todoDoc, uid, type Element, type ID, type TypeContent } from '../state/schema';
+import { boardRefOf, columnTitle, embedDoc, headingDoc, linkDoc, swatchDoc, todoDoc, uid, type Element, type ID, type TypeContent } from '../state/schema';
 import type { Action } from '../state/actions';
 import { TableCard } from '../cards/table';
 import { editRailType } from '../ui/rail';
 import { t } from '../strings';
 import { choice } from '../ui/toast';
 import { fetchLinkPreview } from '../ui/unfurl';
+import { hostOf, urlTitle } from '../ui/embeds';
 import { openLinkPopup } from '../ui/toolpopups';
 import { applyLink, selectionInRoot, selectionRange } from '../ui/richtext';
 export class Editing {
@@ -278,13 +279,20 @@ export class Editing {
       this.maybeOfferTodoTitle(el, content.todo);
     }
     if ('link' in content && content.link.url) this.enrichLink(el.id, content.link.url);
+    if ('embed' in content && content.embed.url) this.enrichEmbed(el.id, content.embed.url);
   }
 
 
   // URL unfurl (online extra, off by default): pull og tags through a
-  // CORS proxy and back-fill title/desc/image on the link card.
+  // CORS proxy and back-fill title/desc/image on the link card. The
+  // title is only replaced while it still holds an auto value (empty,
+  // the url's host or a url-derived name), never user-typed text.
   enrichLink(id: ID, url: string) {
     if (!this.a.prefs.unfurl || !navigator.onLine) return;
+    const el0 = this.a.doc.elements[id];
+    const cur0 = el0 ? linkDoc(el0) : null;
+    if (!el0 || !cur0 || cur0.url !== url) return;
+    if (!autoTitled(cur0.title, url) && cur0.desc !== undefined && cur0.image !== undefined) return;
     void fetchLinkPreview(url).then((res) => {
       if (!res) return;
       const el = this.a.doc.elements[id];
@@ -297,7 +305,7 @@ export class Editing {
           content: {
             link: {
               ...cur,
-              title: cur.title || (res.title ?? ''),
+              title: autoTitled(cur.title, url) ? (res.title ?? cur.title) : cur.title,
               ...(res.desc !== undefined ? { desc: res.desc } : {}),
               ...(res.image !== undefined ? { image: res.image } : {}),
             },
@@ -307,4 +315,32 @@ export class Editing {
     });
   }
 
+  // Embed cards get their title enriched without the unfurl pref:
+  // creating an embed is already opting into that provider's network.
+  enrichEmbed(id: ID, url: string) {
+    if (!navigator.onLine) return;
+    const auto = () => {
+      const el = this.a.doc.elements[id];
+      const cur = el ? embedDoc(el) : null;
+      return cur && cur.url === url && autoTitled(cur.title, url) ? cur : null;
+    };
+    if (!auto()) return;
+    void fetchLinkPreview(url).then((res) => {
+      if (!res?.title) return;
+      const cur = auto();
+      if (!cur) return;
+      this.a.store.dispatch({
+        type: 'element.patch',
+        id,
+        patch: { content: { embed: { ...cur, title: res.title } } },
+      });
+    });
+  }
+
+}
+
+// Whether a card title is still an auto value (empty, the url's host
+// or a url-derived name) and may be replaced by a fetched one.
+function autoTitled(title: string, url: string): boolean {
+  return !title || title === hostOf(url) || title === urlTitle(url);
 }

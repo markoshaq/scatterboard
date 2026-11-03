@@ -3,6 +3,7 @@ import { claimToolPopup, closeToolPopup, popDismiss, pushDismiss, releaseToolPop
 
 export interface DueValue {
   dueAt?: number;
+  hasTime?: boolean;
 }
 
 export interface DuePopupHandle {
@@ -41,7 +42,7 @@ export function openDuePopup(opts: {
   if (opts.current.dueAt !== undefined) {
     const d = new Date(opts.current.dueAt);
     st.day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    st.hasTime = true;
+    st.hasTime = opts.current.hasTime === true;
     const h24 = d.getHours();
     st.hour = h24 % 12 === 0 ? 12 : h24 % 12;
     st.minute = d.getMinutes();
@@ -78,7 +79,10 @@ export function openDuePopup(opts: {
   function commit() {
     const out: DueValue = {};
     const dueAt = dueTimestamp();
-    if (dueAt !== undefined) out.dueAt = dueAt;
+    if (dueAt !== undefined) {
+      out.dueAt = dueAt;
+      out.hasTime = st.hasTime;
+    }
     opts.onCommit(out);
   }
 

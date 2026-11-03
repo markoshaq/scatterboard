@@ -185,12 +185,19 @@ export function seedDoc(): Doc {
   intro.reactions = ['🚀', '💡', '✨'];
   intro.labels = [lblFeature.id];
 
-  const howTo = note(-516, 17, '', 280);
+  const howTo = put(createTodo(doc, bid, -516, 17));
+  howTo.w = 280;
   howTo.color = '#e8f0fe';
   howTo.content = {
-    note: {
-      text: 'Get around\nSpace + drag to pan\nScroll to zoom\nZ to fit the board\n/ for every shortcut',
-      html: '<p><b>Get around</b></p><div class="tx-check">Space + drag to pan</div><div class="tx-check">Scroll to zoom</div><div class="tx-check">Z to fit the board</div><div class="tx-check">/ for every shortcut</div>',
+    todo: {
+      title: 'Get around',
+      showTitle: true,
+      items: [
+        { id: 'w-g1', text: 'Space + drag to pan', done: false },
+        { id: 'w-g2', text: 'Scroll to zoom', done: false },
+        { id: 'w-g3', text: 'Z to fit the board', done: false },
+        { id: 'w-g4', text: '/ for every shortcut', done: false },
+      ],
     },
   };
   howTo.labels = [lblTip.id];

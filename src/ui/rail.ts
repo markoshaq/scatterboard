@@ -217,8 +217,8 @@ function singleTools(el: Element): ToolId[] {
 // Per-type edit-mode rails. The pinned Trash button below counts as the
 // trailing rail item in edit mode; it deletes the edited card.
 const EDIT_TOOLS: Partial<Record<ElementType, ToolId[]>> = {
-  note: ['tx-style', 'tx-bold', 'tx-italic', 'tx-strike', 'tx-bullet', 'tx-numbered', 'tx-center', 'tx-link', 'comment', 'more'],
-  heading: ['tx-style', 'tx-bold', 'tx-italic', 'tx-strike', 'tx-link', 'more'],
+  note: ['tx-style', 'tx-bold', 'tx-italic', 'tx-strike', 'tx-underline', 'tx-code', 'tx-bullet', 'tx-numbered', 'tx-center', 'tx-link', 'comment'],
+  heading: ['tx-style', 'tx-bold', 'tx-italic', 'tx-strike', 'tx-underline', 'tx-code', 'tx-link'],
   todo: ['color', 'title', 'reactions', 'due', 'assign', 'labels'],
   // Cell rail (verified): applies to the focused cell. Shows only while
   // a cell is focused; the app reports null for field edits.

@@ -8,7 +8,7 @@ import { createCard, type CardCtx } from './factory';
 import type { CardEvents, CardView } from './note';
 import { ColumnCard } from './column';
 import { BoardIndex } from './boardindex';
-import { COL_GAP, COL_PAD, colBodyTop, fallbackHeight } from './measure';
+import { COL_GAP, COL_PAD, colBodyTop, fallbackHeight, memberChipPad } from './measure';
 
 // Mount/unmount margin around the viewport in board units: generous so
 // fast pans never flash an empty edge.
@@ -178,7 +178,7 @@ export class CardsLayer {
           if (m.type === 'line' || m.type === 'annotation') continue;
           const mh = this.heightOf(m, w);
           if (m.id === el.id) return { x: cr.x + COL_PAD, y, w, h: mh };
-          y += mh + COL_GAP;
+          y += mh + COL_GAP + memberChipPad(m);
         }
         return { x: cr.x + COL_PAD, y, w, h: this.heightOf(el, w) };
       }

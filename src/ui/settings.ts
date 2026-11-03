@@ -16,8 +16,8 @@ interface SettingsApi {
   onBrowserLang(v: boolean): void;
   currency(): Currency;
   onCurrency(c: Currency): void;
-  flag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'unfurl'): boolean;
-  onFlag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'unfurl', v: boolean): void;
+  flag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl'): boolean;
+  onFlag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl', v: boolean): void;
   // Alignment-guide opacity: 1 full, 0.5 faint, 0 hidden.
   guideAlpha(): number;
   onGuideAlpha(v: number): void;
@@ -186,6 +186,7 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   toggle(t('setNoOverlap'), () => api.flag('noOverlap'), (v) => api.onFlag('noOverlap', v));
   toggle(t('setInk'), () => api.flag('ink'), (v) => api.onFlag('ink', v));
   toggle(t('setUndoArrows'), () => api.flag('undoArrows'), (v) => api.onFlag('undoArrows', v));
+  toggle(t('setAutoEdit'), () => api.flag('autoEdit'), (v) => api.onFlag('autoEdit', v));
   node.appendChild(head(t('setGuides')));
   radio(t('guideFull'), () => api.guideAlpha() === 1, () => api.onGuideAlpha(1));
   radio(t('guideFaint'), () => api.guideAlpha() === 0.5, () => api.onGuideAlpha(0.5));

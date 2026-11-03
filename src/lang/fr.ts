@@ -280,6 +280,7 @@ const table: Partial<Record<StringKey, string>> = {
   setNoOverlap: 'Éviter le chevauchement',
   setInk: 'Effet d\'encre',
   setUndoArrows: 'Flèches annuler et rétablir',
+  setAutoEdit: 'Modifier les nouvelles cartes au dépôt',
   setGuides: 'Guides d\'alignement',
   guideFull: 'Marqués',
   guideFaint: 'Discrets',

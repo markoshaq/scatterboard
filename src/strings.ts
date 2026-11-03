@@ -283,6 +283,7 @@ const en = {
   setNoOverlap: 'Prevent card overlap',
   setInk: 'Ink pen effect',
   setUndoArrows: 'Undo and redo arrows',
+  setAutoEdit: 'Edit new cards on drop',
   setGuides: 'Alignment guides',
   guideFull: 'Full',
   guideFaint: 'Faint',
@@ -506,13 +507,14 @@ export function relTime(ts: number): string {
   return shortDate(ts);
 }
 
-export function relDue(ts: number): string {
+export function relDue(ts: number, withTime = false): string {
   const dayMs = 86400000;
   const a = new Date(ts);
   const b = new Date();
   const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const diff = Math.round((startOf(a) - startOf(b)) / dayMs);
-  if (diff > 21 || diff < -21) return t('dueDate').replace('{date}', shortDate(ts));
+  const time = withTime ? `, ${new Intl.DateTimeFormat(langTag(), { hour: 'numeric', minute: '2-digit' }).format(a)}` : '';
+  if (diff > 21 || diff < -21) return t('dueDate').replace('{date}', shortDate(ts)) + time;
   const rtf = new Intl.RelativeTimeFormat(langTag(), { numeric: 'auto' });
-  return t('dueRel').replace('{rel}', rtf.format(diff, 'day'));
+  return t('dueRel').replace('{rel}', rtf.format(diff, 'day')) + time;
 }

@@ -1,9 +1,13 @@
 import type { Element, ID } from '../state/schema';
-import { columnMembers, columnTitle } from '../state/schema';
+import { columnMembers, columnTitle, lineDoc } from '../state/schema';
 import { memberCount, t } from '../strings';
 import type { CardView } from './note';
 import { createCard, type CardCtx } from './factory';
-import { cardBg } from '../ui/theme';
+import { cardBg, canvasColors } from '../ui/theme';
+import { COL_CHIPS, memberChipPad } from './measure';
+import { clipSeg, pointInRect } from '../canvas/hit';
+import { LINE_W, type SceneLine } from '../canvas/renderer';
+import type { Rect } from '../canvas/viewport';
 
 export class ColumnCard implements CardView {
   id: ID;
@@ -17,6 +21,8 @@ export class ColumnCard implements CardView {
   private insertEl: HTMLElement | null = null;
   private topOff = -1;
   private lastTitle = '';
+  private lineSvg: SVGSVGElement;
+  private spanKey = '';
 
   constructor(el: Element, ctx: CardCtx) {
     this.id = el.id;
@@ -41,7 +47,12 @@ export class ColumnCard implements CardView {
       e.stopPropagation();
       this.ctx.events.onResizeHandle(this.id, e);
     });
-    this.node.append(head, this.body, handle);
+    // Lines attached to members draw between the column surface and the
+    // member stack: the canvas stroke hides under the column's opaque
+    // body, and chrome can't honour el.z.
+    this.lineSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.lineSvg.setAttribute('class', 'col-lines');
+    this.node.append(head, this.lineSvg, this.body, handle);
 
     this.titleEl.addEventListener('input', () => {
       this.lastTitle = this.readTitle();
@@ -122,9 +133,73 @@ export class ColumnCard implements CardView {
       // clear them so the .col-body rules (relative, width:100%) apply.
       const ms = v.node.style;
       ms.left = ms.top = ms.width = '';
+      ms.marginBottom = memberChipPad(m) ? `${COL_CHIPS}px` : '';
     }
     const docs = list.filter((m) => m.type === 'document').length;
     this.countEl.textContent = memberCount(list.length - docs, docs);
+  }
+
+  // Board-space line spans clipped to the column box, re-stroked in
+  // card-local coords. Called per render; the rebuild key uses local
+  // coords so a whole-column drag (spans ride along unchanged) skips it.
+  setLineSpans(rect: Rect, lines: SceneLine[]) {
+    const key = [
+      `${Math.round(rect.w)},${Math.round(rect.h)}`,
+      ...lines.map((l) => {
+        const c = lineDoc(l.el);
+        const pts = [l.x1 - rect.x, l.y1 - rect.y, l.x2 - rect.x, l.y2 - rect.y].map((v) => Math.round(v));
+        return `${l.el.id}:${pts.join(',')}:${l.el.color ?? ''}:${c?.weight}:${c?.dashed ? 1 : 0}:${c?.fromMarker}:${c?.toMarker}:${l.dim ? 1 : 0}`;
+      }),
+    ].join('|');
+    if (key === this.spanKey) return;
+    this.spanKey = key;
+    this.lineSvg.textContent = '';
+    const NS = 'http://www.w3.org/2000/svg';
+    const cc = canvasColors();
+    const X = (v: number) => v - rect.x;
+    const Y = (v: number) => v - rect.y;
+    for (const l of lines) {
+      const c = lineDoc(l.el);
+      if (!c) continue;
+      const t = clipSeg(l.x1, l.y1, l.x2, l.y2, rect);
+      if (!t) continue;
+      const w = LINE_W[c.weight];
+      const ink = l.el.color ?? cc.ink;
+      const seg = document.createElementNS(NS, 'line');
+      seg.setAttribute('x1', `${X(l.x1 + (l.x2 - l.x1) * t[0])}`);
+      seg.setAttribute('y1', `${Y(l.y1 + (l.y2 - l.y1) * t[0])}`);
+      seg.setAttribute('x2', `${X(l.x1 + (l.x2 - l.x1) * t[1])}`);
+      seg.setAttribute('y2', `${Y(l.y1 + (l.y2 - l.y1) * t[1])}`);
+      seg.setAttribute('stroke', ink);
+      seg.setAttribute('stroke-width', `${w}`);
+      if (c.dashed) seg.setAttribute('stroke-dasharray', '5 5');
+      if (l.dim) seg.setAttribute('opacity', '0.15');
+      this.lineSvg.appendChild(seg);
+      const mk = (x: number, y: number, ang: number, m: string) => {
+        if (m === 'dot') {
+          const d = document.createElementNS(NS, 'circle');
+          d.setAttribute('cx', `${x}`);
+          d.setAttribute('cy', `${y}`);
+          d.setAttribute('r', `${2.2 + w * 0.8}`);
+          d.setAttribute('fill', ink);
+          this.lineSvg.appendChild(d);
+        } else if (m === 'arrow') {
+          const sz = 5 + w * 2.2;
+          const bx = x - Math.cos(ang) * sz;
+          const by = y - Math.sin(ang) * sz;
+          const px = -Math.sin(ang) * sz * 0.42;
+          const py = Math.cos(ang) * sz * 0.42;
+          const p = document.createElementNS(NS, 'polygon');
+          p.setAttribute('points', `${x},${y} ${bx + px},${by + py} ${bx - px},${by - py}`);
+          p.setAttribute('fill', ink);
+          this.lineSvg.appendChild(p);
+        }
+      };
+      if (pointInRect(l.x1, l.y1, rect))
+        mk(X(l.x1), Y(l.y1), Math.atan2(l.y1 - l.y2, l.x1 - l.x2), c.fromMarker);
+      if (pointInRect(l.x2, l.y2, rect))
+        mk(X(l.x2), Y(l.y2), Math.atan2(l.y2 - l.y1, l.x2 - l.x1), c.toMarker);
+    }
   }
 
   setSelected(on: boolean) {

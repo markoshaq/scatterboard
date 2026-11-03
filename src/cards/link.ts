@@ -1,7 +1,7 @@
 import type { Element, EmbedKind, TypeContent } from '../state/schema';
 import { embedDoc } from '../state/schema';
 import { t } from '../strings';
-import { EMBED_ALLOW, embedSrc, hostOf } from '../ui/embeds';
+import { EMBED_ALLOW, embedSrc, hostOf, urlTitle } from '../ui/embeds';
 import { ICONS } from '../ui/icons';
 import { parseUrlText } from '../ui/files';
 import type { CardCtx } from './factory';
@@ -201,7 +201,7 @@ export class LinkCard implements CardView {
       this.urlInput.value = '';
       return;
     }
-    this.dispatch({ ...c!, url, title: hostOf(url) });
+    this.dispatch({ ...c!, url, title: urlTitle(url) ?? hostOf(url) });
     this.urlInput.value = '';
     if (this.editing) this.ctx.events.onEditEnd(this.id);
   }

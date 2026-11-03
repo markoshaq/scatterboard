@@ -5,7 +5,7 @@ import { getClipboard, setClipboard } from './state/clipboard';
 import type { DocStorage } from './persist/storage';
 import { blobTotalSize, clearBlobs, putBlob } from './persist/blobs';
 import { ingestFiles, ingestPaste, prepareImage, type IngestApi } from './ui/files';
-import { hostOf } from './ui/embeds';
+import { hostOf, urlTitle } from './ui/embeds';
 import { Viewport } from './canvas/viewport';
 import { Renderer, type DraftLine, type Guide, type SceneLine } from './canvas/renderer';
 import { CardsLayer } from './cards/layer';
@@ -157,12 +157,14 @@ export class App {
       {
         onTextInput: (id, text, html) => this.editing.onTextInput(id, text, html),
         onContent: (id, content) => this.editing.onContent(id, content),
+        onPatch: (id, patch) => this.store.dispatch({ type: 'element.patch', id, patch }),
         onMeasure: () => this.requestRender(),
         onResizeHandle: (id, e) => this.gestures.startResize(id, e),
         onEditEnd: () => this.editing.endEdit(),
         onLinkPopup: (id) => this.editing.openLinkPopupFor(id),
         onEditField: (id, field) => this.editing.beginEdit(id, undefined, field),
         onCellFocus: () => this.requestRender(),
+        editable: () => !this.lockedView(),
       },
       () => this.store.rev,
     );
@@ -219,7 +221,6 @@ export class App {
       // Popups anchored to board space would float detached from their
       // anchor once the viewport moves; chrome-anchored ones stay.
       closeBoardPopup();
-      this.applyTransform();
       this.schedulePosSave();
       this.requestRender();
     };
@@ -589,11 +590,16 @@ export class App {
 
 
   applyTransform() {
-    this.docEl.style.transform = `translate(${this.vp.x}px, ${this.vp.y}px) scale(${this.vp.z})`;
+    // Snap the translate to the device-pixel grid: a fractional pan
+    // offset puts every 1px border and text stem across two pixels.
+    const dpr = devicePixelRatio || 1;
+    const sx = Math.round(this.vp.x * dpr) / dpr;
+    const sy = Math.round(this.vp.y * dpr) / dpr;
+    this.docEl.style.transform = `translate(${sx}px, ${sy}px) scale(${this.vp.z})`;
     // --iz restyles every counter-scaled node; only push it when the
-    // inverse zoom moved enough to see (>2%), so zoom ticks stay cheap.
+    // inverse zoom moved enough to see, so zoom ticks stay cheap.
     const iz = 1 / this.vp.z;
-    if (Math.abs(iz - this.lastIz) / this.lastIz > 0.02) {
+    if (Math.abs(iz - this.lastIz) / this.lastIz > 0.08) {
       this.lastIz = iz;
       this.docEl.style.setProperty('--iz', String(iz));
     }
@@ -609,6 +615,9 @@ export class App {
     this.renderQueued = true;
     requestAnimationFrame(() => {
       this.renderQueued = false;
+      // Viewport writes are coalesced into the frame too: a wheel storm
+      // would otherwise restyle .doc far more often than it can paint.
+      this.applyTransform();
       this.render();
     });
   }
@@ -626,7 +635,10 @@ export class App {
           !!e &&
           e.type !== 'line' &&
           !(e.type === 'comment' && e.anchorId !== undefined) &&
-          !this.gestures.trashHover,
+          !this.gestures.trashHover &&
+          // Mounted cards carry a DOM ring at their own z; the canvas
+          // ring stays only for culled (unmounted) selections.
+          !this.layer.view(e.id),
       )
       .map((e) => {
         const r = this.layer.rectOf(e);
@@ -779,7 +791,13 @@ export class App {
 
   resolvedLines(): SceneLine[] {
     const out: SceneLine[] = [];
-    const rectOf = (el: Element) => this.layer.rectOf(el);
+    // Lifted members keep their arrows glued: endpoints resolve against
+    // the lifted rect, same as chips and the selection outline.
+    const rectOf = (el: Element) => {
+      const r = this.layer.rectOf(el);
+      const lift = this.gestures.liftDelta(el.id);
+      return lift ? { x: r.x + lift.dx, y: r.y + lift.dy, w: r.w, h: r.h } : r;
+    };
     for (const el of this.layer.lines()) {
       const l = resolveLine(el, this.doc, rectOf);
       if (!l) continue;
@@ -1224,6 +1242,18 @@ export class App {
   }
 
 
+  // Rail-drop types that open straight into editing when the
+  // autoEdit pref is on: every card with an obvious first text field.
+  private static readonly AUTO_EDIT_TYPES = new Set<ElementType>([
+    'note',
+    'todo',
+    'heading',
+    'document',
+    'comment',
+    'table',
+    'column',
+  ]);
+
   createFromRail(type: ElementType, at: { clientX: number; clientY: number } | null, kind?: EmbedKind) {
     const boardId = this.boardId;
     if (!boardId || this.lockedView()) return;
@@ -1273,6 +1303,8 @@ export class App {
     this.stampBoardColor(el);
     this.store.dispatch({ type: 'element.create', el });
     this.setSelection([el.id]);
+    // Text-first cards open straight into editing unless the pref is off.
+    if (App.AUTO_EDIT_TYPES.has(type) && this.prefs.autoEdit !== false) this.editing.beginEdit(el.id);
   }
 
 
@@ -1781,7 +1813,7 @@ export class App {
     if (!this.boardId) return;
     const el = createLink(this.doc, this.boardId, Math.round(pt.x), Math.round(pt.y));
     const c = linkDoc(el)!;
-    el.content = { link: { ...c, url, title: hostOf(url) } };
+    el.content = { link: { ...c, url, title: urlTitle(url) ?? hostOf(url) } };
     this.stampBoardColor(el);
     this.store.dispatch({ type: 'element.create', el });
     this.setSelection([el.id]);
@@ -1913,7 +1945,8 @@ export class App {
         this.applyPrefs();
         save();
       },
-      flag: (k) => (k === 'undoArrows' ? this.prefs[k] !== false : this.prefs[k] === true),
+      flag: (k) =>
+        k === 'undoArrows' || k === 'autoEdit' ? this.prefs[k] !== false : this.prefs[k] === true,
       onFlag: (k, v) => {
         this.prefs[k] = v;
         save();

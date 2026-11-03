@@ -1,5 +1,5 @@
 import type { Element, TodoDoc, TodoItem } from '../state/schema';
-import { todoDoc, uid } from '../state/schema';
+import { NOTE_MAX_W, todoDoc, uid } from '../state/schema';
 import { relDue, t } from '../strings';
 import { openDuePopup, type DuePopupHandle, type DueValue } from '../ui/duepopup';
 import { openReactionsPopup } from '../ui/toolpopups';
@@ -48,7 +48,13 @@ export class TodoCard implements CardView {
     this.titleEl.dataset.ph = t('addTitle');
     this.itemsEl = document.createElement('div');
     this.itemsEl.className = 'todo-items';
-    this.node.append(this.titleEl, this.itemsEl);
+    const handle = document.createElement('div');
+    handle.className = 'resize-handle';
+    handle.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.ctx.events.onResizeHandle(this.id, e);
+    });
+    this.node.append(this.titleEl, this.itemsEl, handle);
 
     this.titleEl.addEventListener('input', () => this.pushTitle());
     this.titleEl.addEventListener('keydown', (e) => {
@@ -73,6 +79,9 @@ export class TodoCard implements CardView {
     this.itemsEl.addEventListener('keydown', (e) => this.onItemKeydown(e));
     this.itemsEl.addEventListener('pointerdown', (e) => {
       this.downAt = { x: e.clientX, y: e.clientY };
+      // Checkbox taps toggle only: keep them off the select/drag path.
+      const t = e.target as HTMLElement;
+      if (t.closest('.todo-check') && this.ctx.events.editable?.() !== false) e.stopPropagation();
     });
     this.itemsEl.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
@@ -81,10 +90,10 @@ export class TodoCard implements CardView {
       if (Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 4) return;
       if (target.closest('.todo-check')) {
         this.toggleDone(rowEl.dataset.iid!);
-      } else if (target.closest('.todo-due')) {
-        this.openDue(rowEl.dataset.iid!);
       } else if (target.closest('.todo-react-btn')) {
         this.openReacts(rowEl.dataset.iid!);
+      } else if (target.closest('.todo-due')) {
+        this.openDue(rowEl.dataset.iid!);
       }
     });
 
@@ -135,16 +144,39 @@ export class TodoCard implements CardView {
   private applyDue(iid: string, v: DueValue) {
     const c = this.content();
     if (!c) return;
-    this.dispatch({
-      ...c,
-      items: c.items.map((i) => {
-        if (i.id !== iid) return i;
-        const { dueAt: _d, ...rest } = i;
-        const next: TodoItem = { ...rest };
-        if (v.dueAt !== undefined) next.dueAt = v.dueAt;
-        return next;
-      }),
+    const items = c.items.map((i) => {
+      if (i.id !== iid) return i;
+      const { dueAt: _d, dueTime: _t, ...rest } = i;
+      const next: TodoItem = { ...rest };
+      if (v.dueAt !== undefined) next.dueAt = v.dueAt;
+      if (v.hasTime) next.dueTime = true;
+      return next;
     });
+    this.dispatch({ ...c, items });
+    this.fitAll(items);
+  }
+
+  // One-line width a row needs: checkbox, a usable text column (wrapping
+  // beyond this, not clipped), then the due pill (11px ~5.6px/char plus
+  // its 16px padding), assignee pill, reactions and the react button.
+  private rowWidth(item: TodoItem): number {
+    const line = item.text.split('\n').reduce((a, l) => Math.max(a, l.length), 0);
+    const textW = Math.min(150, Math.max(48, line * 7));
+    const label = item.dueAt !== undefined ? relDue(item.dueAt, item.dueTime === true) : '';
+    const dueW = label ? Math.round(label.length * 5.6) + 16 : 20;
+    const youW = item.assignee ? 28 : 0;
+    const reactsW = (item.reactions?.length ?? 0) * 16;
+    return 24 + 15 + 8 + textW + dueW + youW + reactsW + 20;
+  }
+
+  // Grow-only fit: the card widens to keep every row on one line, but a
+  // manual resize to something narrower is never undone. Column members
+  // take the column's width instead of their own.
+  private fitAll(items: TodoItem[]) {
+    const el = this.ctx.doc.elements[this.id];
+    if (!el || el.parentId) return;
+    const w = Math.min(NOTE_MAX_W, Math.max(...items.map((i) => this.rowWidth(i))));
+    if (w > (el.w ?? 240)) this.ctx.events.onPatch?.(this.id, { w });
   }
 
   private openDue(iid: string) {
@@ -155,6 +187,7 @@ export class TodoCard implements CardView {
     this.popup?.close();
     const current: DueValue = {};
     if (item.dueAt !== undefined) current.dueAt = item.dueAt;
+    if (item.dueTime) current.hasTime = true;
     this.popup = openDuePopup({
       anchor: row.due,
       current,
@@ -187,18 +220,17 @@ export class TodoCard implements CardView {
       (emoji) => {
         const cur = this.content();
         if (!cur) return;
-        this.dispatch({
-          ...cur,
-          items: cur.items.map((i) => {
-            if (i.id !== iid) return i;
-            const has = (i.reactions ?? []).includes(emoji);
-            const next = has ? (i.reactions ?? []).filter((r) => r !== emoji) : [...(i.reactions ?? []), emoji];
-            const out: TodoItem = { ...i };
-            if (next.length) out.reactions = next;
-            else delete out.reactions;
-            return out;
-          }),
+        const items = cur.items.map((i) => {
+          if (i.id !== iid) return i;
+          const has = (i.reactions ?? []).includes(emoji);
+          const next = has ? (i.reactions ?? []).filter((r) => r !== emoji) : [...(i.reactions ?? []), emoji];
+          const out: TodoItem = { ...i };
+          if (next.length) out.reactions = next;
+          else delete out.reactions;
+          return out;
         });
+        this.dispatch({ ...cur, items });
+        this.fitAll(items);
       },
     );
   }
@@ -206,14 +238,13 @@ export class TodoCard implements CardView {
   toggleAssign(iid: string) {
     const c = this.content();
     if (!c) return;
-    this.dispatch({
-      ...c,
-      items: c.items.map((i) => {
-        if (i.id !== iid) return i;
-        const { assignee: _a, ...rest } = i;
-        return i.assignee ? rest : { ...rest, assignee: 'self' as const };
-      }),
+    const items = c.items.map((i) => {
+      if (i.id !== iid) return i;
+      const { assignee: _a, ...rest } = i;
+      return i.assignee ? rest : { ...rest, assignee: 'self' as const };
     });
+    this.dispatch({ ...c, items });
+    this.fitAll(items);
   }
 
   private onItemKeydown(e: KeyboardEvent) {
@@ -352,7 +383,7 @@ export class TodoCard implements CardView {
       const hasDue = item.dueAt !== undefined;
       r.due.classList.toggle('has-due', hasDue);
       r.due.classList.toggle('overdue', hasDue && !item.done && item.dueAt! < now);
-      const label = hasDue ? relDue(item.dueAt!) : CAL_ICON;
+      const label = hasDue ? relDue(item.dueAt!, item.dueTime === true) : CAL_ICON;
       if (r.due.dataset.lbl !== label) {
         r.due.dataset.lbl = label;
         if (hasDue) r.due.textContent = label;

@@ -20,6 +20,8 @@ export interface Prefs {
   noOverlap?: boolean;
   ink?: boolean;
   undoArrows?: boolean;
+  // New cards dropped from the rail open straight into editing.
+  autoEdit?: boolean;
   // Alignment-guide stroke opacity: 1 full, 0.5 faint, 0 hidden.
   guideAlpha?: number;
   // Create-palette customization: display order (item keys) and hidden

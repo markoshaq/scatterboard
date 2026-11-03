@@ -145,7 +145,8 @@ only when used:
   fetches a page's title and OG tags through the public
   `api.allorigins.win` CORS proxy, which sees the pasted URL.
 - Video, audio, and map embed cards load provider iframes (YouTube,
-  Vimeo, Spotify, SoundCloud, Google Maps) when added.
+  Vimeo, Spotify, SoundCloud, Google Maps) when added, and fetch the
+  page's title through the same proxy.
 
 Both degrade silently to manual titles and placeholders offline.
 
