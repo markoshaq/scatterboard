@@ -12,6 +12,18 @@ calls; fully offline.
 - `npm run typecheck`: `tsc --noEmit`; must pass before finishing work
 - `npm test`: `vitest run`; unit tests live in `test/`
 - `npm run preview`: serve `dist/`
+- `npm run agent:setup`: install the scatterboard MCP bridge for repo
+  development. Run this when asked to "install the scatterboard/agent
+  MCP". It installs `bridge/` deps and writes `mcpServers.scatterboard`
+  (node + absolute agent.mjs path) to the Devin user config, Windsurf
+  `mcp_config.json` and `.devin/config.local.json`. IDE-embedded
+  sessions only read the user config for MCP servers (project
+  `mcpServers` is ignored), so registering there is required; the
+  entry is picked up live, no restart. Then `sb_status` returns the
+  pairing URL and `sb_open` pairs a tab. For users outside this repo
+  the bridge is published as `scatterboard-mcp`; the consumer config
+  is `{"command":"npx","args":["-y","scatterboard-mcp"]}` (no clone,
+  no npm install).
 - Releases: `npm version patch|minor|major` bumps `package.json`,
   commits and tags `v*`; pushing the tag runs `release.yml` (tag must
   match the package version, CHANGELOG section required) and
@@ -189,9 +201,11 @@ calls; fully offline.
   stored-key reconnect, backoff, serialized requests,
   `sb-agent-status` window event for the settings status line);
   `index.ts` `init` + `setAgentEnabled`.
-- `bridge/agent.mjs`: node >=20 localhost bridge + MCP stdio server
-  (`ws` + `@modelcontextprotocol/sdk` in `bridge/package.json`, a
-  separate manifest from the app). One app session at a time: Origin
+- `bridge/agent.mjs`: node >=20 localhost bridge + MCP stdio server,
+  published to npm as `scatterboard-mcp` (`files: agent.mjs` only;
+  `ws` + `@modelcontextprotocol/sdk` deps in `bridge/package.json`, a
+  separate manifest from the app). `setup.mjs` registers the server
+  into the Devin/Windsurf configs. One app session at a time: Origin
   allowlist on upgrade, token pair then `{bridgeId,key}` reconnect,
   identity in `~/.config/scatterboard-agent`
   (`%APPDATA%\scatterboard-agent` on Windows). Agent sockets and the

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // scatterboard-agent: localhost bridge between a live Scatterboard tab
 // and AI agents. The app dials out over WebSocket (ws://127.0.0.1) and
-// this process is also an MCP stdio server, so agents spawn it via
-// `devin mcp add scatterboard -- node bridge/agent.mjs`.
+// this process is also an MCP stdio server. Register it with
+// `npm run agent:setup` (bridge/setup.mjs) rather than project config:
+// IDE-embedded Devin only reads the user config for MCP servers.
 //
 // Flags: --port=N (7341), --origin=URL (extra allowed Origin, repeatable),
 // --app=URL (pairing target), --token=T (fixed pairing token, testing).

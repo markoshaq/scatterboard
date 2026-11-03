@@ -1,12 +1,29 @@
 {
-  "name": "scatterboard-agent",
+  "name": "scatterboard-mcp",
   "version": "0.1.0",
-  "description": "Localhost bridge and MCP server for Scatterboard",
+  "description": "Localhost bridge + MCP stdio server for Scatterboard; pairs a live app tab with AI agents",
   "license": "MIT",
   "type": "module",
-  "private": true,
+  "author": "Marko Šekuljica",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/markoshaq/scatterboard.git",
+    "directory": "bridge"
+  },
+  "homepage": "https://markoshaq.github.io/scatterboard/",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "scatterboard"
+  ],
   "bin": {
-    "scatterboard-agent": "agent.mjs"
+    "scatterboard-mcp": "agent.mjs"
+  },
+  "files": [
+    "agent.mjs"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=20"

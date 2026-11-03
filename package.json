@@ -26,6 +26,7 @@
     "sizecheck": "node scripts/check-size.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "agent:setup": "node bridge/setup.mjs",
     "test": "vitest run",
     "prebuild": "npm run typecheck && npm test",
     "lint": "biome lint src test"
