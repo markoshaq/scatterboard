@@ -20,7 +20,8 @@
     "scatterboard-mcp": "agent.mjs"
   },
   "files": [
-    "agent.mjs"
+    "agent.mjs",
+    "install.mjs"
   ],
   "publishConfig": {
     "access": "public"

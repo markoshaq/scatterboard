@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // scatterboard-agent: localhost bridge between a live Scatterboard tab
 // and AI agents. The app dials out over WebSocket (ws://127.0.0.1) and
-// this process is also an MCP stdio server. Register it with
-// `npm run agent:setup` (bridge/setup.mjs) rather than project config:
-// IDE-embedded Devin only reads the user config for MCP servers.
+// this process is also an MCP stdio server. `npx scatterboard-mcp
+// install` registers it in the Devin/Windsurf user configs (project
+// config alone is ignored by IDE-embedded Devin); `npm run agent:setup`
+// does the same against this checkout for repo dev.
 //
 // Flags: --port=N (7341), --origin=URL (extra allowed Origin, repeatable),
 // --app=URL (pairing target), --token=T (fixed pairing token, testing).
@@ -18,6 +19,12 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer } from 'ws';
+
+if (process.argv[2] === 'install' || process.argv[2] === '--install') {
+  const { installMcp } = await import('./install.mjs');
+  installMcp({ local: process.argv.includes('--local') });
+  process.exit(0);
+}
 
 const flags = {};
 const extraOrigins = [];

@@ -8,29 +8,30 @@ app (boards, cards, connectors, viewport, undo, PNG snapshots).
 
 ## Install
 
-Devin CLI (user scope — required; project scope is ignored by
-IDE-embedded sessions):
-
 ```
-devin mcp add -s user scatterboard -- npx -y scatterboard-mcp
+npx -y scatterboard-mcp install
 ```
 
-Or add this to `mcpServers` in the user config
-(`%APPDATA%\devin\config.json` on Windows, `~/.config/devin/config.json`
-elsewhere) or Windsurf's `mcp_config.json`:
+One command, from any directory: it registers the `scatterboard`
+server in the Devin user config, Windsurf `mcp_config.json`, and
+`.devin/config.local.json` in the current project. No restart needed;
+the `sb_*` tools appear in Devin sessions immediately.
+
+Equivalent manual config for `mcpServers` (user scope required —
+IDE-embedded Devin ignores project `mcpServers`; user config is
+`%APPDATA%\devin\config.json` on Windows, `~/.config/devin/config.json`
+elsewhere):
 
 ```json
 {
-  "mcpServers": {
-    "scatterboard": {
-      "command": "npx",
-      "args": ["-y", "scatterboard-mcp"]
-    }
+  "scatterboard": {
+    "command": "npx",
+    "args": ["-y", "scatterboard-mcp"]
   }
 }
 ```
 
-No restart needed; the `sb_*` tools appear in the current session.
+Or with Devin CLI: `devin mcp add -s user scatterboard -- npx -y scatterboard-mcp`
 
 ## Pairing
 

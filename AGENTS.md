@@ -21,9 +21,9 @@ calls; fully offline.
   `mcpServers` is ignored), so registering there is required; the
   entry is picked up live, no restart. Then `sb_status` returns the
   pairing URL and `sb_open` pairs a tab. For users outside this repo
-  the bridge is published as `scatterboard-mcp`; the consumer config
-  is `{"command":"npx","args":["-y","scatterboard-mcp"]}` (no clone,
-  no npm install).
+  the bridge is published as `scatterboard-mcp`;
+  `npx -y scatterboard-mcp install` registers it from any directory
+  (npx form; `--local` writes the node path for repo dev).
 - Releases: `npm version patch|minor|major` bumps `package.json`,
   commits and tags `v*`; pushing the tag runs `release.yml` (tag must
   match the package version, CHANGELOG section required) and
