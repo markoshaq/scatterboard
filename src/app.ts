@@ -28,11 +28,12 @@ import { setFormatting } from './ui/locale';
 import type { Lang } from './persist/storage';
 import { CREATE_ITEMS } from './ui/rail';
 import { openHelpMenu, openViewMenu } from './ui/toolpopups';
+import { DROP_EXCLUDE } from './ui/util';
 import { closeBoardPopup, closeToolPopup } from './ui/popup';
 import { remapElements } from './state/clone';
 import { builtinTemplates } from './state/templates';
 import { openNewBoardPicker } from './ui/newboard';
-import { openAboutPopup, openSettings, SCALE_STEPS } from './ui/settings';
+import { openAboutPopup, openAgentPopup, openSettings, SCALE_STEPS } from './ui/settings';
 import { isDark, setTheme, setUiScale, systemDark } from './ui/theme';
 import type { Prefs } from './persist/storage';
 import { BoardExport } from './app/export';
@@ -190,6 +191,7 @@ export class App {
       onHelp: (anchor) => this.openHelp(anchor),
       onExport: (anchor) => this.exporter.openExportMenu(anchor),
       onSettings: (anchor) => this.openSettings(anchor),
+      onAgent: (anchor) => this.openAgentMenu(anchor),
       onCrumbIcon: (id, anchor) => this.panels.iconPickerFor(id, anchor),
       onCrumbBoards: () => this.panels.openBoards(),
       onUndo: () => {
@@ -290,7 +292,8 @@ export class App {
   }
 
 
-  openBoard(id: ID, filterQuery?: string, keepHash = false) {
+  // keepPanel: the boards panel navigates without closing itself.
+  openBoard(id: ID, filterQuery?: string, keepHash = false, keepPanel = false) {
     const board = this.doc.boards[id];
     if (!board) return;
     const sameBoard = id === this.boardId;
@@ -304,7 +307,7 @@ export class App {
       prev.position = this.vp.snapshot();
       this.adapter.saveBoardPos(prev.id, prev.position);
     }
-    this.panels.closePanel();
+    if (!keepPanel) this.panels.closePanel();
     closeToolPopup();
     this.sel.clear();
     this.filterIds.clear();
@@ -828,6 +831,7 @@ export class App {
       if (el?.anchorId !== undefined && !items().length && !this.lockedView()) {
         this.store.dispatch({ type: 'element.delete', el });
       }
+      if (this.sel.delete(id)) this.requestRender();
     };
   }
 
@@ -1724,7 +1728,7 @@ export class App {
   // file, and rail chrome is not a target, matching the drop-time guard.
   paletteDropHint(ev: PointerEvent | null, type: ElementType) {
     const over = ev ? document.elementFromPoint(ev.clientX, ev.clientY) : null;
-    const ok = !!ev && type !== 'line' && !this.lockedView() && !over?.closest('.rail, .rail-trash');
+    const ok = !!ev && type !== 'line' && !this.lockedView() && !over?.closest(DROP_EXCLUDE);
     this.gestures.updateDropTarget(ok ? this.boardPoint(ev) : null, []);
   }
 
@@ -1732,7 +1736,7 @@ export class App {
   // Topmost canvas card under a board point, if it is a column. File and
   // rail drops onto a column join it; same rule as updateDropTarget, so a
   // column covered by another card cannot be the target.
-  private columnAt(pt: { x: number; y: number }): ID | null {
+  columnAt(pt: { x: number; y: number }): ID | null {
     let top: Element | null = null;
     for (const e of this.layer.elements()) {
       if (e.type === 'line' || e.type === 'annotation') continue;
@@ -1979,6 +1983,23 @@ export class App {
   }
 
 
+  // Robot-icon menu in the topbar: only local-agent state lives here;
+  // the general online prefs stay in Settings.
+  private openAgentMenu(anchor: HTMLElement) {
+    openAgentPopup(anchor, {
+      flag: () => this.prefs.agent === true,
+      onFlag: (_k, v) => {
+        this.prefs.agent = v;
+        this.scheduleSave();
+        this.requestRender();
+        void import('./agent/index').then((m) => m.setAgentEnabled(this, v));
+      },
+      agentStatus: () => this.agentConnected,
+      agentPaired: () => !!this.prefs.agentBridge,
+    });
+  }
+
+
   private openSettings(anchor: HTMLElement) {
     const save = () => this.scheduleSave();
     openSettings(anchor, {
@@ -2023,7 +2044,9 @@ export class App {
         save();
       },
       flag: (k) =>
-        k === 'undoArrows' || k === 'autoEdit' ? this.prefs[k] !== false : this.prefs[k] === true,
+        k === 'undoArrows' || k === 'autoEdit' || k === 'unfurl'
+          ? this.prefs[k] !== false
+          : this.prefs[k] === true,
       onFlag: (k, v) => {
         this.prefs[k] = v;
         save();

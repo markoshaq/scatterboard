@@ -6,7 +6,7 @@ import type { Rect } from '../canvas/viewport';
 import { toast } from '../ui/toast';
 import { relTime, t } from '../strings';
 import { typeIcon } from '../ui/icons';
-import { dragGhost } from '../ui/util';
+import { dragGhost, DROP_EXCLUDE } from '../ui/util';
 import { openPanel, panelEmpty, panelRow, dayGroupLabel, type PanelHandle } from '../ui/panel';
 import { openSearchPanel, searchBoard, type SearchHit } from '../ui/search';
 import { openBoardsPanel, type BoardRow, type BoardsPanel } from '../ui/boards';
@@ -129,7 +129,7 @@ export class Panels {
       'boards',
       openBoardsPanel({
         boards: () => this.boardsList(),
-        onOpen: (id) => this.a.openBoard(id),
+        onOpen: (id) => this.a.openBoard(id, undefined, false, true),
         onRename: (id, title) => {
           if (!this.a.lockedView()) this.a.store.dispatch({ type: 'board.patch', id, patch: { title } });
         },
@@ -363,7 +363,7 @@ export class Panels {
     const el: Element = {
       ...entry.el,
       boardId,
-      parentId: null,
+      parentId: this.a.columnAt(pt),
       x: Math.round(pt.x),
       y: Math.round(pt.y),
       z: ++this.a.doc.seq,
@@ -431,7 +431,7 @@ export class Panels {
         },
         (ev, moved) => {
           if (!moved) return;
-          if (document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.side-panel, .rail, .rail-trash')) return;
+          if (document.elementFromPoint(ev.clientX, ev.clientY)?.closest(DROP_EXCLUDE)) return;
           onDrop(this.a.boardPoint(ev));
         },
       );
@@ -465,7 +465,7 @@ export class Panels {
         .map((b) => `${b.id}:${b.title}:${b.icon ?? ''}:${b.parentId ?? ''}:${b.createdAt}`)
         .join('|');
       const counts = [...this.a.layer.canvasCounts()].map(([k, v]) => `${k}=${v}`).join(',');
-      sig = `b:${boards}|${counts}|${[...this.collapsedBoards].join(',')}`;
+      sig = `b:${boards}|${counts}|${[...this.collapsedBoards].join(',')}|${this.a.boardId ?? ''}`;
     }
     if (sig === this.lastPanelSig) return;
     this.lastPanelSig = sig;
@@ -488,7 +488,7 @@ export class Panels {
             this.a.store.dispatch({
               type: 'element.patch',
               id: el.id,
-              patch: { parentId: null, x: Math.round(pt.x), y: Math.round(pt.y) },
+              patch: { parentId: this.a.columnAt(pt), x: Math.round(pt.x), y: Math.round(pt.y) },
             });
             this.a.setSelection([el.id]);
           }),

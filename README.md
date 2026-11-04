@@ -143,8 +143,12 @@ all as normal undoable history. Two entry points, both opt-in:
   ```
 
   Then, from your agent: `sb_status` prints the pairing URL and
-  `sb_open` opens the app tab to pair it. Pairing once stores a key,
-  so later sessions reconnect without it. The `sb_*` tools cover the
+  `sb_open` opens the app tab to pair it. The app asks you to
+  confirm in a centered dialog; click Connect. Pairing switches on the Local
+  agent setting and stores a key, so later sessions reconnect
+  without the URL. One app tab holds the session at a time; a
+  second tab stays disconnected until the first closes.
+  The `sb_*` tools cover the
   whole board: `sb_boards`, `sb_state`, `sb_labels`, `sb_search`,
   `sb_openboard`, `sb_elements`, `sb_get`, `sb_create`, `sb_patch`,
   `sb_remove`, `sb_connect`, `sb_trash`, `sb_restore`, `sb_emptytrash`,
@@ -181,7 +185,7 @@ Press `/` in the app for the full map. Essentials:
 The default path makes no network calls. Optional extras connect only
 when used:
 
-- "Enrich link cards" (off by default, Settings > Online extras)
+- "Enrich link cards" (on by default, Settings > Online extras)
   fetches a page's title and OG tags through the public
   `api.allorigins.win` CORS proxy, which sees the pasted URL.
 - Video, audio, and map embed cards load provider iframes (YouTube,

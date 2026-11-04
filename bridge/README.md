@@ -40,7 +40,8 @@ Or with Devin CLI: `devin mcp add -s user scatterboard -- npx -y scatterboard-mc
 ## Pairing
 
 Call `sb_status` for the pairing URL, or `sb_open` to launch the app in
-your browser. Once a tab is paired it reconnects automatically. The
+your browser. The app asks you to confirm in a centered dialog; click Connect.
+Once a tab is paired it reconnects automatically. The
 pairing token is one-time use (it rotates after a successful pairing);
 app and agent sockets authenticate with separate keys. `sb_status`
 also reports `agentKey`, the credential direct WebSocket clients need

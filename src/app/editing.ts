@@ -295,12 +295,12 @@ export class Editing {
   }
 
 
-  // URL unfurl (online extra, off by default): pull og tags through a
+  // URL unfurl (online extra, on by default): pull og tags through a
   // CORS proxy and back-fill title/desc/image on the link card. The
   // title is only replaced while it still holds an auto value (empty,
   // the url's host or a url-derived name), never user-typed text.
   enrichLink(id: ID, url: string) {
-    if (!this.a.prefs.unfurl || !navigator.onLine) return;
+    if (this.a.prefs.unfurl === false || !navigator.onLine) return;
     const el0 = this.a.doc.elements[id];
     const cur0 = el0 ? linkDoc(el0) : null;
     if (!el0 || !cur0 || cur0.url !== url) return;

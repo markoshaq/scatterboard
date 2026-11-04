@@ -59,28 +59,93 @@ function head(label: string): HTMLElement {
   return h;
 }
 
-function radioRow(label: string, checked: () => boolean, pick: () => void, exclusive?: () => void): HTMLButtonElement {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'pop-row';
-  const lab = document.createElement('span');
-  lab.className = 'pop-label';
-  lab.textContent = label;
-  const ck = document.createElement('span');
-  ck.className = 'pop-check';
-  ck.innerHTML = ICONS.check;
-  const sync = () => {
-    ck.style.visibility = checked() ? 'visible' : 'hidden';
+// Topbar agent menu (robot icon): the local-agent status row and its
+// setup hint live here, away from the general settings list.
+interface AgentMenuApi {
+  flag(key: 'agent'): boolean;
+  onFlag(key: 'agent', v: boolean): void;
+  agentStatus(): boolean;
+  agentPaired(): boolean;
+}
+
+export function openAgentPopup(anchor: HTMLElement, api: AgentMenuApi): ToolPopup {
+  const node = document.createElement('div');
+  node.className = 'stp-body';
+  const pop = openToolPopup(anchor, node, true);
+  // Drop the module-level agent status refs when the popup closes so a
+  // detached row and its api closure are not retained.
+  const innerClose = pop.close;
+  pop.close = () => {
+    agentStatusRow = null;
+    agentStatusSync = null;
+    innerClose();
   };
-  sync();
-  b.append(lab, ck);
-  b.addEventListener('click', () => {
-    pick();
-    if (exclusive) exclusive();
-    else sync();
+  // Local agent status row. Pairing only happens through an ?agent=
+  // link; this row reports the socket state and offers connect/
+  // disconnect once bridge credentials are stored.
+  agentStatusRow = document.createElement('div');
+  agentStatusRow.className = 'agent-row';
+  const agentSetup = document.createElement('div');
+  const agentHow = document.createElement('div');
+  agentHow.className = 'ts-head agent-how';
+  agentHow.textContent = t('agentHow');
+  const agentPrompt = document.createElement('button');
+  agentPrompt.type = 'button';
+  agentPrompt.className = 'agent-prompt';
+  const promptText = document.createElement('span');
+  promptText.className = 'agent-prompt-text';
+  promptText.textContent = t('agentSetupPrompt');
+  const promptIcon = document.createElement('span');
+  promptIcon.className = 'agent-prompt-icon';
+  promptIcon.innerHTML = ICONS.copy;
+  agentPrompt.append(promptText, promptIcon);
+  agentPrompt.addEventListener('click', () => {
+    void navigator.clipboard
+      .writeText(t('agentSetupPrompt'))
+      .then(() => {
+        promptIcon.innerHTML = ICONS.check;
+        setTimeout(() => (promptIcon.innerHTML = ICONS.copy), 1500);
+      })
+      .catch(() => {});
   });
-  (b as HTMLButtonElement & { syncCheck?: () => void }).syncCheck = sync;
-  return b;
+  agentSetup.append(agentHow, agentPrompt);
+  const syncAgent = () => {
+    const paired = api.agentPaired();
+    const enabled = api.flag('agent');
+    const on = api.agentStatus();
+    agentStatusRow!.textContent = '';
+    const lab = document.createElement('span');
+    lab.className = 'pop-label';
+    lab.textContent = t('setAgent');
+    const dot = document.createElement('span');
+    dot.className = `agent-dot ${on ? 'on' : enabled ? 'wait' : 'off'}`;
+    const state = document.createElement('span');
+    state.className = 'agent-state';
+    state.textContent = on
+      ? t('agentStatusOn')
+      : enabled
+        ? t('agentWaiting')
+        : paired
+          ? t('agentPaired')
+          : t('agentOff');
+    agentStatusRow!.append(lab, dot, state);
+    if (on || enabled || paired) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'agent-btn';
+      btn.textContent = on ? t('agentDisconnect') : enabled ? t('agentTurnOff') : t('agentPairConnect');
+      btn.addEventListener('click', () => {
+        api.onFlag('agent', !enabled);
+        syncAgent();
+      });
+      agentStatusRow!.appendChild(btn);
+    }
+    agentSetup.style.display = paired ? 'none' : '';
+  };
+  agentStatusSync = syncAgent;
+  syncAgent();
+  node.append(agentStatusRow, agentSetup);
+  return pop;
 }
 
 // Create-palette editor: reorder with up/down arrows, hide per row,
@@ -88,7 +153,7 @@ function radioRow(label: string, checked: () => boolean, pick: () => void, exclu
 function openToolbarEditor(anchor: HTMLElement, api: SettingsApi) {
   const node = document.createElement('div');
   node.className = 'menu-body tbe-body';
-  const pop = openToolPopup(anchor, node);
+  const pop = openToolPopup(anchor, node, true);
 
   const render = () => {
     node.textContent = '';
@@ -154,14 +219,6 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   const node = document.createElement('div');
   node.className = 'stp-body';
   const pop = openToolPopup(anchor, node, true);
-  // Drop the module-level agent status refs when the popup closes so a
-  // detached row and its api closure are not retained.
-  const innerClose = pop.close;
-  pop.close = () => {
-    agentStatusRow = null;
-    agentStatusSync = null;
-    innerClose();
-  };
 
   const group = (label: string) => node.appendChild(head(label));
 
@@ -170,11 +227,6 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
     radios.forEach((b) => {
       b.syncCheck?.();
     });
-  const radio = (label: string, checked: () => boolean, pick: () => void) => {
-    const b = radioRow(label, checked, pick, syncAll);
-    radios.push(b);
-    node.appendChild(b);
-  };
   // Toggle rows lead with a checkbox square: the trailing check is
   // reserved for single-choice radios so the two read differently.
   const toggle = (label: string, checked: () => boolean, pick: (v: boolean) => void) => {
@@ -229,8 +281,27 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   ]);
 
   group(t('setLanguage'));
-  radio(t('setAuto'), () => api.lang() === null, () => api.onLang(null));
-  for (const l of LANGS) radio(l.label, () => api.lang() === l.id, () => api.onLang(l.id));
+  const langWrap = document.createElement('div');
+  langWrap.className = 'set-select';
+  const langSel = document.createElement('select');
+  const opt = (value: string, label: string) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = label;
+    langSel.appendChild(o);
+  };
+  opt('', t('setAuto'));
+  for (const l of LANGS) opt(l.id, l.label);
+  langSel.value = api.lang() ?? '';
+  langSel.addEventListener('change', () =>
+    api.onLang(langSel.value === '' ? null : (langSel.value as Lang)),
+  );
+  const langChev = document.createElement('span');
+  langChev.className = 'set-chev';
+  langChev.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+  langWrap.append(langSel, langChev);
+  node.appendChild(langWrap);
 
   group(t('setScale'));
   seg([
@@ -265,53 +336,9 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   unfurlHow.className = 'ts-head agent-how';
   unfurlHow.textContent = t('unfurlHow');
   node.appendChild(unfurlHow);
-  // Local agent status row. Pairing only happens through an ?agent=
-  // link; this row reports the socket state and offers connect/
-  // disconnect once bridge credentials are stored.
-  agentStatusRow = document.createElement('div');
-  agentStatusRow.className = 'agent-row';
-  const agentHow = document.createElement('div');
-  agentHow.className = 'ts-head agent-how';
-  agentHow.textContent = t('agentHow');
-  const syncAgent = () => {
-    const paired = api.agentPaired();
-    const enabled = api.flag('agent');
-    const on = api.agentStatus();
-    agentStatusRow!.textContent = '';
-    const lab = document.createElement('span');
-    lab.className = 'pop-label';
-    lab.textContent = t('setAgent');
-    const dot = document.createElement('span');
-    dot.className = `agent-dot ${on ? 'on' : enabled ? 'wait' : 'off'}`;
-    const state = document.createElement('span');
-    state.className = 'agent-state';
-    state.textContent = on
-      ? t('agentStatusOn')
-      : enabled
-        ? t('agentWaiting')
-        : paired
-          ? t('agentPaired')
-          : t('agentOff');
-    agentStatusRow!.append(lab, dot, state);
-    if (on || enabled || paired) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'agent-btn';
-      btn.textContent = on ? t('agentDisconnect') : enabled ? t('agentTurnOff') : t('agentPairConnect');
-      btn.addEventListener('click', () => {
-        api.onFlag('agent', !enabled);
-        syncAgent();
-      });
-      agentStatusRow!.appendChild(btn);
-    }
-    agentHow.style.display = paired ? 'none' : '';
-  };
-  agentStatusSync = syncAgent;
-  syncAgent();
-  node.append(agentStatusRow, agentHow);
 
-  // Actions sit apart from the option groups: a separator keeps them
-  // from reading as more Online extras.
+  // Actions sit apart from the option groups, separated so they do not
+  // read as more toggle rows.
   const sep = document.createElement('div');
   sep.className = 'pop-sep';
   node.appendChild(sep);

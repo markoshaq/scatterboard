@@ -1,12 +1,58 @@
 import type { App } from '../app';
 import { t } from '../strings';
-import { choice } from '../ui/toast';
+import { popDismiss, pushDismiss } from '../ui/popup';
 import { createAgentApi, type AgentApi } from './api';
 import { runCommandUrl } from './cmdurl';
 import { startClient, type AgentClient } from './client';
 
 let client: AgentClient | null = null;
 let clientApi: AgentApi | null = null;
+
+// Pairing confirm: a centered modal over a dimmed scrim so the prompt
+// cannot be missed (a bottom toast was too easy to overlook).
+function pairModal(onConnect: () => void) {
+  const scrim = document.createElement('div');
+  scrim.className = 'short-scrim pair-scrim';
+  const box = document.createElement('div');
+  box.className = 'short-box pair-box';
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  const title = document.createElement('div');
+  title.className = 'pair-title';
+  title.textContent = t('agentPairTitle');
+  const msg = document.createElement('div');
+  msg.className = 'pair-msg';
+  msg.textContent = t('agentPairAsk');
+  const row = document.createElement('div');
+  row.className = 'pair-actions';
+  const no = document.createElement('button');
+  no.type = 'button';
+  no.className = 'pair-btn';
+  no.textContent = t('drawCancel');
+  const yes = document.createElement('button');
+  yes.type = 'button';
+  yes.className = 'pair-btn pair-primary';
+  yes.textContent = t('agentPairConnect');
+  row.append(no, yes);
+  box.append(title, msg, row);
+  scrim.appendChild(box);
+  const handle = {
+    close() {
+      popDismiss(handle);
+      scrim.remove();
+    },
+  };
+  no.addEventListener('click', () => handle.close());
+  yes.addEventListener('click', () => {
+    handle.close();
+    onConnect();
+  });
+  scrim.addEventListener('pointerdown', (e) => {
+    if (e.target === scrim) handle.close();
+  });
+  document.body.appendChild(scrim);
+  pushDismiss(handle);
+}
 
 // Settings toggle: on starts a tokenless session (stored key pairs or
 // the status line stays disconnected), off drops the socket.
@@ -48,7 +94,8 @@ export function init(app: App) {
   if (agent !== null || port !== null) {
     // URL-driven pairing asks first: the socket can drive the board and
     // a welcome persists credentials, same gate as mutating ?do= lists.
-    choice(t('agentPairAsk'), t('agentPairConnect'), start, undefined, 0);
+    // A centered modal, not a toast, so the prompt cannot be missed.
+    pairModal(start);
   } else if (app.prefs.agent) {
     start();
   }

@@ -1527,7 +1527,6 @@ body.over-trash .viewport * {
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--edge);
-  border-left: 0;
   z-index: 22;
   display: flex;
   flex-direction: column;
@@ -1808,6 +1807,49 @@ button.bpl-caret:hover {
   padding: 14px 14px 10px;
 }
 
+/* agent pairing confirm */
+
+.short-scrim.pair-scrim {
+  background: rgba(0, 0, 0, 0.78);
+}
+
+.pair-box {
+  width: 320px;
+}
+
+.pair-title {
+  font-weight: 650;
+}
+
+.pair-msg {
+  font-size: calc(12.5px * var(--ui));
+  color: var(--ink-4);
+  margin-top: 6px;
+}
+
+.pair-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.pair-btn {
+  font: inherit;
+  font-size: calc(12.5px * var(--ui));
+  color: var(--ink-1);
+  background: var(--hover);
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+
+.pair-btn.pair-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
 .short-head {
   display: flex;
   align-items: center;
@@ -1981,14 +2023,14 @@ button.bpl-caret:hover {
 .ts-head {
   font-size: calc(11px * var(--ui));
   color: var(--ink-5);
-  padding: 8px 4px 3px;
+  padding: 8px 8px 3px;
 }
 
 .ts-swatches {
   display: grid;
   grid-template-columns: repeat(6, 22px);
   gap: 5px;
-  padding: 2px 4px 6px;
+  padding: 2px 8px 6px;
 }
 
 .ts-swatches .cp-swatch {
@@ -3419,6 +3461,43 @@ svg.anno.present-dim {
   padding-top: 0;
 }
 
+.agent-prompt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 4px 6px;
+  padding: 7px 9px;
+  width: calc(100% - 8px);
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  text-align: left;
+  color: var(--ink-4);
+  background: var(--card-soft);
+  border: 0;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--card-edge);
+  cursor: pointer;
+}
+
+.agent-prompt:hover {
+  box-shadow: inset 0 0 0 1px var(--edge);
+}
+
+.agent-prompt-text {
+  flex: 1;
+}
+
+.agent-prompt-icon {
+  flex: none;
+  display: flex;
+  color: var(--ink-5);
+}
+
+.agent-prompt-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
 /* Segmented row: one line for a small single-choice set. */
 .seg {
   display: flex;
@@ -3445,6 +3524,47 @@ svg.anno.present-dim {
 
 .seg-btn:hover {
   color: var(--ink-1);
+}
+
+.set-select {
+  position: relative;
+  margin: 2px 4px 6px;
+}
+
+.set-select select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  font-size: calc(12.5px * var(--ui));
+  color: var(--ink-1);
+  background: var(--card-soft);
+  border: 0;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--card-edge);
+  padding: 7px 28px 7px 9px;
+  cursor: pointer;
+}
+
+.set-select select:hover {
+  box-shadow: inset 0 0 0 1px var(--edge);
+}
+
+.set-chev {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  display: flex;
+  color: var(--ink-5);
+  pointer-events: none;
+}
+
+.set-chev svg {
+  width: 14px;
+  height: 14px;
 }
 
 .seg-btn.on {

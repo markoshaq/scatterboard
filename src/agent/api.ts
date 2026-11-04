@@ -1325,7 +1325,7 @@ export function createAgentApi(app: AgentHost) {
           if (!url) fail('bad_field', 'element is not a link/embed card with a url');
           // Links honour the user's online-extra pref; embeds enrich
           // without it (creating one already opted into the provider).
-          if (link && !app.prefs.unfurl) return { ok: false, reason: 'link unfurl is disabled in settings' };
+          if (link && app.prefs.unfurl === false) return { ok: false, reason: 'link unfurl is disabled in settings' };
           if (!navigator.onLine) return { ok: false, reason: 'offline' };
           const { fetchLinkPreview } = await import('../ui/unfurl');
           const res = await fetchLinkPreview(url);

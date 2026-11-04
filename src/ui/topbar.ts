@@ -14,6 +14,7 @@ interface TopbarEvents {
   onHelp: (anchor: HTMLElement) => void;
   onExport: (anchor: HTMLElement) => void;
   onSettings: (anchor: HTMLElement) => void;
+  onAgent: (anchor: HTMLElement) => void;
   onCrumbIcon: (id: ID, anchor: HTMLElement) => void;
   onCrumbBoards?: (id: ID, anchor: HTMLElement) => void;
   onUndo: () => void;
@@ -73,13 +74,19 @@ export class Topbar {
     helpBtn.innerHTML = ICONS.help;
     helpBtn.title = t('helpTitle');    helpBtn.setAttribute('aria-label', t('helpTitle'));
     helpBtn.addEventListener('click', () => this.events.onHelp(helpBtn));
+    const agentBtn = document.createElement('button');
+    agentBtn.type = 'button';
+    agentBtn.className = 'view-btn gear-btn';
+    agentBtn.innerHTML = ICONS.bot;
+    agentBtn.title = t('setAgent');    agentBtn.setAttribute('aria-label', t('setAgent'));
+    agentBtn.addEventListener('click', () => this.events.onAgent(agentBtn));
     const gear = document.createElement('button');
     gear.type = 'button';
     gear.className = 'view-btn gear-btn';
     gear.innerHTML = ICONS.gear;
     gear.title = t('settingsTitle');    gear.setAttribute('aria-label', t('settingsTitle'));
     gear.addEventListener('click', () => this.events.onSettings(gear));
-    bar.append(brand, brandSep, this.titleEl, this.unsortedEl, exportBtn, viewBtn, helpBtn, gear);
+    bar.append(brand, brandSep, this.titleEl, this.unsortedEl, exportBtn, viewBtn, helpBtn, agentBtn, gear);
 
     const zoom = document.createElement('div');
     zoom.className = 'zoombar';

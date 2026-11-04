@@ -2,7 +2,7 @@ import type { Element, ElementType, EmbedKind } from '../state/schema';
 import { documentDoc } from '../state/schema';
 import { t } from '../strings';
 import { ICONS } from './icons';
-import { dragGhost } from './util';
+import { dragGhost, DROP_EXCLUDE } from './util';
 
 export type ToolId =
   | 'color'
@@ -380,7 +380,7 @@ export class Rail {
             return;
           }
           const over = document.elementFromPoint(ev.clientX, ev.clientY);
-          if (over?.closest('.rail, .rail-trash')) return;
+          if (over?.closest(DROP_EXCLUDE)) return;
           this.events.onDrop(item.type, ev, item.kind);
         },
         (ev) => this.events.onDropHint(ev, item.type),

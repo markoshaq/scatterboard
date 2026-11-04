@@ -466,7 +466,8 @@ describe('agent upload, export, import and unfurl', () => {
   });
 
   it('unfurl honours the pref and rejects non-link cards', async () => {
-    const { api } = harness();
+    const { api, host } = harness();
+    host.prefs.unfurl = false;
     const note = (await api.run('create', { type: 'note', props: {} })) as { id: ID };
     expect((await err(api.run('unfurl', { id: note.id }))).code).toBe('bad_field');
     const link = (await api.run('create', { type: 'link', props: { url: 'https://example.com' } })) as { id: ID };

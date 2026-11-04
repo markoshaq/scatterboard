@@ -4,6 +4,43 @@ Notable changes per release, newest first. Sections: Added, Changed, Fixed, Remo
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-04
+
+Drag and drop fixes, an agent menu in the topbar, and a clearer
+pairing prompt.
+
+### Added
+
+- A robot icon between Help and Settings opens the agent menu: connection
+  status, connect/disconnect, and a setup prompt you can copy to your AI
+  agent. The agent row moved here out of Settings.
+- Pairing now asks in a centered dialog over a darkened board instead of
+  a toast.
+
+### Changed
+
+- Enrich link cards is on by default; your setting stays if you already
+  changed it.
+- Language is a dropdown instead of radio rows. "Automatic" reads "Auto"
+  and "Toolbar palette" is now "Manage toolbar palette".
+- Clicking through the boards panel keeps it open and moves the
+  current-board marker.
+
+### Fixed
+
+- `sb_open` put the pairing token after the `#` in board URLs, so the app
+  never saw it and no prompt appeared.
+- Fast drags often never landed: any zero-button pointermove cancelled
+  the gesture. It now only cancels when the pointer really leaves the
+  window.
+- Cards dragged from Unsorted or Trash onto a column ended up hidden
+  under it on the canvas; they now file into the column.
+- Palette items dropped over the side panel or an editor scrim spawned
+  a hidden card; the drop now cancels instead.
+- The toolbar palette editor opened over its button instead of below it.
+- Side panels had no left border, and popup headings sat left of their
+  rows.
+
 ## [0.2.0] - 2026-11-03
 
 AI tools can drive a live board through an optional local agent, plus
