@@ -454,6 +454,13 @@ const TOOLS = [
   },
 ];
 
+function pairUrlFor(base) {
+  const hash = base.indexOf('#');
+  const head = hash < 0 ? base : base.slice(0, hash);
+  const tail = hash < 0 ? '' : base.slice(hash);
+  return `${head}${head.includes('?') ? '&' : '?'}agent=${token}${tail}`;
+}
+
 function openBrowser(url) {
   const plat = platform();
   if (plat === 'win32') execFile('cmd', ['/c', 'start', '', url], () => {});
@@ -471,12 +478,12 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   try {
     if (name === 'sb_open') {
       const base = typeof args?.url === 'string' && /^https?:\/\//i.test(args.url) ? args.url : APP_URL;
-      const url = `${base}${base.includes('?') ? '&' : '?'}agent=${token}`;
+      const url = pairUrlFor(base);
       openBrowser(url);
       return text(`Opened ${url}`);
     }
     if (name === 'sb_status') {
-      const pairUrl = `${APP_URL}${APP_URL.includes('?') ? '&' : '?'}agent=${token}`;
+      const pairUrl = pairUrlFor(APP_URL);
       return text(JSON.stringify({ connected: !!appSock, bridgeId, port: PORT, pairUrl, agentKey: key }));
     }
     const method = METHODS[name];
@@ -498,5 +505,5 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
 });
 
 console.error(`scatterboard-agent on ws://127.0.0.1:${PORT}`);
-console.error(`pair: ${APP_URL}${APP_URL.includes('?') ? '&' : '?'}agent=${token}`);
+console.error(`pair: ${pairUrlFor(APP_URL)}`);
 await mcp.connect(new StdioServerTransport());
