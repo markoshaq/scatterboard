@@ -1,5 +1,14 @@
-import { NOTE_MAX_W, NOTE_MIN_W, UNSORTED, type Doc, type ID, type LineEnd, type Stroke } from '../state/schema';
-import { sanitizeHtml } from '../ui/sanitize';
+import {
+  isSafeUrl,
+  NOTE_MAX_W,
+  NOTE_MIN_W,
+  UNSORTED,
+  type Doc,
+  type ID,
+  type LineEnd,
+  type Stroke,
+} from '../state/schema';
+import { sanitizeHtml, scrubHtml } from '../ui/sanitize';
 
 // One agent command payload may not exceed this per string.
 export const MAX_STR = 100 * 1024;
@@ -61,6 +70,18 @@ export function vId(v: unknown, name: string): ID {
   return vStr(v, name, 128);
 }
 
+// Link/embed URLs must be schemes the card can safely navigate to; a
+// stored javascript: URL would execute on click.
+export function vUrl(v: unknown, name: string): string {
+  const s = vStr(v, name, 8192);
+  if (s && !isSafeUrl(s)) fail('bad_field', `${name} must be an http(s) or mailto URL`);
+  return s;
+}
+
+export function vUrlOpt(v: unknown, name: string): string | undefined {
+  return v === undefined ? undefined : vUrl(v, name);
+}
+
 export function vHtml(v: unknown, name: string): string {
   return sanitizeHtml(vStr(v, name));
 }
@@ -83,13 +104,18 @@ export function vElId(doc: Doc, v: unknown, name: string): ID {
 }
 
 // Canvas = null, 'unsorted' = inbox, otherwise an existing column id.
-export function vParentId(doc: Doc, v: unknown): ID | null {
+// boardId pins the column to the element's board: a cross-board parent
+// desyncs the member index and hides the card.
+export function vParentId(doc: Doc, v: unknown, boardId?: ID): ID | null {
   if (v === null) return null;
   const id = vId(v, 'parentId');
   if (id === UNSORTED) return id;
   const el = doc.elements[id];
   if (!el) fail('not_found', `no element ${id}`);
   if (el.type !== 'column') fail('bad_field', `parentId ${id} is not a column`);
+  if (boardId !== undefined && el.boardId !== boardId) {
+    fail('bad_field', `parentId ${id} is on another board`);
+  }
   return id;
 }
 
@@ -138,17 +164,4 @@ export function vStrokes(v: unknown): Stroke[] {
   });
 }
 
-// Walks an action/content payload: every 'html' field is scrubbed
-// through the import whitelist, anything else passes through.
-export function scrubHtml(v: unknown, depth = 0): void {
-  if (depth > 24 || !v || typeof v !== 'object') return;
-  if (Array.isArray(v)) {
-    for (const item of v) scrubHtml(item, depth + 1);
-    return;
-  }
-  const o = v as Dict;
-  for (const [k, val] of Object.entries(o)) {
-    if (k === 'html' && typeof val === 'string') o[k] = sanitizeHtml(val);
-    else scrubHtml(val, depth + 1);
-  }
-}
+export { scrubHtml };

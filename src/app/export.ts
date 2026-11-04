@@ -62,9 +62,9 @@ export class BoardExport {
 
   // Image/file elements live on this board (not filed to unsorted, not
   // nested in sub-boards). Column members count: they sit on the canvas.
-  boardMedia(): Element[] {
+  boardMedia(boardId: ID | null = this.a.boardId): Element[] {
     return Object.values(this.a.doc.elements).filter(
-      (e) => e.boardId === this.a.boardId && e.parentId !== UNSORTED && blobRefOf(e) !== null,
+      (e) => e.boardId === boardId && e.parentId !== UNSORTED && blobRefOf(e) !== null,
     );
   }
 
@@ -73,14 +73,19 @@ export class BoardExport {
   // board unit). Cards are rasterized via an svg foreignObject snapshot
   // when the engine allows it; otherwise a simple canvas pass draws
   // card rects + text (see export/boardpng.ts).
-  async boardRaster(scale: number): Promise<HTMLCanvasElement | null> {
-    if (!this.a.boardId) return null;
+  async boardRaster(scale: number, region?: Rect): Promise<HTMLCanvasElement | null> {
+    const boardId = this.a.boardId;
+    if (!boardId) return null;
     this.a.editing.endEdit();
     const u = unionRect(this.a.layer.elements().map((e) => this.a.layer.rectOf(e)));
     const pad = 80;
-    const bounds: Rect = u
-      ? { x: u.x - pad, y: u.y - pad, w: u.w + pad * 2, h: u.h + pad * 2 }
-      : { x: 0, y: 0, w: 800, h: 600 };
+    // An explicit region crops exactly; otherwise the bounds cover
+    // every card plus padding (or a default 800x600 for empty boards).
+    const bounds: Rect = region
+      ? { ...region }
+      : u
+        ? { x: u.x - pad, y: u.y - pad, w: u.w + pad * 2, h: u.h + pad * 2 }
+        : { x: 0, y: 0, w: 800, h: 600 };
 
     // The live layer culls off-screen cards, so mount a second layer
     // covering the full bounds in a hidden staging node.
@@ -91,30 +96,42 @@ export class BoardExport {
     fvp.y = -bounds.y;
     fvp.z = 1;
     const off = new CardsLayer(this.a.doc, fvp, SHOT_EVENTS, () => this.a.store.rev);
-    off.boardId = this.a.boardId;
+    off.boardId = boardId;
     const stage = document.createElement('div');
     stage.style.cssText = 'position:fixed;left:-100000px;top:0;width:0;height:0;overflow:visible;pointer-events:none';
     stage.appendChild(off.node);
     document.body.appendChild(stage);
     off.sync(new Set(), null, true);
-    const { buildShotDom, inlineBlobImages, renderBoardShot, settleImages } = await import('../export/boardpng');
-    await settleImages(off.node);
+    let dom: HTMLElement;
+    try {
+      const { buildShotDom, inlineBlobImages, settleImages } = await import('../export/boardpng');
+      // A board switch mid-export would mix two boards into one shot:
+      // bail at every await boundary.
+      if (this.a.boardId !== boardId) return null;
+      await settleImages(off.node);
+      if (this.a.boardId !== boardId) return null;
 
-    // Live overlays are already synced for the whole board (labels,
-    // pins, annotations); chips are viewport-culled, so a throwaway
-    // layer is synced against every card instead. Seated pins/anno svgs
-    // live inside .cards: park them in their hosts so the clone sees
-    // them, then re-seat after the snapshot.
-    const chips = new ChipsLayer(this.a.doc);
-    chips.sync(this.a.overlays.chipTargets(true, off));
-    this.a.overlays.anno.sync(this.a.overlays.annoItems(true));
-    this.a.overlays.pins.sync(this.a.overlays.pinItems(off, true).map((p) => ({ ...p, seat: null })));
-    const dom = buildShotDom(off.node, [this.a.overlays.anno.node, this.a.overlays.pins.node, this.a.overlays.labelHost, chips.node], bounds);
-    await inlineBlobImages(dom);
-    off.destroy();
-    stage.remove();
-    this.a.overlays.syncAnno();
-    this.a.overlays.syncPins();
+      // Live overlays are already synced for the whole board (labels,
+      // pins, annotations); chips and label pills are viewport-culled,
+      // so the throwaway chip layer and an all-lines pill sync cover
+      // every card instead. Seated pins/anno svgs live inside .cards:
+      // park them in their hosts so the clone sees them, then re-seat
+      // after the snapshot.
+      const chips = new ChipsLayer(this.a.doc);
+      chips.sync(this.a.overlays.chipTargets(true, off));
+      this.a.overlays.anno.sync(this.a.overlays.annoItems(true));
+      this.a.overlays.pins.sync(this.a.overlays.pinItems(off, true).map((p) => ({ ...p, seat: null })));
+      this.a.overlays.syncLabelPills(this.a.resolvedLines(), true);
+      dom = buildShotDom(off.node, [this.a.overlays.anno.node, this.a.overlays.pins.node, this.a.overlays.labelHost, chips.node], bounds);
+      await inlineBlobImages(dom);
+      if (this.a.boardId !== boardId) return null;
+    } finally {
+      off.destroy();
+      stage.remove();
+      this.a.overlays.syncAnno();
+      this.a.overlays.syncPins();
+      this.a.overlays.syncLabelPills(this.a.resolvedLines());
+    }
 
     const spec: ShotSpec = {
       bounds,
@@ -132,7 +149,10 @@ export class BoardExport {
         .map((e) => this.a.layer.rectOf(e)),
     };
     try {
-      return await renderBoardShot(spec, scale);
+      const { renderBoardShot } = await import('../export/boardpng');
+      if (this.a.boardId !== boardId) return null;
+      const cv = await renderBoardShot(spec, scale);
+      return this.a.boardId === boardId ? cv : null;
     } catch {
       return null;
     }
@@ -141,9 +161,12 @@ export class BoardExport {
 
   // Shared raster path for the Export menu and the agent snapshot
   // command: opens the board first when the caller targets another one.
-  async snapshotPng(boardId?: ID): Promise<Blob | null> {
+  async snapshotPng(boardId?: ID, region?: Rect, scale = 2): Promise<Blob | null> {
     if (boardId && boardId !== this.a.boardId) this.a.openBoard(boardId);
-    const cv = await this.boardRaster(2);
+    // openBoard no-ops on a missing id: without this check the raster
+    // would silently shoot the board already open.
+    if (boardId && this.a.boardId !== boardId) return null;
+    const cv = await this.boardRaster(scale, region);
     if (!cv) return null;
     const { toBlob } = await import('../export/boardpng');
     return toBlob(cv, 'image/png');
@@ -190,9 +213,11 @@ export class BoardExport {
   }
 
 
-  async exportFilesZip() {
-    const els = this.boardMedia();
-    if (!els.length) return;
+  // The export menu wraps this in a download; the agent surface calls
+  // it directly. Missing/dead blobs are skipped.
+  async mediaZip(boardId: ID): Promise<Blob | null> {
+    const els = this.boardMedia(boardId);
+    if (!els.length) return null;
     const entries: ZipEntry[] = [];
     const used = new Set<string>();
     for (const el of els) {
@@ -200,17 +225,32 @@ export class BoardExport {
       if (!ref) continue;
       const blob = await getBlob(ref).catch(() => undefined);
       if (!blob) continue;
-      const stored =
-        'image' in el.content ? el.content.image.name : 'file' in el.content ? el.content.file.name : '';
+      // Stored names become zip paths: strip separators so a hostile
+      // or odd file name can't forge directories inside the archive.
+      const stored = (
+        'image' in el.content ? el.content.image.name : 'file' in el.content ? el.content.file.name : ''
+      ).replace(/[\\/]/g, '');
       const name = dedupFileName(stored || (el.type === 'image' ? `image-${el.id}.png` : `file-${el.id}`), used);
-      entries.push({ name, data: new Uint8Array(await blob.arrayBuffer()) });
+      try {
+        entries.push({ name, data: new Uint8Array(await blob.arrayBuffer()) });
+      } catch {
+        return null;
+      }
     }
-    if (!entries.length) {
+    if (!entries.length) return null;
+    const { zipStore } = await import('../export/zip');
+    return zipStore(entries);
+  }
+
+
+  async exportFilesZip() {
+    if (!this.a.boardId) return;
+    const blob = await this.mediaZip(this.a.boardId);
+    if (!blob) {
       toast(t('exFail'));
       return;
     }
-    const { zipStore } = await import('../export/zip');
-    downloadBlob(`${this.exportFileBase()}-files.zip`, zipStore(entries));
+    downloadBlob(`${this.exportFileBase()}-files.zip`, blob);
   }
 
 
@@ -236,21 +276,25 @@ export class BoardExport {
       const file = input.files?.[0];
       if (!file) return;
       void (async () => {
-        const { importActions, parseBoardExport } = await import('../export/jsonio');
-        const data = parseBoardExport(await file.text());
-        // Imported boards attach under Home; fall back to the doc root
-        // or the current board when no 'home' id exists.
-        const host =
-          this.a.doc.boards.home?.id ??
-          Object.values(this.a.doc.boards).find((b) => b.parentId === null)?.id ??
-          this.a.boardId;
-        const res = data && host ? importActions(this.a.doc, data, host) : null;
-        if (!res) {
+        try {
+          const { importActions, parseBoardExport } = await import('../export/jsonio');
+          const data = parseBoardExport(await file.text());
+          // Imported boards attach under Home; fall back to the doc root
+          // or the current board when no 'home' id exists.
+          const host =
+            this.a.doc.boards.home?.id ??
+            Object.values(this.a.doc.boards).find((b) => b.parentId === null)?.id ??
+            this.a.boardId;
+          const res = data && host ? importActions(this.a.doc, data, host) : null;
+          if (!res) {
+            toast(t('exImportFail'));
+            return;
+          }
+          this.a.store.dispatch({ type: 'batch', actions: res.actions });
+          this.a.openBoard(res.boardId);
+        } catch {
           toast(t('exImportFail'));
-          return;
         }
-        this.a.store.dispatch({ type: 'batch', actions: res.actions });
-        this.a.openBoard(res.boardId);
       })();
     });
     input.click();

@@ -108,8 +108,9 @@ calls; fully offline.
     builders + `openViewMenu` (topbar View menu: Present entry, per-board
     dot-grid toggle, presentation toggles),
     `duepopup.ts` the original dismiss pattern.
-  - `panel.ts` slide-over chrome shared by Unsorted/Trash/Search
-    (`openSearchPanel` in `search.ts`).
+  - `panel.ts` slide-over chrome shared by Unsorted/Trash/Search/Boards
+    (`openSearchPanel` in `search.ts`, `boards.ts` the boards/projects
+    panel listing the board tree via `openPanel`).
   - `boardicons.ts` the board-icon glyph set (~60) + keyword tags,
     `mountBoardIcon` renders 'g:'/'c:'/'e:'/'b:' icon values.
   - `iconpicker.ts` board icon popup (search, Recommended,
@@ -158,7 +159,8 @@ calls; fully offline.
   `PersistedWorkspace` (version 1, additive fields only; `prefs`
   threads through `App.saveNow`), `local.ts` localStorage impl,
   `sqlite.ts` sqlite-wasm OPFS-SAHPool adapter (custom worker1
-  promiser, vendored `public/jswasm/` worker + wasm, localStorage
+  promiser, vendored `public/jswasm/` worker + wasm, `json.worker.ts`
+  off-thread JSON codec for the workspace payload, localStorage
   is the first-boot migration source and fallback),
   `blobs.ts` IndexedDB blob store {blobRef -> Blob} + objectURL cache +
   orphan purge; `blobRefsInDoc` covers elements, trash, board icons
@@ -190,24 +192,34 @@ calls; fully offline.
   the initial `#/b/`/`#/e/` route; `window.__app` is dev-only.
 - `src/state/seed.ts`: first-run welcome board + `seedPerfDoc(n)`
   profiling doc (dev-only `?seed=N`).
-- `src/agent/` (lazy chunk, loaded by boot on `?do=`/`?agent=`/
-  `prefs.agent` or by the settings toggle): `api.ts`
+- `src/agent/` (lazy chunk, loaded by boot on `?do=`/`?agent=`/`?port=`/
+  `prefs.agent` or by the settings toggle; `?agent=` carries the
+  pairing token and `?port=` a non-default bridge port, both
+  confirm-first): `api.ts`
   `createAgentApi(app)` over a structural `AgentHost` interface;
   commands plan-validate first, then run inside one store group
   (abort = endGroup + undo + future cleared; nested batches join the
-  outer group). `validate.ts` `AgentError {code,message}` + field/ref/
+  outer group). `MUTATING` gates the presenting lock, `URL_SAFE` the
+  commands a `?do=` link may run unconfirmed; anything else asks via a
+  toast choice. Link/embed urls are scheme-checked (`isSafeUrl`),
+  dispatch content is shape-checked per type (`saneContent` in
+  schema.ts, shared with jsonio import), create ids may not collide,
+  and column parents must live on the element's board. `validate.ts`
+  `AgentError {code,message}` + field/ref/
   shape checks; `cmdurl.ts` `?do=<base64url JSON>` one-shot command
   lists; `client.ts` persistent `ws://127.0.0.1` session (token pair,
   stored-key reconnect, backoff, serialized requests,
   `sb-agent-status` window event for the settings status line);
   `index.ts` `init` + `setAgentEnabled`.
 - `bridge/agent.mjs`: node >=20 localhost bridge + MCP stdio server,
-  published to npm as `scatterboard-mcp` (`files: agent.mjs` only;
+  published to npm as `scatterboard-mcp` (`files: agent.mjs` + `install.mjs`;
   `ws` + `@modelcontextprotocol/sdk` deps in `bridge/package.json`, a
   separate manifest from the app). `setup.mjs` registers the server
   into the Devin/Windsurf configs. One app session at a time: Origin
-  allowlist on upgrade, token pair then `{bridgeId,key}` reconnect,
-  identity in `~/.config/scatterboard-agent`
+  allowlist on upgrade, one-time pairing token (rotates after use,
+  app-role only) then `{bridgeId,appKey}` reconnect; agent sockets
+  authenticate with a separate `key` reported by `sb_status` as
+  `agentKey`, identity in `~/.config/scatterboard-agent`
   (`%APPDATA%\scatterboard-agent` on Windows). Agent sockets and the
   `sb_*` MCP tools relay `{id,method,params}` to the app.
 - `src/ui/sanitize.ts`: whitelist HTML scrubber applied to richtext

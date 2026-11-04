@@ -34,7 +34,12 @@ export function openIconPicker(anchor: HTMLElement | DOMRect, api: IconPickerApi
   upLab.className = 'pop-label';
   upLab.textContent = t('iconUpload');
   upload.appendChild(upLab);
-  upload.addEventListener('click', api.onUpload);
+  upload.addEventListener('click', () => {
+    // onUpload is synchronous (opens a file picker): the picker's job
+    // is done once it fires, so close instead of leaving a stale grid.
+    api.onUpload();
+    pop.close();
+  });
   const clear = document.createElement('button');
   clear.type = 'button';
   clear.className = 'pop-row';

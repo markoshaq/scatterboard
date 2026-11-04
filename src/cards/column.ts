@@ -163,7 +163,7 @@ export class ColumnCard implements CardView {
       if (!c) continue;
       const t = clipSeg(l.x1, l.y1, l.x2, l.y2, rect);
       if (!t) continue;
-      const w = LINE_W[c.weight];
+      const w = LINE_W[c.weight ?? 'medium'];
       const ink = l.el.color ?? cc.ink;
       const seg = document.createElementNS(NS, 'line');
       seg.setAttribute('x1', `${X(l.x1 + (l.x2 - l.x1) * t[0])}`);

@@ -2,13 +2,11 @@ import type { App } from '../app';
 
 function inTextField(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement;
-  return (
-    t.isContentEditable ||
-    t.tagName === 'INPUT' ||
-    t.tagName === 'TEXTAREA' ||
-    t.tagName === 'SELECT' ||
-    t.tagName === 'BUTTON'
-  );
+  // A focused button is text-like only for its own activation keys:
+  // swallowing everything would dead every shortcut while one holds
+  // focus.
+  if (t.tagName === 'BUTTON') return e.key === ' ' || e.key === 'Enter';
+  return t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT';
 }
 
 export function attachShortcuts(app: App) {
@@ -156,6 +154,10 @@ export function attachShortcuts(app: App) {
       app.fileToUnsorted();
       return;
     }
+
+    // No other Alt combos: Alt+Arrow is browser Back/Forward and must
+    // not fall into the plain-key nudge cases below.
+    if (e.altKey) return;
 
     if (e.shiftKey && e.code === 'KeyD') {
       e.preventDefault();

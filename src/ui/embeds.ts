@@ -10,21 +10,48 @@ export function hostOf(url: string): string {
   }
 }
 
+function parseUrl(url: string): URL | null {
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
+}
+
+// host === domain or a subdomain of it (m.youtube.com, player.vimeo.com).
+// Raw-string regexes would also match 'evil.example/youtu.be/x'.
+function hostIs(u: URL, domain: string): boolean {
+  const h = u.hostname.toLowerCase();
+  return h === domain || h.endsWith(`.${domain}`);
+}
+
 function youtubeId(url: string): string | null {
-  const m =
-    url.match(/youtu\.be\/([\w-]{6,})/) ??
-    url.match(/youtube\.com\/(?:shorts|embed|live)\/([\w-]{6,})/) ??
-    url.match(/youtube\.com\/watch\?[^#]*\bv=([\w-]{6,})/);
-  return m?.[1] ?? null;
+  const u = parseUrl(url);
+  if (!u) return null;
+  if (hostIs(u, 'youtu.be')) {
+    const m = u.pathname.match(/^\/([\w-]{6,})/);
+    return m?.[1] ?? null;
+  }
+  if (hostIs(u, 'youtube.com')) {
+    const m = u.pathname.match(/^\/(?:shorts|embed|live)\/([\w-]{6,})/);
+    if (m) return m[1]!;
+    const v = u.pathname === '/watch' ? u.searchParams.get('v') : null;
+    if (v && /^[\w-]{6,}$/.test(v)) return v;
+  }
+  return null;
 }
 
 function vimeoId(url: string): string | null {
-  const m = url.match(/vimeo\.com\/(?:video\/)?(\d{6,})/);
+  const u = parseUrl(url);
+  if (!u || !hostIs(u, 'vimeo.com')) return null;
+  const m = u.pathname.match(/^\/(?:video\/)?(\d{6,})/);
   return m?.[1] ?? null;
 }
 
 function spotifyEmbed(url: string): string | null {
-  const m = url.match(/open\.spotify\.com\/(track|album|playlist|episode|show|artist)\/([\w]+)/);
+  const u = parseUrl(url);
+  if (u?.hostname.toLowerCase() !== 'open.spotify.com') return null;
+  const m = u.pathname.match(/^\/(track|album|playlist|episode|show|artist)\/([\w]+)/);
   return m ? `https://open.spotify.com/embed/${m[1]}/${m[2]}` : null;
 }
 
@@ -49,11 +76,23 @@ function mapQuery(url: string): string | null {
   return url;
 }
 
+// Google Maps hosts: google.<tld>/maps and maps.google.<tld> plus the
+// two short-link hosts. The tld shape (google.com, google.co.uk) keeps
+// lookalikes like google.com.evil.example out.
+function isGoogleMaps(u: URL): boolean {
+  const h = u.hostname.toLowerCase().replace(/^www\./, '');
+  if (h === 'maps.app.goo.gl') return true;
+  if (h === 'goo.gl') return u.pathname.startsWith('/maps');
+  if (/^maps\.google\.[a-z]{2,}(\.[a-z]{2})?$/.test(h)) return true;
+  return /^google\.[a-z]{2,}(\.[a-z]{2})?$/.test(h) && u.pathname.startsWith('/maps');
+}
+
 // A human title derived from the URL itself, no fetch. Google Maps
 // carries the place in /maps/place/<name>/, search or ?q=; unlike
 // mapQuery the title prefers the name over the coordinates.
 export function urlTitle(url: string): string | null {
-  if (!/google\.[\w.]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps|maps\.google\./.test(url)) return null;
+  const u = parseUrl(url);
+  if (!u || !isGoogleMaps(u)) return null;
   const place = url.match(/\/maps\/(?:place|search)\/([^/@]+)/) ?? url.match(/[?&]q=([^&]+)/);
   if (place) return safeDecode(place[1]!).replace(/\+/g, ' ');
   const at = url.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
@@ -73,13 +112,15 @@ export function embedSrc(kind: EmbedKind, url: string): string | null {
   if (kind === 'audio') {
     const sp = spotifyEmbed(url);
     if (sp) return sp;
-    if (/soundcloud\.com/.test(url)) {
+    const u = parseUrl(url);
+    if (u && hostIs(u, 'soundcloud.com')) {
       return `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&auto_play=true`;
     }
     return null;
   }
   // map
-  if (/google\.[\w.]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps|maps\.google\./.test(url)) {
+  const u = parseUrl(url);
+  if (u && isGoogleMaps(u)) {
     const q = mapQuery(url);
     return q ? `https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed` : null;
   }

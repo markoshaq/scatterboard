@@ -12,7 +12,10 @@ import { installMcp } from './install.mjs';
 
 const bridgeDir = dirname(fileURLToPath(import.meta.url));
 
-if (!existsSync(join(bridgeDir, 'node_modules', 'ws'))) {
+const depsMissing =
+  !existsSync(join(bridgeDir, 'node_modules', 'ws')) ||
+  !existsSync(join(bridgeDir, 'node_modules', '@modelcontextprotocol', 'sdk'));
+if (depsMissing) {
   console.log('installing bridge deps...');
   const npm = platform() === 'win32' ? 'npm.cmd' : 'npm';
   const r = spawnSync(npm, ['install', '--no-audit', '--no-fund'], { cwd: bridgeDir, stdio: 'inherit' });

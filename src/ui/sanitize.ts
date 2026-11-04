@@ -20,7 +20,9 @@ const DROP_TAGS = new Set([
 
 const SAFE_COLOR = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,]+%?\)|[a-z]+)$/i;
 const SAFE_ALIGN = /^(left|right|center|justify|start|end)$/i;
-const SAFE_URL = /^(https?:|mailto:|#|\/)/i;
+// Only absolute external schemes and in-app anchors: a stored
+// '/path' href would navigate the app tab away from its route.
+const SAFE_URL = /^(https?:|mailto:|#)/i;
 
 function cleanStyle(value: string): string {
   const kept: string[] = [];
@@ -63,6 +65,11 @@ function clean(el: globalThis.Element) {
       continue;
     }
     if (n === 'href' && tag === 'a' && SAFE_URL.test(attr.value.trim())) continue;
+    // The editor stamps target/rel on the anchors it creates; keep
+    // those exact values only (a crafted target could steer the app tab).
+    if (tag === 'a' && ((n === 'target' && attr.value === '_blank') || (n === 'rel' && attr.value.trim() === 'noopener'))) {
+      continue;
+    }
     el.removeAttribute(n);
   }
 }
@@ -73,4 +80,22 @@ export function sanitizeHtml(html: string): string {
   if (!root) return '';
   for (const el of [...root.querySelectorAll('*')]) clean(el);
   return root.innerHTML;
+}
+
+// Walks an action/content payload: every 'html' field is scrubbed
+// through the whitelist, anything else passes through. Used on every
+// boundary that persists html: JSON import, agent commands, and live
+// card commits (the scrubber only strips markup the editor can't
+// produce, so it is safe at commit).
+export function scrubHtml(v: unknown, depth = 0): void {
+  if (depth > 24 || !v || typeof v !== 'object') return;
+  if (Array.isArray(v)) {
+    for (const item of v) scrubHtml(item, depth + 1);
+    return;
+  }
+  const o = v as Record<string, unknown>;
+  for (const [k, val] of Object.entries(o)) {
+    if (k === 'html' && typeof val === 'string') o[k] = sanitizeHtml(val);
+    else scrubHtml(val, depth + 1);
+  }
 }

@@ -1,5 +1,5 @@
 import type { App } from '../app';
-import { boardRefOf, columnTitle, embedDoc, headingDoc, linkDoc, swatchDoc, todoDoc, uid, type Element, type ID, type TypeContent } from '../state/schema';
+import { boardRefOf, columnTitle, embedDoc, headingDoc, linkDoc, swatchDoc, todoDoc, uid, type Element, type ID, type TodoDoc, type TypeContent } from '../state/schema';
 import type { Action } from '../state/actions';
 import { TableCard } from '../cards/table';
 import { editRailType } from '../ui/rail';
@@ -9,6 +9,7 @@ import { fetchLinkPreview } from '../ui/unfurl';
 import { hostOf, urlTitle } from '../ui/embeds';
 import { openLinkPopup } from '../ui/toolpopups';
 import { applyLink, selectionInRoot, selectionRange } from '../ui/richtext';
+import { sanitizeHtml, scrubHtml } from '../ui/sanitize';
 export class Editing {
   constructor(private a: App) {}
 
@@ -67,7 +68,7 @@ export class Editing {
     }
     this.endEdit();
     this.a.editingId = id;
-    if (!this.a.sel.has(id)) this.a.sel = new Set([id]);
+    if (!this.a.sel.has(id)) this.a.selectOnly(id);
     this.a.store.beginGroup();
     try {
       // Render first so an offscreen card mounts before beginEdit runs.
@@ -101,6 +102,9 @@ export class Editing {
 
 
   commitEditText(el: Element, text: string, html?: string) {
+    // Stored html renders via innerHTML, so anything richer than what
+    // the editor emits (pasted markup) is stripped before persisting.
+    html = html === undefined ? undefined : sanitizeHtml(html);
     if (el.type === 'note') {
       const cur = 'note' in el.content ? el.content.note : null;
       if (cur && (cur.text !== text || (html !== undefined && cur.html !== html))) {
@@ -146,6 +150,7 @@ export class Editing {
     if (this.a.lockedView()) return;
     const el = this.a.doc.elements[id];
     if (!el) return;
+    html = html === undefined ? undefined : sanitizeHtml(html);
     if (el.type === 'board') {
       const ref = boardRefOf(el);
       const b = ref ? this.a.doc.boards[ref] : undefined;
@@ -207,6 +212,7 @@ export class Editing {
     this.a.prefs.helpers[key] = true;
     this.a.scheduleSave();
     choice(t('docOffer'), t('docOfferBtn'), () => {
+      if (this.a.lockedView()) return;
       const live = this.a.doc.elements[el.id];
       if (live) this.a.tools.convertToDocument(live);
     });
@@ -215,7 +221,7 @@ export class Editing {
 
   // "Add a title?" helper: after three items land on an untitled list,
   // offer the title once per list.
-  maybeOfferTodoTitle(el: Element, c: import('../state/schema').TodoDoc) {
+  maybeOfferTodoTitle(el: Element, c: TodoDoc) {
     if (c.showTitle || c.title || !this.a.boardId) return;
     if (c.items.filter((i) => i.text.trim()).length < 3) return;
     const key = `title:${el.id}`;
@@ -224,6 +230,7 @@ export class Editing {
     this.a.prefs.helpers[key] = true;
     this.a.scheduleSave();
     choice(t('todoTitleOffer'), t('todoTitleBtn'), () => {
+      if (this.a.lockedView()) return;
       const live = this.a.doc.elements[el.id];
       const cur = live ? todoDoc(live) : null;
       if (live && cur) {
@@ -248,6 +255,7 @@ export class Editing {
       t('syncAsk'),
       t('syncKeep'),
       () => {
+        if (this.a.lockedView()) return;
         const actions: Action[] = [];
         for (const { src, clone } of notes) {
           let g = this.a.doc.elements[src.id]?.syncGroup;
@@ -261,6 +269,7 @@ export class Editing {
         if (actions.length) this.a.store.dispatch({ type: 'batch', actions });
       },
       () => {
+        if (this.a.lockedView()) return;
         const actions = notes
           .filter(({ clone }) => clone.syncGroup)
           .map(({ clone }) => ({ type: 'element.patch' as const, id: clone.id, patch: { syncGroup: undefined } }));
@@ -274,6 +283,9 @@ export class Editing {
     if (this.a.lockedView()) return;
     const el = this.a.doc.elements[id];
     if (!el) return;
+    // Table cells and any other html-bearing content fields get the
+    // same scrub as the import path.
+    scrubHtml(content);
     this.a.store.dispatch({ type: 'element.patch', id, patch: { content } });
     if ('todo' in content) {
       this.maybeOfferTodoTitle(el, content.todo);
@@ -294,7 +306,7 @@ export class Editing {
     if (!el0 || !cur0 || cur0.url !== url) return;
     if (!autoTitled(cur0.title, url) && cur0.desc !== undefined && cur0.image !== undefined) return;
     void fetchLinkPreview(url).then((res) => {
-      if (!res) return;
+      if (!res || this.a.lockedView()) return;
       const el = this.a.doc.elements[id];
       const cur = el ? linkDoc(el) : null;
       if (!el || !cur || cur.url !== url) return;
@@ -306,8 +318,10 @@ export class Editing {
             link: {
               ...cur,
               title: autoTitled(cur.title, url) ? (res.title ?? cur.title) : cur.title,
-              ...(res.desc !== undefined ? { desc: res.desc } : {}),
-              ...(res.image !== undefined ? { image: res.image } : {}),
+              // Fetched fields only fill empty slots: a user edit made
+              // while the request was in flight must not be clobbered.
+              ...(res.desc !== undefined && cur.desc === undefined ? { desc: res.desc } : {}),
+              ...(res.image !== undefined && cur.image === undefined ? { image: res.image } : {}),
             },
           },
         },
@@ -326,7 +340,7 @@ export class Editing {
     };
     if (!auto()) return;
     void fetchLinkPreview(url).then((res) => {
-      if (!res?.title) return;
+      if (!res?.title || this.a.lockedView()) return;
       const cur = auto();
       if (!cur) return;
       this.a.store.dispatch({
@@ -341,6 +355,6 @@ export class Editing {
 
 // Whether a card title is still an auto value (empty, the url's host
 // or a url-derived name) and may be replaced by a fetched one.
-function autoTitled(title: string, url: string): boolean {
+export function autoTitled(title: string, url: string): boolean {
   return !title || title === hostOf(url) || title === urlTitle(url);
 }

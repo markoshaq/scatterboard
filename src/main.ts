@@ -5,6 +5,7 @@ async function main() {
   // The active locale table must land before the app modules evaluate:
   // several modules capture t() output in module-level label tables.
   await loadLang(bootLang());
+  document.documentElement.lang = bootLang();
   const { boot } = await import('./boot');
   await boot();
 }

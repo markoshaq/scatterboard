@@ -20,6 +20,9 @@ export function jpegToPdf(jpeg: Uint8Array, imgW: number, imgH: number, pageW: n
   const content = `q\n${pageW.toFixed(2)} 0 0 ${pageH.toFixed(2)} 0 0 cm\n/Im0 Do\nQ\n`;
 
   push('%PDF-1.4\n');
+  // Binary comment line after the header: strict tools sniff for a
+  // non-ASCII byte early to classify the file as binary.
+  push(new Uint8Array([0x25, 0xe2, 0xe3, 0xcf, 0xd3, 0x0a]));
   obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
   obj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
   obj(

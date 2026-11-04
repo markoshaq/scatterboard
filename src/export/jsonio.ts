@@ -1,10 +1,11 @@
 import type { Action } from '../state/actions';
-import type { Board, Comment, Doc, Element, ID, Label, LineEnd } from '../state/schema';
+import type { Board, Doc, Element, ID, Label, LineEnd } from '../state/schema';
 import { createBoardCard, uid, UNSORTED } from '../state/schema';
 import { sanitizeHtml } from '../ui/sanitize';
+import { CONTENT_KEY, isSafeUrl, saneContent } from '../state/schema';
 
 // Full-board JSON export/import. The format carries the board subtree
-// (board records, their elements, labels, comments) under version 1.
+// (board records, their elements and labels) under version 1.
 // Media stays as blobRef pointers: blobs are device-local IndexedDB
 // entries, so an imported image whose blob never existed here renders
 // the standard missing-image placeholder.
@@ -15,7 +16,6 @@ interface BoardExport {
   boards: Board[];
   elements: Element[];
   labels: Label[];
-  comments: Comment[];
 }
 
 export function exportBoard(doc: Doc, rootId: ID): string | null {
@@ -36,18 +36,13 @@ export function exportBoard(doc: Doc, rootId: ID): string | null {
   visit(rootId);
   const bids = new Set(boards.keys());
   const elements = Object.values(doc.elements).filter((e) => bids.has(e.boardId));
-  const elIds = new Set(elements.map((e) => e.id));
   const labels = Object.values(doc.labels).filter((l) => bids.has(l.boardId));
-  const comments = Object.values(doc.comments).filter(
-    (cm) => (cm.boardId !== undefined && bids.has(cm.boardId)) || (cm.cardId !== undefined && elIds.has(cm.cardId)),
-  );
   const data: BoardExport = {
     version: 1,
     board: rootId,
     boards: [...boards.values()],
     elements,
     labels,
-    comments,
   };
   return JSON.stringify(data, null, 2);
 }
@@ -75,13 +70,13 @@ export function parseBoardExport(text: string): BoardExport | null {
   ) {
     return null;
   }
+  // Older files may carry a comments array; it is ignored, not stored.
   return {
     version: 1,
     board: d.board,
     boards: d.boards,
     elements: d.elements,
     labels: Array.isArray(d.labels) ? d.labels : [],
-    comments: Array.isArray(d.comments) ? d.comments : [],
   };
 }
 
@@ -107,13 +102,23 @@ export function importActions(
     parentId: b.id === data.board ? hostId : (b.parentId && bmap.get(b.parentId)) || hostId,
   }));
 
-  // Which source elements actually land: a board missing from the file
-  // or a boardRef pointing outside the export drops the clone. parentId,
-  // anchorId and line ends may only remap into this set or they produce
-  // zombies (pins no card owns, members of nonexistent columns).
+  // Which source elements actually land: a board missing from the file,
+  // an unknown type, malformed content, or a boardRef pointing outside
+  // the export drops the clone. parentId, anchorId and line ends may
+  // only remap into this set or they produce zombies (pins no card
+  // owns, members of nonexistent columns). A link/embed url with an
+  // unsafe scheme is cleared in place, not dropped.
   const created = new Set<ID>();
+  const byId = new Map(data.elements.map((e) => [e.id, e]));
   for (const e of data.elements) {
     if (!bmap.has(e.boardId)) continue;
+    if (!(e.type in CONTENT_KEY)) continue;
+    const holder: unknown = 'link' in e.content ? e.content.link : 'embed' in e.content ? e.content.embed : null;
+    if (holder && typeof holder === 'object') {
+      const h = holder as { url?: unknown };
+      if (typeof h.url === 'string' && h.url && !isSafeUrl(h.url)) h.url = '';
+    }
+    if (!saneContent(e.content, e.type)) continue;
     if ('boardRef' in e.content && !bmap.has(e.content.boardRef)) continue;
     created.add(e.id);
   }
@@ -139,17 +144,30 @@ export function importActions(
     clone.id = emap.get(e.id)!;
     clone.boardId = bid;
     clone.z = ++doc.seq;
+    // Scalar fields aren't shape-checked at parse: coerce non-finite
+    // positions rather than land a card with NaN geometry.
+    if (!Number.isFinite(clone.x)) clone.x = 0;
+    if (!Number.isFinite(clone.y)) clone.y = 0;
     if (e.parentId === UNSORTED) {
       clone.parentId = UNSORTED;
     } else {
-      clone.parentId = e.parentId !== null && created.has(e.parentId) ? emap.get(e.parentId)! : null;
+      // Only a column on the same board may parent an element; a
+      // missing, cross-board or non-column target drops to canvas.
+      const p = typeof e.parentId === 'string' ? byId.get(e.parentId) : undefined;
+      clone.parentId =
+        p && p.boardId === e.boardId && p.type === 'column' && created.has(p.id) ? emap.get(p.id)! : null;
     }
     if (e.anchorId !== undefined) {
-      const m = created.has(e.anchorId) ? emap.get(e.anchorId) : undefined;
+      const a = typeof e.anchorId === 'string' ? byId.get(e.anchorId) : undefined;
+      const m = a && a.boardId === e.boardId && created.has(a.id) ? emap.get(a.id) : undefined;
       if (m) clone.anchorId = m;
       else delete clone.anchorId;
     }
-    clone.labels = (e.labels ?? []).map((l) => lmap.get(l)).filter((l): l is ID => !!l);
+    clone.labels = (Array.isArray(e.labels) ? e.labels : []).map((l) => lmap.get(l)).filter((l): l is ID => !!l);
+    if (clone.reactions !== undefined) {
+      if (!Array.isArray(clone.reactions)) delete clone.reactions;
+      else clone.reactions = clone.reactions.filter((r) => typeof r === 'string');
+    }
     if ('boardRef' in clone.content) clone.content.boardRef = bmap.get(clone.content.boardRef)!;
     if ('line' in clone.content) {
       const lc = clone.content.line;

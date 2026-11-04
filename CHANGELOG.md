@@ -4,12 +4,28 @@ Notable changes per release, newest first. Sections: Added, Changed, Fixed, Remo
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-03
+
+AI tools can drive a live board through an optional local agent, plus
+a reworked welcome board and assorted fixes.
+
 ### Added
 
-- Agent API (lazy chunk): external tools can create, patch, connect, and remove cards, read boards and elements, select, pan/zoom, undo/redo, and take PNG snapshots, all as ordinary undoable history and refused while presenting with editing locked.
-- `?do=` command links: a base64url JSON command list in the URL runs once at boot inside one undo entry; a bad command leaves the board untouched.
-- "Local agent" setting (off by default) connects the app to a localhost bridge over WebSocket once it is paired, with a live status line in Settings > Online extras.
-- `bridge/agent.mjs`: a Node bridge that pairs with the app on `ws://127.0.0.1` and serves MCP on stdio (`sb_*` tools mirror the command set); the same JSON-RPC also works directly on the WebSocket.
+- "Local agent" setting (off by default, Settings > Online extras): pairs the tab with a localhost bridge so MCP tools can read and edit boards. `npx -y scatterboard-mcp install` registers the bridge, `sb_open` pairs a tab; every change lands as normal undoable history and is refused while presenting with editing locked.
+- Command links: a shared `?do=` link runs a command list once at boot, and a list that would change anything asks for confirmation first.
+- The welcome board is now a top-to-bottom guided tour with numbered sections and a live example of every card type.
+
+### Fixed
+
+- WebP, GIF, SVG and AVIF images pasted or dropped onto the board lost their transparency to JPEG; alpha is now kept for every format that can carry it.
+- Pasting a bare "localhost:3000" now makes a link card; previously only dotted hosts were recognized.
+- Link cards can no longer store a URL that would run code on click.
+- Search no longer lists anchored comment pins, which have no card to jump to.
+- PNG export could hang on a stuck SVG image; it now falls back after 5s, and the fallback renderer follows the theme instead of hardcoded colours.
+- Drag fixes: a drop between column members lands in the right slot, the trash hint rings only real cards, a selected but locked card still works as a snap target, and a gesture in flight cannot mutate the board while presenting with editing locked.
+- The Help menu opened level with its button instead of below it like View and Export.
+- Heading cards drew a square selection outline instead of a rounded one.
+- The service worker purged every cache it found on activation; it now only clears its own.
 
 ## [0.1.1] - 2026-11-03
 

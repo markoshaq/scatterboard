@@ -1,5 +1,5 @@
 import type { Element, EmbedKind, TypeContent } from '../state/schema';
-import { embedDoc } from '../state/schema';
+import { embedDoc, isSafeUrl } from '../state/schema';
 import { t } from '../strings';
 import { EMBED_ALLOW, embedSrc, hostOf, urlTitle } from '../ui/embeds';
 import { ICONS } from '../ui/icons';
@@ -139,7 +139,9 @@ export class LinkCard implements CardView {
     this.chipEl.addEventListener('click', (e) => {
       const c = this.content();
       if (!this.downSelected || !c?.url || this.dragged(e)) return;
-      window.open(c.url, '_blank');
+      // Ingest paths validate schemes, but defence in depth costs one
+      // check: never navigate to anything but a safe URL.
+      if (isSafeUrl(c.url)) window.open(c.url, '_blank', 'noopener');
     });
     this.titleEl.addEventListener('click', (e) => {
       if (this.downSelected && !this.editing && !this.dragged(e)) this.ctx.events.onEditField(this.id, 'title');
@@ -221,6 +223,15 @@ export class LinkCard implements CardView {
     const src = this.kind && url ? embedSrc(this.kind, url) : null;
     this.noPreview = !!this.kind && !!url && !src;
     this.node.classList.toggle('no-preview', this.noPreview);
+    let np = this.heroEl.querySelector<HTMLElement>('.em-nopreview');
+    if (this.noPreview) {
+      if (!np) {
+        np = document.createElement('div');
+        np.className = 'em-nopreview';
+        this.heroEl.appendChild(np);
+      }
+      np.textContent = t('noPreview');
+    } else np?.remove();
     // Embeds need the network: offline shows a placeholder instead of
     // the play affordance or a mounting iframe.
     if (this.kind && url && !navigator.onLine) {

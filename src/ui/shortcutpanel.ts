@@ -2,6 +2,11 @@ import { t, type StringKey } from '../strings';
 import { ICONS } from './icons';
 import { popDismiss, pushDismiss } from './popup';
 
+// The shortcuts accept metaKey or ctrlKey; the labels name the
+// platform's actual modifier.
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+export const kbd = (s: string) => (MAC ? s : s.replace(/\bCmd\b/g, 'Ctrl').replace(/\bOpt\b/g, 'Alt'));
+
 const ROWS: [string, StringKey][] = [
   ['/', 'shortcutsTitle'],
   ['Double-click', 'scNewNote'],
@@ -69,7 +74,7 @@ export function openShortcutsPanel(): { close(): void } {
     row.className = 'short-row';
     const k = document.createElement('span');
     k.className = 'short-keys';
-    k.textContent = keys;
+    k.textContent = kbd(keys);
     const d = document.createElement('span');
     d.className = 'short-desc';
     d.textContent = t(label);

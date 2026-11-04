@@ -20,3 +20,8 @@ we can.
 - Third-party embed cards (YouTube, Vimeo, Spotify, SoundCloud, Google
   Maps) load provider iframes, which are subject to those providers'
   own policies.
+- The optional "Local agent" setting (off by default) lets a localhost
+  bridge read and edit boards over WebSocket. It binds 127.0.0.1,
+  checks the Origin header, requires a one-time pairing token that
+  rotates after use, and uses separate credentials for app and agent
+  sockets. Leave it off if you do not use it.

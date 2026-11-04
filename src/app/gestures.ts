@@ -92,9 +92,11 @@ export class Gestures {
       return { x: o.x, y: o.y, w: el.w ?? defaultWidth(el), h: this.a.layer.heightOf(el) };
     });
     const union = unionRect(rects)!;
+    // Exclude only the dragged cards: a selected-but-locked card does
+    // not move, so it stays a valid snap target.
     const statics = this.a.layer
       .elements()
-      .filter((el) => !this.a.sel.has(el.id) && el.type !== 'line' && el.type !== 'annotation')
+      .filter((el) => !ids.includes(el.id) && el.type !== 'line' && el.type !== 'annotation')
       .map((el) => this.a.layer.rectOf(el));
     const snap = snapDelta({ x: union.x + dx, y: union.y + dy, w: union.w, h: union.h }, statics, this.a.vp.z);
     dx += snap.dx;
@@ -108,8 +110,11 @@ export class Gestures {
         patch: { x: Math.round(origins.get(id)!.x + dx), y: Math.round(origins.get(id)!.y + dy) },
       })),
     });
-    const onTrash = this.overTrashRect(ids);
-    this.setTrashHint(onTrash, ids);
+    // Ring only what the drop can delete: annotations and other
+    // view-less elements never mount a card, so endDrag skips them.
+    const droppable = ids.filter((id) => !!this.a.layer.view(id));
+    const onTrash = this.overTrashRect(droppable);
+    this.setTrashHint(onTrash, droppable);
     this.updateDropTarget(onTrash ? null : cur, ids);
     this.a.requestRender();
   }
@@ -130,7 +135,11 @@ export class Gestures {
     return ids.some((id) => {
       const el = this.a.doc.elements[id];
       if (!el) return false;
-      const r = this.a.layer.rectOf(el);
+      const r0 = this.a.layer.rectOf(el);
+      // A member mid-reorder rides the pointer: rectOf reports the open
+      // slot, so test the lifted position the card actually shows.
+      const lift = this.liftDelta(id);
+      const r = lift ? { x: r0.x + lift.dx, y: r0.y + lift.dy, w: r0.w, h: r0.h } : r0;
       const a = this.a.vp.toScreen(r.x, r.y);
       const b = this.a.vp.toScreen(r.x + r.w, r.y + r.h);
       return a.x < t.right && b.x > t.left && a.y < t.bottom && b.y > t.top;
@@ -265,6 +274,15 @@ export class Gestures {
     this.dragging = false;
     this.trashRect = undefined;
     this.setTrashHint(false);
+    // Present mode locks mutations: settle the gesture chrome, then
+    // bail before the delete/file dispatches below.
+    if (this.a.lockedView()) {
+      this.clearMemberReorder();
+      this.clearDropHint();
+      this.a.guides = [];
+      this.a.requestRender();
+      return;
+    }
     if (ev) {
       const dragged = [...this.a.sel].filter((id) => {
         const el = this.a.doc.elements[id];
@@ -313,11 +331,15 @@ export class Gestures {
             !(e.type === 'comment' && e.anchorId !== undefined),
         )
         .map((e, i, arr) => {
-          let z = ++this.a.doc.seq;
+          let z: number;
           if (slot) {
             const lo = slot.prevZ ?? (slot.nextZ ?? 0) - 1;
             const hi = slot.nextZ ?? lo + arr.length + 1;
             z = lo + ((hi - lo) * (i + 1)) / (arr.length + 1);
+          } else {
+            // Appends take a fresh z off the doc sequence; a slot drop
+            // spreads between its neighbours and leaves seq alone.
+            z = ++this.a.doc.seq;
           }
           return { type: 'element.patch', id: e.id, patch: { parentId: colId, z } };
         });
@@ -331,6 +353,8 @@ export class Gestures {
 
 
   // pointercancel mid-drag: clear the in-flight drop/gesture chrome.
+  // Position patches already dispatched stay committed, so the card
+  // keeps its mid-drag spot as one undoable entry.
   abortDrag() {
     this.dragging = false;
     this.trashRect = undefined;

@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  typecheck:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,3 +18,8 @@ jobs:
       - run: npm run lint
       # prebuild runs typecheck + tests inside npm run build.
       - run: npm run build
+      - name: Bridge smoke
+        run: |
+          npm --prefix bridge ci
+          node --check bridge/agent.mjs
+          node --check bridge/install.mjs

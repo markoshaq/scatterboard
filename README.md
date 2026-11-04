@@ -6,6 +6,8 @@ grid. No accounts, no servers, no tracking; the workspace lives in
 the browser and works offline. MIT licensed, original code, copy, art,
 and icons.
 
+![The welcome board: cards, columns, drawings, and link cards on the dot grid](docs/screenshot.png)
+
 ```
 npm install && npm run dev    # then open http://localhost:5173
 ```
@@ -122,24 +124,37 @@ as device-to-device sync.
 ### Agents & MCP
 
 External AI agents can drive a live board: create, patch, connect, and
-remove cards, read boards and elements, select, pan/zoom, undo/redo,
-and take PNG snapshots, all as normal undoable history. Two entry
-points, both opt-in:
+remove cards, upload files, read boards and elements, search, select,
+pan/zoom, present, undo/redo, import/export, and take PNG snapshots,
+all as normal undoable history. Two entry points, both opt-in:
 
 - Command links. `?do=<base64url JSON>` in the URL runs a command list
   once at boot inside one undo entry; a bad command leaves the board
-  untouched. The payload is `{commands:[{method,params}]}` or a bare
-  array; methods: `boards`, `openBoard`, `elements`, `get`, `create`,
-  `patch`, `remove`, `connect`, `select`, `view`, `snapshot`, `undo`,
-  `redo`, `batch`, `dispatch`.
-- Local bridge + MCP. `bridge/agent.mjs` (Node >=20,
-  `cd bridge && npm install` once) pairs with the app over
-  `ws://127.0.0.1` and speaks MCP on stdio:
-  `devin mcp add scatterboard -- node bridge/agent.mjs`. Call `sb_open`
-  to open the pairing URL in a browser; pairing once stores a key, so
-  later sessions reconnect without it. The `sb_*` tools mirror the
-  command methods above, and the same JSON-RPC works directly on the
-  WebSocket for non-MCP agents.
+  untouched, and a list containing mutations asks for confirmation
+  first. The payload is `{commands:[{method,params}]}` or a bare
+  array. The full method set mirrors the `sb_*` tools listed below.
+- Local bridge + MCP. One command registers the bridge (Node >=20)
+  wherever it finds a compatible MCP host (Devin, Windsurf, Cursor,
+  Claude Desktop/Code, Gemini CLI; any stdio MCP client works, manual
+  config in `bridge/README.md` for the rest):
+
+  ```
+  npx -y scatterboard-mcp install
+  ```
+
+  Then, from your agent: `sb_status` prints the pairing URL and
+  `sb_open` opens the app tab to pair it. Pairing once stores a key,
+  so later sessions reconnect without it. The `sb_*` tools cover the
+  whole board: `sb_boards`, `sb_state`, `sb_labels`, `sb_search`,
+  `sb_openboard`, `sb_elements`, `sb_get`, `sb_create`, `sb_patch`,
+  `sb_remove`, `sb_connect`, `sb_trash`, `sb_restore`, `sb_emptytrash`,
+  `sb_select`, `sb_view`, `sb_present`, `sb_snapshot`, `sb_templates`,
+  `sb_instantiate`, `sb_savetemplate`, `sb_upload`, `sb_export`,
+  `sb_import`, `sb_unfurl`, `sb_duplicate`, `sb_undo`, `sb_redo`,
+  `sb_batch`, `sb_dispatch`. The same JSON-RPC works directly on the
+  WebSocket for non-MCP agents (`agentKey` from `sb_status`). For repo
+  development, `npm run agent:setup` registers the checked-out
+  `bridge/agent.mjs` instead of the npx package.
 
 Every mutating command lands in the undo history and is refused while
 presenting with editing locked.
@@ -163,8 +178,8 @@ Press `/` in the app for the full map. Essentials:
 
 ## Privacy
 
-The default path makes no network calls. Two optional features do,
-only when used:
+The default path makes no network calls. Optional extras connect only
+when used:
 
 - "Enrich link cards" (off by default, Settings > Online extras)
   fetches a page's title and OG tags through the public
@@ -177,9 +192,10 @@ Both degrade silently to manual titles and placeholders offline.
 
 - "Local agent" (off by default, Settings > Online extras) connects
   the app to a bridge you run yourself over `ws://127.0.0.1` only. The
-  bridge pairs via a per-run token, never leaves the loopback
-  interface, and stores one key for tokenless reconnects. While
-  enabled, a local agent process can read and edit boards.
+  bridge pairs via a one-time token that rotates after use, never
+  leaves the loopback interface, and stores one app key for tokenless
+  reconnects (agent sockets use a separate key). While enabled, a
+  local agent process can read and edit boards.
 
 ## Requirements
 
@@ -218,19 +234,24 @@ app shows it under Help > About. To cut a release:
 1. Update `CHANGELOG.md`: rename `Unreleased` to the new version with
    the date (`## [0.2.0] - 2026-01-15`) and open a fresh `Unreleased`.
 2. `npm version patch|minor|major`: bumps `package.json`, commits, and
-   tags `v*`. (For a first release where `package.json` already holds
-   the target version, run `npm version 0.1.0` or tag by hand with
-   `git tag v0.1.0`; `patch` would produce the next version instead.)
+   tags `v*`. The `version` script syncs `bridge/package.json` and its
+   lockfile to the same version automatically. (For a first release
+   where `package.json` already holds the target version, run
+   `npm version 0.1.0` or tag by hand with `git tag v0.1.0`; `patch`
+   would produce the next version instead.)
 3. `git push --follow-tags`
 
 Pushing a `v*` tag runs the release workflow: it checks the tag
-matches `package.json`, builds, extracts the matching CHANGELOG
-section into the GitHub release notes, and deploys `dist/` to Pages.
+matches `package.json` (and that `bridge/package.json` is in sync),
+builds, extracts the matching CHANGELOG section into the GitHub
+release notes, and deploys `dist/` to Pages. The `scatterboard-mcp`
+bridge package is published by hand after the tag:
+`cd bridge && npm publish`.
 
 ## Architecture
 
 Vanilla TypeScript + Vite, zero runtime dependencies; the production JS
-ships in lazy chunks with the largest at ~87 KB gzipped against a 150 KB
+ships in lazy chunks with the largest at ~92 KB gzipped against a 150 KB
 budget. Two render layers:
 Canvas2D draws the dot grid, connectors, marquee, and selection chrome;
 plain DOM renders cards and editing so text stays crisp at any zoom.

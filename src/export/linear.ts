@@ -115,7 +115,11 @@ export function toMarkdown(title: string, items: Item[]): string {
     if (it.k === 'h') parts.push(`${'#'.repeat(it.level)} ${it.text}`.trimEnd());
     else if (it.k === 'p') parts.push(it.text);
     else if (it.k === 'todo') parts.push(`- [${it.done ? 'x' : ' '}] ${it.text}`);
-    else if (it.k === 'link') parts.push(it.text && it.text !== it.url ? `[${it.text}](${it.url})` : it.url);
+    else if (it.k === 'link') {
+      // <url> is the CommonMark destination form: a ')' inside the url
+      // would otherwise close the link early.
+      parts.push(it.text && it.text !== it.url ? `[${it.text}](<${it.url}>)` : it.url);
+    }
     else if (it.k === 'quote') parts.push(`> ${it.text}`);
     else if (it.k === 'table') {
       const cell = (s: string) => s.replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ');
@@ -141,7 +145,7 @@ export function toPlain(title: string, items: Item[]): string {
 }
 
 function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // An html file saved with a .doc extension; Word and Pages open it.

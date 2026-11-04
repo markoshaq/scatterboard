@@ -172,7 +172,7 @@ export class Renderer {
     const c = lineDoc(l.el);
     if (!c) return;
     ctx.globalAlpha = l.dim ? 0.15 : 1;
-    const w = LINE_W[c.weight];
+    const w = LINE_W[c.weight ?? 'medium'];
     const ink = l.el.color ?? this.cc.ink;
     if (l.selected) {
       ctx.strokeStyle = this.cc.selHalo;

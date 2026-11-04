@@ -13,9 +13,13 @@ npx -y scatterboard-mcp install
 ```
 
 One command, from any directory: it registers the `scatterboard`
-server in the Devin user config, Windsurf `mcp_config.json`, and
-`.devin/config.local.json` in the current project. No restart needed;
-the `sb_*` tools appear in Devin sessions immediately.
+server wherever it finds a compatible MCP host: the Devin user config,
+Windsurf `mcp_config.json`, Cursor `mcp.json`, Gemini `settings.json`,
+Claude Desktop `claude_desktop_config.json`, Claude Code
+`~/.claude.json`, and `.devin/config.local.json` in the current
+project. Any stdio-capable MCP client works; hosts the installer does
+not know (Codex, Zed, Cline, ...) need the manual config below. Devin
+picks the server up live; other clients may need a restart.
 
 Equivalent manual config for `mcpServers` (user scope required —
 IDE-embedded Devin ignores project `mcpServers`; user config is
@@ -36,7 +40,11 @@ Or with Devin CLI: `devin mcp add -s user scatterboard -- npx -y scatterboard-mc
 ## Pairing
 
 Call `sb_status` for the pairing URL, or `sb_open` to launch the app in
-your browser. Once a tab is paired it reconnects automatically.
+your browser. Once a tab is paired it reconnects automatically. The
+pairing token is one-time use (it rotates after a successful pairing);
+app and agent sockets authenticate with separate keys. `sb_status`
+also reports `agentKey`, the credential direct WebSocket clients need
+for `{type:'hello', role:'agent', bridgeId, key}` handshakes.
 
 ## Flags
 

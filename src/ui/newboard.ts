@@ -78,15 +78,21 @@ export function openNewBoardPicker(anchor: HTMLElement | DOMRect, api: NewBoardA
           pick.replaceWith(input);
           input.focus();
           input.select();
+          let done = false;
           const commit = () => {
+            if (done) return;
+            done = true;
             const v = input.value.trim();
             if (v && v !== tp.name) api.onRename(tp.id, v);
-            else render();
+            render();
           };
           input.addEventListener('keydown', (ev) => {
             ev.stopPropagation();
             if (ev.key === 'Enter') commit();
-            if (ev.key === 'Escape') render();
+            if (ev.key === 'Escape') {
+              done = true;
+              render();
+            }
           });
           // Popup close detaches the input before blur: cancel, don't
           // commit the half-typed name.

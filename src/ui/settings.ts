@@ -1,5 +1,6 @@
 import type { Currency, Lang } from '../persist/storage';
 import { LANGS, t } from '../strings';
+import { fmtSize } from './files';
 import { ICONS } from './icons';
 import { openToolPopup, type ToolPopup } from './popup';
 
@@ -14,12 +15,14 @@ interface SettingsApi {
   onLang(l: Lang | null): void;
   browserLang(): boolean;
   onBrowserLang(v: boolean): void;
-  currency(): Currency;
-  onCurrency(c: Currency): void;
+  currency(): Currency | null;
+  onCurrency(c: Currency | null): void;
   flag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl' | 'agent'): boolean;
   onFlag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl' | 'agent', v: boolean): void;
   // Whether the agent bridge socket is live right now.
   agentStatus(): boolean;
+  // Stored bridge credentials exist (paired via an ?agent= link once).
+  agentPaired(): boolean;
   // Alignment-guide opacity: 1 full, 0.5 faint, 0 hidden.
   guideAlpha(): number;
   onGuideAlpha(v: number): void;
@@ -38,24 +41,16 @@ const CURRENCIES: Currency[] = ['USD', 'EUR', 'GBP', 'JPY'];
 
 // The agent bridge socket lives in the lazy agent chunk; it posts this
 // event on connect/drop so an open settings popup can refresh the
-// status line without importing the chunk.
+// status row without importing the chunk.
 let agentStatusRow: HTMLElement | null = null;
-let agentStatusApi: SettingsApi | null = null;
+let agentStatusSync: (() => void) | null = null;
 window.addEventListener('sb-agent-status', () => {
   if (agentStatusRow && !agentStatusRow.isConnected) {
     agentStatusRow = null;
-    agentStatusApi = null;
+    agentStatusSync = null;
   }
-  if (agentStatusRow && agentStatusApi) {
-    agentStatusRow.textContent = agentStatusApi.agentStatus() ? t('agentStatusOn') : t('agentStatusOff');
-  }
+  agentStatusSync?.();
 });
-
-function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1).replace(/\.0$/, '')} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB`;
-}
 
 function head(label: string): HTMLElement {
   const h = document.createElement('div');
@@ -159,6 +154,14 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   const node = document.createElement('div');
   node.className = 'stp-body';
   const pop = openToolPopup(anchor, node, true);
+  // Drop the module-level agent status refs when the popup closes so a
+  // detached row and its api closure are not retained.
+  const innerClose = pop.close;
+  pop.close = () => {
+    agentStatusRow = null;
+    agentStatusSync = null;
+    innerClose();
+  };
 
   const group = (label: string) => node.appendChild(head(label));
 
@@ -172,32 +175,77 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
     radios.push(b);
     node.appendChild(b);
   };
-  // Toggle rows share the radio visual but flip independently.
+  // Toggle rows lead with a checkbox square: the trailing check is
+  // reserved for single-choice radios so the two read differently.
   const toggle = (label: string, checked: () => boolean, pick: (v: boolean) => void) => {
-    const b = radioRow(label, checked, () => pick(!checked()), syncAll);
-    radios.push(b);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pop-row';
+    const box = document.createElement('span');
+    box.className = 'set-box';
+    box.innerHTML = ICONS.check;
+    const lab = document.createElement('span');
+    lab.className = 'pop-label';
+    lab.textContent = label;
+    b.append(box, lab);
+    const sync = () => box.classList.toggle('on', checked());
+    sync();
+    b.addEventListener('click', () => {
+      pick(!checked());
+      syncAll();
+    });
+    (b as HTMLButtonElement & { syncCheck?: () => void }).syncCheck = sync;
+    radios.push(b as HTMLButtonElement & { syncCheck?: () => void });
     node.appendChild(b);
+  };
+  // Segmented row: one line for a small single-choice set.
+  const seg = (options: { label: string; on: () => boolean; pick: () => void }[]) => {
+    const row = document.createElement('div');
+    row.className = 'seg';
+    const btns: [HTMLButtonElement, (typeof options)[number]][] = options.map((o) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'seg-btn';
+      b.textContent = o.label;
+      b.addEventListener('click', () => {
+        o.pick();
+        sync();
+      });
+      row.appendChild(b);
+      return [b, o];
+    });
+    const sync = () => {
+      for (const [b, o] of btns) b.classList.toggle('on', o.on());
+    };
+    sync();
+    node.appendChild(row);
   };
 
   group(t('setTheme'));
-  radio(t('setSystem'), () => api.theme() === 'system', () => api.onTheme('system'));
-  radio(t('setLight'), () => api.theme() === 'light', () => api.onTheme('light'));
-  radio(t('setDark'), () => api.theme() === 'dark', () => api.onTheme('dark'));
+  seg([
+    { label: t('setSystem'), on: () => api.theme() === 'system', pick: () => api.onTheme('system') },
+    { label: t('setLight'), on: () => api.theme() === 'light', pick: () => api.onTheme('light') },
+    { label: t('setDark'), on: () => api.theme() === 'dark', pick: () => api.onTheme('dark') },
+  ]);
 
   group(t('setLanguage'));
   radio(t('setAuto'), () => api.lang() === null, () => api.onLang(null));
   for (const l of LANGS) radio(l.label, () => api.lang() === l.id, () => api.onLang(l.id));
 
   group(t('setScale'));
-  radio(t('scaleSmaller'), () => api.scale() === SCALE_STEPS[0], () => api.onScale(SCALE_STEPS[0]!));
-  radio(t('scaleDefault'), () => api.scale() === SCALE_STEPS[1], () => api.onScale(SCALE_STEPS[1]!));
-  radio(t('scaleLarger'), () => api.scale() === SCALE_STEPS[2], () => api.onScale(SCALE_STEPS[2]!));
+  seg([
+    { label: t('scaleSmaller'), on: () => api.scale() === SCALE_STEPS[0], pick: () => api.onScale(SCALE_STEPS[0]!) },
+    { label: t('scaleDefault'), on: () => api.scale() === SCALE_STEPS[1], pick: () => api.onScale(SCALE_STEPS[1]!) },
+    { label: t('scaleLarger'), on: () => api.scale() === SCALE_STEPS[2], pick: () => api.onScale(SCALE_STEPS[2]!) },
+  ]);
 
   group(t('setFormat'));
   toggle(t('setBrowserLang'), api.browserLang, api.onBrowserLang);
-  const curHead = head(t('setCurrency'));
-  node.appendChild(curHead);
-  for (const c of CURRENCIES) radio(c, () => api.currency() === c, () => api.onCurrency(c));
+  node.appendChild(head(t('setCurrency')));
+  seg([
+    { label: t('setAuto'), on: () => api.currency() === null, pick: () => api.onCurrency(null) },
+    ...CURRENCIES.map((c) => ({ label: c, on: () => api.currency() === c, pick: () => api.onCurrency(c) })),
+  ]);
 
   group(t('setCanvas'));
   toggle(t('setNoOverlap'), () => api.flag('noOverlap'), (v) => api.onFlag('noOverlap', v));
@@ -205,25 +253,68 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   toggle(t('setUndoArrows'), () => api.flag('undoArrows'), (v) => api.onFlag('undoArrows', v));
   toggle(t('setAutoEdit'), () => api.flag('autoEdit'), (v) => api.onFlag('autoEdit', v));
   node.appendChild(head(t('setGuides')));
-  radio(t('guideFull'), () => api.guideAlpha() === 1, () => api.onGuideAlpha(1));
-  radio(t('guideFaint'), () => api.guideAlpha() === 0.5, () => api.onGuideAlpha(0.5));
-  radio(t('guideHidden'), () => api.guideAlpha() === 0, () => api.onGuideAlpha(0));
+  seg([
+    { label: t('guideFull'), on: () => api.guideAlpha() === 1, pick: () => api.onGuideAlpha(1) },
+    { label: t('guideFaint'), on: () => api.guideAlpha() === 0.5, pick: () => api.onGuideAlpha(0.5) },
+    { label: t('guideHidden'), on: () => api.guideAlpha() === 0, pick: () => api.onGuideAlpha(0) },
+  ]);
 
   group(t('setOnline'));
   toggle(t('setUnfurl'), () => api.flag('unfurl'), (v) => api.onFlag('unfurl', v));
-  agentStatusApi = api;
+  const unfurlHow = document.createElement('div');
+  unfurlHow.className = 'ts-head agent-how';
+  unfurlHow.textContent = t('unfurlHow');
+  node.appendChild(unfurlHow);
+  // Local agent status row. Pairing only happens through an ?agent=
+  // link; this row reports the socket state and offers connect/
+  // disconnect once bridge credentials are stored.
   agentStatusRow = document.createElement('div');
-  agentStatusRow.className = 'ts-head';
-  const syncAgentStatus = () => {
-    agentStatusRow!.style.display = api.flag('agent') ? '' : 'none';
-    agentStatusRow!.textContent = api.agentStatus() ? t('agentStatusOn') : t('agentStatusOff');
+  agentStatusRow.className = 'agent-row';
+  const agentHow = document.createElement('div');
+  agentHow.className = 'ts-head agent-how';
+  agentHow.textContent = t('agentHow');
+  const syncAgent = () => {
+    const paired = api.agentPaired();
+    const enabled = api.flag('agent');
+    const on = api.agentStatus();
+    agentStatusRow!.textContent = '';
+    const lab = document.createElement('span');
+    lab.className = 'pop-label';
+    lab.textContent = t('setAgent');
+    const dot = document.createElement('span');
+    dot.className = `agent-dot ${on ? 'on' : enabled ? 'wait' : 'off'}`;
+    const state = document.createElement('span');
+    state.className = 'agent-state';
+    state.textContent = on
+      ? t('agentStatusOn')
+      : enabled
+        ? t('agentWaiting')
+        : paired
+          ? t('agentPaired')
+          : t('agentOff');
+    agentStatusRow!.append(lab, dot, state);
+    if (on || enabled || paired) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'agent-btn';
+      btn.textContent = on ? t('agentDisconnect') : enabled ? t('agentTurnOff') : t('agentPairConnect');
+      btn.addEventListener('click', () => {
+        api.onFlag('agent', !enabled);
+        syncAgent();
+      });
+      agentStatusRow!.appendChild(btn);
+    }
+    agentHow.style.display = paired ? 'none' : '';
   };
-  toggle(t('setAgent'), () => api.flag('agent'), (v) => {
-    api.onFlag('agent', v);
-    syncAgentStatus();
-  });
-  syncAgentStatus();
-  node.appendChild(agentStatusRow);
+  agentStatusSync = syncAgent;
+  syncAgent();
+  node.append(agentStatusRow, agentHow);
+
+  // Actions sit apart from the option groups: a separator keeps them
+  // from reading as more Online extras.
+  const sep = document.createElement('div');
+  sep.className = 'pop-sep';
+  node.appendChild(sep);
 
   const tbRow = document.createElement('button');
   tbRow.type = 'button';
@@ -274,7 +365,15 @@ export function openAboutPopup(
 ): ToolPopup {
   const node = document.createElement('div');
   node.className = 'stp-body';
-  node.appendChild(head(`${t('appName')} v${__APP_VERSION__}`));
+  const title = document.createElement('div');
+  title.className = 'about-title';
+  const name = document.createElement('span');
+  name.textContent = t('appName');
+  const ver = document.createElement('span');
+  ver.className = 'about-ver';
+  ver.textContent = `v${__APP_VERSION__}`;
+  title.append(name, ver);
+  node.appendChild(title);
   node.appendChild(head(t('setStorage')));
   const meter = document.createElement('div');
   meter.className = 'stp-meter';
@@ -283,7 +382,9 @@ export function openAboutPopup(
   void api
     .storage()
     .then(({ doc, blobs }) => {
-      meter.textContent = t('storageLine').replace('{doc}', fmtBytes(doc)).replace('{media}', fmtBytes(blobs));
+      if (meter.isConnected) {
+        meter.textContent = t('storageLine').replace('{doc}', fmtSize(doc)).replace('{media}', fmtSize(blobs));
+      }
     })
     .catch(() => {
       meter.textContent = '';
@@ -291,10 +392,13 @@ export function openAboutPopup(
   const ghRow = document.createElement('button');
   ghRow.type = 'button';
   ghRow.className = 'pop-row';
+  const ghIc = document.createElement('span');
+  ghIc.className = 'pop-icon';
+  ghIc.innerHTML = ICONS.ext;
   const ghLab = document.createElement('span');
   ghLab.className = 'pop-label';
   ghLab.textContent = t('aboutSource');
-  ghRow.appendChild(ghLab);
+  ghRow.append(ghIc, ghLab);
   ghRow.addEventListener('click', () =>
     window.open('https://github.com/markoshaq/scatterboard', '_blank', 'noopener'),
   );

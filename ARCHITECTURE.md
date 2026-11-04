@@ -1,3 +1,5 @@
+> Historical proposal - superseded by AGENTS.md; kept for reference.
+
 # Scatterboard architecture proposal
 
 Status: original design proposal, kept for context. The shipped code

@@ -49,12 +49,14 @@ export async function boot() {
   if (import.meta.env.DEV) (window as unknown as { __app: App }).__app = app;
 
   // #/e/<id> boots into the element's editor: synthesize a #/b/ history
-  // entry underneath so history.back() exits to the board.
+  // entry underneath so history.back() exits to the board. The mode
+  // suffix (?editing-drawing etc.) is part of the deep link: push the
+  // hash as-is, don't rebuild it.
   const eid = editorIdFromHash();
   const eel = eid ? doc.elements[eid] : undefined;
-  if (eel && (eel.type === 'document' || eel.type === 'sketch' || eel.type === 'image')) {
+  if (eel && doc.boards[eel.boardId] && (eel.type === 'document' || eel.type === 'sketch' || eel.type === 'image')) {
     app.openBoard(eel.boardId);
-    history.pushState(null, '', `#/e/${eel.id}`);
+    history.pushState(null, '', location.hash);
     app.applyRoute();
   } else {
     const requested = boardIdFromHash() ?? adapter.lastBoard();
@@ -67,17 +69,24 @@ export async function boot() {
     app.applyRoute();
   }
 
-  // Agent surface is a lazy chunk: ?do= command links and ?agent=
-  // pairing plus the stored Local agent pref all boot it on demand.
-  const q = new URLSearchParams(location.search);
-  if (q.has('do') || q.has('agent') || app.prefs.agent) {
-    const { init } = await import('./agent/index');
-    init(app);
-  }
-
+  // Routing and save-on-hide must be wired before anything that can
+  // throw: a failed lazy import below must not orphan them.
   window.addEventListener('hashchange', () => app.applyRoute());
   window.addEventListener('pagehide', () => void app.flush());
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') void app.flush();
   });
+
+  // Agent surface is a lazy chunk: ?do= command links and ?agent=
+  // pairing plus the stored Local agent pref all boot it on demand. A
+  // missing chunk (offline, stale cache) leaves the app fully usable.
+  const q = new URLSearchParams(location.search);
+  if (q.has('do') || q.has('agent') || q.has('port') || app.prefs.agent) {
+    try {
+      const { init } = await import('./agent/index');
+      init(app);
+    } catch {
+      // Agent unavailable this boot; skip silently.
+    }
+  }
 }

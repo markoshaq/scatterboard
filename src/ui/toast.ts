@@ -16,8 +16,9 @@ export function toast(msg: string) {
 
 // Sticky toast with one action button plus dismiss; used for the
 // "keep in sync?" and helper offers. onDone fires only when the toast
-// exits without the action being taken.
-export function choice(msg: string, actionLabel: string, onAction: () => void, onDone?: () => void) {
+// exits without the action being taken. timeoutMs 0 keeps it up until
+// answered (security prompts should not vanish).
+export function choice(msg: string, actionLabel: string, onAction: () => void, onDone?: () => void, timeoutMs = 9000) {
   if (!host) {
     host = document.createElement('div');
     host.className = 'toasts';
@@ -51,7 +52,7 @@ export function choice(msg: string, actionLabel: string, onAction: () => void, o
     onAction();
   });
   x.addEventListener('click', finish);
-  setTimeout(finish, 9000);
+  if (timeoutMs > 0) setTimeout(finish, timeoutMs);
 }
 
 export function hint(msg: string, onDone: () => void) {
@@ -67,7 +68,7 @@ export function hint(msg: string, onDone: () => void) {
   const x = document.createElement('button');
   x.type = 'button';
   x.className = 'toast-x';
-  x.textContent = '\u00d7';
+  x.textContent = '×';
   el.append(span, x);
   host.appendChild(el);
   let done = false;

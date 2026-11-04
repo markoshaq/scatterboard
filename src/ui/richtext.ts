@@ -132,7 +132,9 @@ export function ensureBlockChildren(root: HTMLElement) {
       flush();
       continue;
     }
-    if (n.nodeType === Node.TEXT_NODE && !n.textContent) {
+    // Whitespace-only and &nbsp;-only text nodes are empty too: left
+    // alone they'd wrap into stray empty <p>s below.
+    if (n.nodeType === Node.TEXT_NODE && !n.textContent?.replace(/\u00a0/g, ' ').trim()) {
       n.remove();
       continue;
     }
@@ -287,6 +289,13 @@ export function applyLink(root: HTMLElement, url: string, range: Range) {
   s.removeAllRanges();
   s.addRange(range);
   document.execCommand('createLink', false, href);
+  // Stamp safe-open attrs on the anchor(s) createLink just made.
+  for (const a of root.querySelectorAll('a')) {
+    if (range.intersectsNode(a)) {
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener');
+    }
+  }
   touched(root);
 }
 

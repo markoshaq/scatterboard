@@ -27,15 +27,18 @@ export function openExportMenu(anchor: HTMLElement, api: ExportMenuApi): ToolPop
     h.textContent = text;
     node.appendChild(h);
   };
-  const row = (label: string, onPick: () => void, disabled = false) => {
+  const row = (label: string, icon: string, onPick: () => void, disabled = false) => {
     const r = document.createElement('button');
     r.type = 'button';
     r.className = 'pop-row';
     r.disabled = disabled;
+    const ic = document.createElement('span');
+    ic.className = 'pop-icon';
+    ic.innerHTML = icon;
     const lab = document.createElement('span');
     lab.className = 'pop-label';
     lab.textContent = label;
-    r.appendChild(lab);
+    r.append(ic, lab);
     r.addEventListener('click', () => {
       pop.close();
       onPick();
@@ -44,17 +47,20 @@ export function openExportMenu(anchor: HTMLElement, api: ExportMenuApi): ToolPop
   };
 
   head(t('exImgHead'));
-  row(t('exPng'), api.onPng);
-  row(t('exPdfStd'), () => api.onPdf(false));
-  row(t('exPdfHi'), () => api.onPdf(true));
+  row(t('exPng'), ICONS.image, api.onPng);
+  row(t('exPdfStd'), ICONS.file, () => api.onPdf(false));
+  row(t('exPdfHi'), ICONS.file, () => api.onPdf(true));
 
   head(t('exDocHead'));
-  row(t('exWord'), () => api.onDoc('doc'));
-  row(t('exMd'), () => api.onDoc('md'));
-  row(t('exTxt'), () => api.onDoc('txt'));
+  row(t('exWord'), ICONS.document, () => api.onDoc('doc'));
+  row(t('exMd'), ICONS.txCode, () => api.onDoc('md'));
+  row(t('exTxt'), ICONS.title, () => api.onDoc('txt'));
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'pop-row';
+  const tic = document.createElement('span');
+  tic.className = 'pop-icon';
+  tic.innerHTML = ICONS.board;
   const tl = document.createElement('span');
   tl.className = 'pop-label';
   tl.textContent = t('exSubs');
@@ -65,7 +71,7 @@ export function openExportMenu(anchor: HTMLElement, api: ExportMenuApi): ToolPop
     ck.style.visibility = api.subs() ? 'visible' : 'hidden';
   };
   sync();
-  toggle.append(tl, ck);
+  toggle.append(tic, tl, ck);
   toggle.addEventListener('click', () => {
     api.onToggleSubs();
     sync();
@@ -73,8 +79,8 @@ export function openExportMenu(anchor: HTMLElement, api: ExportMenuApi): ToolPop
   node.appendChild(toggle);
 
   head(t('exDataHead'));
-  row(t('exFiles'), api.onFiles, !api.hasMedia());
-  row(t('exJson'), api.onJson);
-  row(t('exImport'), api.onImport);
+  row(t('exFiles'), ICONS.download, api.onFiles, !api.hasMedia());
+  row(t('exJson'), ICONS.txCode, api.onJson);
+  row(t('exImport'), ICONS.upload, api.onImport);
   return pop;
 }

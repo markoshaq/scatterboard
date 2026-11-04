@@ -3,6 +3,7 @@ import { t } from '../strings';
 import { ICONS } from './icons';
 import { closeToolPopup, openToolPopup, type ToolPopup } from './popup';
 import { HIGHLIGHTS, TEXT_COLORS, type BlockStyle } from './richtext';
+import { kbd } from './shortcutpanel';
 
 const CARD_COLORS = [
   '#fdebee',
@@ -311,11 +312,11 @@ export interface MenuItem {
   onPick(): void;
 }
 
-export function openMenuPopup(anchor: HTMLElement, items: MenuItem[], keepSelection = false): ToolPopup {
+export function openMenuPopup(anchor: HTMLElement, items: MenuItem[], keepSelection = false, below = false): ToolPopup {
   const node = document.createElement('div');
   node.className = 'menu-body';
   if (keepSelection) node.addEventListener('pointerdown', (e) => e.preventDefault());
-  const pop = openToolPopup(anchor, node);
+  const pop = openToolPopup(anchor, node, below);
   for (const item of items) {
     const row = document.createElement('button');
     row.type = 'button';
@@ -541,19 +542,22 @@ export function openViewMenu(anchor: HTMLElement, api: ViewMenuApi): ToolPopup {
   node.className = 'menu-body';
   const pop = openToolPopup(anchor, node, true);
 
-  const row = (label: string) => {
+  const row = (label: string, icon: string) => {
     const r = document.createElement('button');
     r.type = 'button';
     r.className = 'pop-row';
+    const ic = document.createElement('span');
+    ic.className = 'pop-icon';
+    ic.innerHTML = icon;
     const lab = document.createElement('span');
     lab.className = 'pop-label';
     lab.textContent = label;
-    r.appendChild(lab);
+    r.append(ic, lab);
     node.appendChild(r);
     return r;
   };
-  const toggleRow = (label: string, checked: () => boolean, onPick: () => void) => {
-    const r = row(label);
+  const toggleRow = (label: string, icon: string, checked: () => boolean, onPick: () => void) => {
+    const r = row(label, icon);
     const ck = document.createElement('span');
     ck.className = 'pop-check';
     ck.innerHTML = ICONS.check;
@@ -567,21 +571,29 @@ export function openViewMenu(anchor: HTMLElement, api: ViewMenuApi): ToolPopup {
       sync();
     });
   };
+  const head = (label: string) => {
+    const h = document.createElement('div');
+    h.className = 'ts-head';
+    h.textContent = label;
+    node.appendChild(h);
+  };
 
-  const present = row(t('viewPresent'));
+  const present = row(t('viewPresent'), ICONS.play);
   const hint = document.createElement('span');
   hint.className = 'pop-hint';
-  hint.textContent = 'Cmd+Opt+P';
+  hint.textContent = kbd('Cmd+Opt+P');
   present.appendChild(hint);
   present.addEventListener('click', () => {
     pop.close();
     api.onPresent();
   });
 
-  toggleRow(t('viewGrid'), api.grid, api.onToggleGrid);
-  toggleRow(t('focusSelected'), () => !!api.presentOpts().focus, () => api.onToggle('focus'));
-  toggleRow(t('hideComments'), () => !!api.presentOpts().comments, () => api.onToggle('comments'));
-  toggleRow(t('preventEditing'), () => !!api.presentOpts().edit, () => api.onToggle('edit'));
+  toggleRow(t('viewGrid'), ICONS.dots, api.grid, api.onToggleGrid);
+
+  head(t('viewPresenting'));
+  toggleRow(t('focusSelected'), ICONS.selTool, () => !!api.presentOpts().focus, () => api.onToggle('focus'));
+  toggleRow(t('hideComments'), ICONS.comment, () => !!api.presentOpts().comments, () => api.onToggle('comments'));
+  toggleRow(t('preventEditing'), ICONS.lock, () => !!api.presentOpts().edit, () => api.onToggle('edit'));
 
   return pop;
 }
@@ -594,12 +606,13 @@ export interface HelpApi {
 // Topbar help menu: shortcuts, issue reporting and About.
 export function openHelpMenu(anchor: HTMLElement, api: HelpApi): ToolPopup {
   return openMenuPopup(anchor, [
-    { label: t('shortcutsTitle'), hint: '/', onPick: () => api.onShortcuts() },
+    { label: t('shortcutsTitle'), hint: '/', icon: ICONS.kbd, onPick: () => api.onShortcuts() },
     {
       label: t('helpIssue'),
+      icon: ICONS.ext,
       onPick: () =>
         window.open('https://github.com/markoshaq/scatterboard/issues', '_blank', 'noopener'),
     },
-    { label: t('setAbout'), onPick: () => api.onAbout(anchor) },
-  ]);
+    { label: t('setAbout'), icon: ICONS.info, onPick: () => api.onAbout(anchor) },
+  ], false, true);
 }

@@ -1,10 +1,11 @@
 import type { Store } from './state/store';
-import { boardRefOf, commentDoc, createAnnotation, createColumn, createComment, createDocument, createEmbed, createHeading, createLine, createLink, createNote, createSketch, createSwatch, createTable, createTodo, documentDoc, headingDoc, imageDoc, lineDoc, linkDoc, sketchDoc, uid, GRID, IMAGE_W, UNSORTED, type Doc, type Element, type ElementType, type ID, type EmbedKind, type LineEnd, type PresentOpts } from './state/schema';
+import { boardRefOf, commentDoc, createAnnotation, createColumn, createComment, createDocument, createEmbed, createHeading, createLine, createLink, createNote, createSketch, createSwatch, createTable, createTodo, documentDoc, headingDoc, imageDoc, lineDoc, linkDoc, sketchDoc, uid, GRID, IMAGE_W, UNSORTED, type Doc, type Element, type ElementType, type ID, type EmbedKind, type ImageDoc, type LineEnd, type PresentOpts } from './state/schema';
 import type { Action, ElementPatch } from './state/actions';
 import { getClipboard, setClipboard } from './state/clipboard';
 import type { DocStorage } from './persist/storage';
 import { blobTotalSize, clearBlobs, putBlob } from './persist/blobs';
 import { ingestFiles, ingestPaste, prepareImage, type IngestApi } from './ui/files';
+import { scrubHtml } from './ui/sanitize';
 import { hostOf, urlTitle } from './ui/embeds';
 import { Viewport } from './canvas/viewport';
 import { Renderer, type DraftLine, type Guide, type SceneLine } from './canvas/renderer';
@@ -24,7 +25,7 @@ import type { ImgEditorHandle } from './editor/imgeditor';
 import { openShortcutsPanel } from './ui/shortcutpanel';
 import { openCapturePopup } from './ui/capture';
 import { setFormatting } from './ui/locale';
-import type { Currency, Lang } from './persist/storage';
+import type { Lang } from './persist/storage';
 import { CREATE_ITEMS } from './ui/rail';
 import { openHelpMenu, openViewMenu } from './ui/toolpopups';
 import { closeBoardPopup, closeToolPopup } from './ui/popup';
@@ -47,6 +48,9 @@ const DRAG_SLOP = 3;
 export class App {
 
   readonly exporter = new BoardExport(this);
+  // Agent surface: blob writes go through the same IndexedDB store as
+  // drop/paste ingest.
+  readonly blobStore = { put: putBlob };
   readonly editing = new Editing(this);
   readonly tools = new RailTools(this);
   readonly panels = new Panels(this);
@@ -233,6 +237,10 @@ export class App {
       for (const id of c.deleted) {
         this.dirtyEls.add(id);
         this.sel.delete(id);
+        if (this.prefs.commentSeen?.[id] !== undefined) {
+          delete this.prefs.commentSeen[id];
+          this.scheduleSave();
+        }
         // Ending the session is what closes the undo group; dropping
         // editingId alone would leak it and swallow history.
         if (this.editingId === id) this.editing.endEdit();
@@ -343,6 +351,10 @@ export class App {
       }
     }
     this.closeElementEditor();
+    const em2 = location.hash.match(/^#\/e\/([^/?#]+)/);
+    // A stale #/e route (element gone or a type with no editor) gets
+    // rewritten to the board so Back/Forward semantics stay sane.
+    if (em2 && this.boardId) history.replaceState(null, '', `#/b/${this.boardId}`);
     const bm = location.hash.match(/^#\/b\/([^/?#]+)/);
     if (bm && bm[1] !== this.boardId) {
       this.openBoard(bm[1]!);
@@ -378,18 +390,31 @@ export class App {
       const { openDocumentEditor } = await import('./editor/doceditor');
       if (seq !== this.editorSeq) return;
       this.store.beginGroup();
-      const ed = openDocumentEditor(el, {
-        boards: () => Object.values(this.doc.boards).sort((a, b) => a.title.localeCompare(b.title)),
-        boardUrl: (id) => this.boardUrl(id),
-        patch: (doc) => {
-          const cur = this.doc.elements[el.id];
-          if (cur && documentDoc(cur)) {
-            this.store.dispatch({ type: 'element.patch', id: el.id, patch: { content: { document: doc } } });
-          }
-        },
-        comment: (anchor) => this.tools.addCommentTo(el.id, anchor),
-        exit: () => this.exitEditor(el.boardId),
-      });
+      let ed: ReturnType<typeof openDocumentEditor>;
+      try {
+        ed = openDocumentEditor(el, {
+          boards: () => Object.values(this.doc.boards).sort((a, b) => a.title.localeCompare(b.title)),
+          boardUrl: (id) => this.boardUrl(id),
+          doc: () => {
+            const cur = this.doc.elements[el.id];
+            return cur ? documentDoc(cur) : null;
+          },
+          patch: (doc) => {
+            const cur = this.doc.elements[el.id];
+            if (cur && documentDoc(cur)) {
+              scrubHtml(doc);
+              this.store.dispatch({ type: 'element.patch', id: el.id, patch: { content: { document: doc } } });
+            }
+          },
+          comment: (anchor) => this.tools.addCommentTo(el.id, anchor),
+          exit: () => this.exitEditor(el.boardId),
+        });
+      } catch (err) {
+        // A mount throw must not leak the group: later dispatches
+        // would be silently absorbed and undo would stop working.
+        this.store.endGroup();
+        throw err;
+      }
       handle = {
         close: () => {
           // A throw inside ed.close() must not leak the undo group: a
@@ -434,7 +459,8 @@ export class App {
         nav: (m: ImgMode) => {
           // Mode chips ride in the same history entry: replace, never
           // push, so Esc/Back always lands on the board, not a mode.
-          history.replaceState(null, '', `#/e/${el.id}${imgModeParam(m)}`);
+          const fq = location.hash.match(/[?&]filter_query=[^#]*/)?.[0] ?? '';
+          history.replaceState(null, '', `#/e/${el.id}${imgModeParam(m)}${fq ? `&${fq.slice(1)}` : ''}`);
           this.imgEditor?.setMode(m);
         },
         exit: () => this.exitEditor(el.boardId),
@@ -453,7 +479,8 @@ export class App {
   // (Back would reopen the editor) or popping (a pushed mode-chip or a
   // cold-boot #/e URL could strand the user).
   private exitEditor(boardId: ID) {
-    history.replaceState(null, '', `#/b/${boardId}`);
+    const q = location.hash.match(/[?&]filter_query=[^&]*/)?.[0] ?? '';
+    history.replaceState(null, '', `#/b/${boardId}${q ? `?${q.slice(1)}` : ''}`);
     this.applyRoute();
   }
 
@@ -560,6 +587,17 @@ export class App {
     const opts = this.board()?.presentOpts;
     document.body.classList.toggle('presenting', this.presenting);
     document.body.classList.toggle('hide-comments', this.presenting && !!opts?.comments);
+  }
+
+
+  // Agent shim: set presentation toggles explicitly (the View menu
+  // toggles via togglePresentOpt). Same direct-mutation path.
+  setPresentOpts(o: PresentOpts) {
+    const board = this.board();
+    if (!board) return;
+    board.presentOpts = { ...board.presentOpts, ...o };
+    this.scheduleSave();
+    this.applyPresentClasses();
   }
 
 
@@ -732,21 +770,22 @@ export class App {
     const el = this.doc.elements[id];
     if (el?.type !== 'comment') return;
     // Opening the thread marks it read for the pin unread badge.
+    const commentOf = () => {
+      const e = this.doc.elements[id];
+      return e ? (commentDoc(e) ?? null) : null;
+    };
     const markSeen = () => {
-      const n = commentDoc(this.doc.elements[id]!)?.items.length ?? 0;
+      const n = commentOf()?.items.length ?? 0;
       this.prefs.commentSeen = { ...(this.prefs.commentSeen ?? {}), [id]: n };
       this.scheduleSave();
       this.overlays.syncPins();
     };
-    const items = () => {
-      const cur = this.doc.elements[id];
-      return cur ? (commentDoc(cur)?.items ?? []) : [];
-    };
+    const items = () => commentOf()?.items ?? [];
     markSeen();
     const pop = openThreadPopup(anchor, items, {
       onAdd: (text) => {
         if (this.lockedView()) return;
-        const c = commentDoc(this.doc.elements[id]!);
+        const c = commentOf();
         if (!c) return;
         this.store.dispatch({
           type: 'element.patch',
@@ -757,7 +796,7 @@ export class App {
       },
       onEdit: (iid, text) => {
         if (this.lockedView()) return;
-        const c = commentDoc(this.doc.elements[id]!);
+        const c = commentOf();
         if (!c) return;
         this.store.dispatch({
           type: 'element.patch',
@@ -771,7 +810,7 @@ export class App {
       },
       onDelete: (iid) => {
         if (this.lockedView()) return;
-        const c = commentDoc(this.doc.elements[id]!);
+        const c = commentOf();
         if (!c) return;
         this.store.dispatch({
           type: 'element.patch',
@@ -786,7 +825,7 @@ export class App {
     pop.close = () => {
       close();
       const el = this.doc.elements[id];
-      if (el?.anchorId !== undefined && !items().length) {
+      if (el?.anchorId !== undefined && !items().length && !this.lockedView()) {
         this.store.dispatch({ type: 'element.delete', el });
       }
     };
@@ -1143,7 +1182,10 @@ export class App {
       return;
     }
     if (el.type === 'document' || el.type === 'sketch') {
-      location.hash = `#/e/${el.id}`;
+      // Carry filter_query through the editor route so exitEditor can
+      // restore the board's filtered view.
+      const q = location.hash.match(/[?&]filter_query=[^&]*/)?.[0] ?? '';
+      location.hash = `#/e/${el.id}${q ? `?${q.slice(1)}` : ''}`;
       return;
     }
     this.editing.beginEdit(id, { x: e.clientX, y: e.clientY }, el.type === 'table' ? 'cell-edit' : undefined);
@@ -1332,11 +1374,14 @@ export class App {
       const el = this.doc.elements[id];
       if (!el) continue;
       if (el.type === 'column') {
+        // Members unfile next to the column's rendered rect: a nested
+        // column's stored x/y is its stale pre-filing spot.
+        const cr = this.layer.rectOf(el);
         this.layer.members(el.id).forEach((m, i) => {
           actions.push({
             type: 'element.patch',
             id: m.id,
-            patch: { parentId: null, x: el.x + 24 + i * 20, y: el.y + 24 + i * 20 },
+            patch: { parentId: null, x: Math.round(cr.x + 24 + i * 20), y: Math.round(cr.y + 24 + i * 20) },
           });
         });
       }
@@ -1373,6 +1418,7 @@ export class App {
     }
     this.store.dispatch({ type: 'batch', actions });
     this.sel.clear();
+    this.filterIds.clear();
   }
 
 
@@ -1450,6 +1496,10 @@ export class App {
       for (const el of Object.values(this.doc.elements)) {
         if (el.boardId === bid) out.push({ type: 'element.delete', el });
       }
+      for (const l of Object.values(this.doc.labels)) {
+        // Board-scoped labels would orphan in the doc forever.
+        if (l.boardId === bid) out.push({ type: 'label.delete', label: l });
+      }
       out.push({ type: 'board.delete', board });
       for (const b of Object.values(this.doc.boards)) {
         if (b.parentId === bid) visit(b.id);
@@ -1478,10 +1528,13 @@ export class App {
 
   private copySet(): Element[] {
     const out = new Map<ID, Element>();
-    for (const el of this.selectedEls()) {
+    // Members come along transitively: a column can sit inside a column.
+    const collect = (el: Element) => {
+      if (out.has(el.id)) return;
       out.set(el.id, el);
-      if (el.type === 'column') for (const m of this.layer.members(el.id)) out.set(m.id, m);
-    }
+      if (el.type === 'column') for (const m of this.layer.members(el.id)) collect(m);
+    };
+    for (const el of this.selectedEls()) collect(el);
     return [...out.values()];
   }
 
@@ -1504,6 +1557,14 @@ export class App {
   // when the card came along, comments drop a stale anchor.
   private cloneElements(els: Element[], dx: number, dy: number): { clones: Element[]; idMap: Map<ID, ID> } {
     const rectOf = (t: Element) => this.layer.rectOf(t);
+    // Members cloned without their column unfile at their rendered
+    // slot: the stored x/y is a stale pre-filing position.
+    const srcIds = new Set(els.map((e) => e.id));
+    els = els.map((e) => {
+      if (e.parentId === null || srcIds.has(e.parentId)) return e;
+      const r = this.layer.rectOf(e);
+      return { ...e, x: Math.round(r.x), y: Math.round(r.y) };
+    });
     return remapElements(this.doc, els, (e) => this.boardId ?? e.boardId, dx, dy, {
       resolveEnd: (e, which) => {
         const l = resolveLine(e, this.doc, rectOf);
@@ -1537,7 +1598,8 @@ export class App {
     const actions: Action[] = this.selectedEls().map((e) => {
       const patch: ElementPatch = {
         color: src.color,
-        labels: [...labels],
+        // Line labels render nowhere; don't write dead data.
+        labels: e.type === 'line' ? e.labels : [...labels],
         reactions: src.reactions ? [...src.reactions] : undefined,
       };
       const c = headingDoc(e);
@@ -1571,10 +1633,11 @@ export class App {
     const newIds = ids.map((id) => idMap.get(id)).filter((id): id is ID => !!id);
     const origins = new Map<ID, { x: number; y: number }>();
     for (const id of newIds) {
-      const el = this.doc.elements[id];
-      if (el) origins.set(id, { x: el.x, y: el.y });
+      // cardOrigin resolves members to their rendered slot, so a
+      // member clone does not jump to its stale stored x/y mid-drag.
+      origins.set(id, this.cardOrigin(id));
     }
-    this.sel = new Set(newIds);
+    this.setSelection(newIds);
     return { ids: newIds, origins };
   }
 
@@ -1733,8 +1796,10 @@ export class App {
           const { blob, aspect, natW, natH } = await prepareImage(file);
           const ref = uid();
           await putBlob(ref, blob);
-          const cur = imageDoc(this.doc.elements[el.id]!);
-          if (!cur) return;
+          // The card may be gone after the async work (delete/undo).
+          const curEl = this.doc.elements[el.id];
+          const cur = curEl ? imageDoc(curEl) : null;
+          if (!cur || this.lockedView()) return;
           const next = { ...cur, blobRef: ref, name: file.name || cur.name, aspect, natW, natH };
           delete next.strokes;
           this.store.dispatch({
@@ -1759,37 +1824,44 @@ export class App {
     const c = imageDoc(el);
     if (!c) return;
     const w = Math.max(GRID, Math.round((el.w ?? IMAGE_W) / GRID) * GRID);
-    const x = Math.round(el.x / GRID) * GRID;
-    const y = Math.round(el.y / GRID) * GRID;
     const h = Math.max(GRID, Math.round(w / c.aspect / GRID) * GRID);
     const aspect = w / h;
-    const patch: ElementPatch = { x, y, w };
+    let content: { image: ImageDoc } | undefined;
     if (Math.abs(aspect - c.aspect) > 0.001) {
-      const { loadBitmap, cropImage, canvasBlob } = await import('./canvas/imgops');
-      const bmp = await loadBitmap(c.blobRef);
-      if (!bmp) {
-        toast(t('imageMissing'));
-        return;
-      }
-      const srcA = bmp.width / bmp.height;
-      const cw = srcA > aspect ? Math.round(bmp.height * aspect) : bmp.width;
-      const ch = srcA > aspect ? bmp.height : Math.round(bmp.width / aspect);
-      const out = cropImage(bmp, { x: (bmp.width - cw) / 2, y: (bmp.height - ch) / 2, w: cw, h: ch });
-      const blob = await canvasBlob(out, true);
-      if (!blob) return;
-      const ref = uid();
       try {
+        const { loadBitmap, cropImage, canvasBlob } = await import('./canvas/imgops');
+        const bmp = await loadBitmap(c.blobRef);
+        if (!bmp) {
+          toast(t('imageMissing'));
+          return;
+        }
+        const srcA = bmp.width / bmp.height;
+        const cw = srcA > aspect ? Math.round(bmp.height * aspect) : bmp.width;
+        const ch = srcA > aspect ? bmp.height : Math.round(bmp.width / aspect);
+        const out = cropImage(bmp, { x: (bmp.width - cw) / 2, y: (bmp.height - ch) / 2, w: cw, h: ch });
+        const blob = await canvasBlob(out, true);
+        if (!blob) return;
+        const ref = uid();
         await putBlob(ref, blob);
+        const next = { ...c, blobRef: ref, aspect, natW: cw, natH: ch };
+        delete next.strokes;
+        content = { image: next };
       } catch {
         toast(t('imageMissing'));
         return;
       }
-      const cur = imageDoc(this.doc.elements[el.id]!);
-      if (!cur) return;
-      const next = { ...cur, blobRef: ref, aspect, natW: cw, natH: ch };
-      delete next.strokes;
-      patch.content = { image: next };
     }
+    // Re-read the element after the async work: the card may have been
+    // deleted or moved, and the grid snap applies to where it is now.
+    const curEl = this.doc.elements[el.id];
+    const cur = curEl ? imageDoc(curEl) : null;
+    if (!cur || this.lockedView()) return;
+    const patch: ElementPatch = {
+      x: Math.round(curEl.x / GRID) * GRID,
+      y: Math.round(curEl.y / GRID) * GRID,
+      w: Math.max(GRID, Math.round((curEl.w ?? IMAGE_W) / GRID) * GRID),
+      ...(content ? { content } : {}),
+    };
     this.store.dispatch({ type: 'element.patch', id: el.id, patch });
   }
 
@@ -1847,7 +1919,7 @@ export class App {
     new EyeDropperCtor()
       .open()
       .then(({ sRGBHex }) => {
-        if (!this.doc.elements[id]) return;
+        if (!this.doc.elements[id] || this.lockedView()) return;
         this.store.dispatch({ type: 'element.patch', id, patch: { color: sRGBHex } });
       })
       .catch(() => {});
@@ -1868,7 +1940,7 @@ export class App {
     setFormatting({
       browserLang: this.prefs.browserLang ?? true,
       lang: this.prefs.lang ?? activeLang(),
-      currency: this.prefs.currency ?? 'USD',
+      currency: this.prefs.currency ?? null,
     });
     // Theme/scale change every card's colours and counter-scale, none
     // of which shows up as an element patch.
@@ -1943,9 +2015,10 @@ export class App {
         this.applyPrefs();
         save();
       },
-      currency: () => this.prefs.currency ?? ('USD' as Currency),
+      currency: () => this.prefs.currency ?? null,
       onCurrency: (c) => {
-        this.prefs.currency = c;
+        if (c) this.prefs.currency = c;
+        else delete this.prefs.currency;
         this.applyPrefs();
         save();
       },
@@ -1958,6 +2031,7 @@ export class App {
         if (k === 'agent') void import('./agent/index').then((m) => m.setAgentEnabled(this, v));
       },
       agentStatus: () => this.agentConnected,
+      agentPaired: () => !!this.prefs.agentBridge,
       guideAlpha: () => this.prefs.guideAlpha ?? 0,
       onGuideAlpha: (v) => {
         this.prefs.guideAlpha = v;
@@ -2027,11 +2101,16 @@ export class App {
   // Settings "Reset everything": wipe doc storage, blobs and prefs,
   // then reload so the boot path re-seeds a fresh default doc.
   private async resetAll() {
-    await this.flush();
-    localStorage.removeItem('scatterboard:lang');
-    localStorage.removeItem('scatterboard:theme');
-    await this.adapter.clear();
-    await clearBlobs();
+    try {
+      await this.flush();
+      localStorage.removeItem('scatterboard:lang');
+      localStorage.removeItem('scatterboard:theme');
+      await this.adapter.clear();
+      await clearBlobs();
+    } catch {
+      toast(t('exFail'));
+      return;
+    }
     location.reload();
   }
 

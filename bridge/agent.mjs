@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scatterboard-agent: localhost bridge between a live Scatterboard tab
+// scatterboard-mcp: localhost bridge between a live Scatterboard tab
 // and AI agents. The app dials out over WebSocket (ws://127.0.0.1) and
 // this process is also an MCP stdio server. `npx scatterboard-mcp
 // install` registers it in the Devin/Windsurf user configs (project
@@ -14,7 +14,8 @@ import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { homedir, platform } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -56,10 +57,15 @@ if (!config || typeof config.bridgeId !== 'string' || typeof config.secret !== '
   writeFileSync(configFile, JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 const { bridgeId, secret } = config;
-// Session key: issued on pairing, presented on tokenless reconnect.
+// Session keys: appKey pairs app sockets, key serves agent sockets.
+// Keeping them apart means a stolen agent key cannot squat the app
+// slot and hijack other agents' requests.
+const appKey = createHmac('sha256', secret).update('scatterboard-app').digest('hex');
 const key = createHmac('sha256', secret).update('scatterboard-agent').digest('hex');
-// Pairing token: fresh every run unless --token pins one.
-const token = String(flags.token ?? randomBytes(16).toString('base64url'));
+// Pairing token: fresh every run unless --token pins one, and rotated
+// after each successful app hello so a leaked URL cannot be replayed.
+const tokenPinned = !!flags.token && flags.token !== 'true';
+let token = tokenPinned ? String(flags.token) : randomBytes(16).toString('base64url');
 
 // --- websocket server ---
 
@@ -81,7 +87,7 @@ const http = createServer((req, res) => {
   res.writeHead(404);
   res.end();
 });
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 * 1024 });
 wss.on('headers', (headers, req) => {
   // Chrome Private Network Access: https pages may not open ws:// on
   // loopback unless the upgrade echoes this header.
@@ -96,6 +102,10 @@ http.on('upgrade', (req, socket, head) => {
     return;
   }
   wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+});
+http.on('error', (e) => {
+  console.error(`scatterboard-agent: port ${PORT} unavailable (${e.code ?? e}); is another instance running?`);
+  process.exit(1);
 });
 http.listen(PORT, '127.0.0.1');
 
@@ -120,7 +130,7 @@ function requestApp(method, params) {
       return;
     }
     const id = `b${++reqSeq}`;
-    pending.set(id, { resolve, reject, sock: null });
+    pending.set(id, { resolve, reject });
     send(appSock, { id, method, params });
     setTimeout(() => {
       if (pending.delete(id)) reject({ code: 'timeout', message: 'Scatterboard did not answer in 30s' });
@@ -130,16 +140,23 @@ function requestApp(method, params) {
 
 function greet(ws, msg) {
   if (!msg || msg.type !== 'hello') return deny(ws, 'expected hello');
-  const authed = msg.token === token || (msg.bridgeId === bridgeId && msg.key === key);
+  const isApp = msg.role === 'app';
+  const sessionKey = isApp ? appKey : key;
+  let authed = msg.bridgeId === bridgeId && msg.key === sessionKey;
+  // The pairing token admits app sockets only; it cannot mint an agent.
+  if (isApp && msg.token === token) {
+    authed = true;
+    if (!tokenPinned) token = randomBytes(16).toString('base64url');
+  }
   if (!authed) return deny(ws, 'bad credentials');
   ws.greeted = true;
-  if (msg.role !== 'agent') {
+  if (isApp) {
     // One app session at a time; agents share the socket pool.
     if (appSock && appSock.readyState === appSock.OPEN) return deny(ws, 'busy');
     ws.isApp = true;
     appSock = ws;
   }
-  send(ws, { type: 'welcome', bridgeId, key });
+  send(ws, { type: 'welcome', bridgeId, key: sessionKey });
 }
 
 wss.on('connection', (ws) => {
@@ -203,15 +220,30 @@ wss.on('connection', (ws) => {
 const METHODS = {
   sb_openboard: 'openBoard',
   sb_boards: 'boards',
+  sb_state: 'state',
+  sb_labels: 'labels',
+  sb_search: 'search',
   sb_elements: 'elements',
   sb_get: 'get',
   sb_create: 'create',
   sb_patch: 'patch',
   sb_remove: 'remove',
   sb_connect: 'connect',
+  sb_trash: 'trash',
+  sb_restore: 'restore',
+  sb_emptytrash: 'emptyTrash',
   sb_select: 'select',
   sb_view: 'view',
+  sb_present: 'present',
   sb_snapshot: 'snapshot',
+  sb_templates: 'templates',
+  sb_instantiate: 'instantiate',
+  sb_savetemplate: 'saveTemplate',
+  sb_upload: 'upload',
+  sb_export: 'export',
+  sb_import: 'import',
+  sb_unfurl: 'unfurl',
+  sb_duplicate: 'duplicate',
   sb_undo: 'undo',
   sb_redo: 'redo',
   sb_batch: 'batch',
@@ -236,8 +268,23 @@ const TOOLS = [
   },
   {
     name: 'sb_boards',
-    description: 'List all boards as {id,title,parentId}',
+    description: 'List all boards as {id,title,parentId,icon,color,grid,position,presentOpts}',
     inputSchema: obj({}),
+  },
+  {
+    name: 'sb_state',
+    description: 'What is open right now: {boardId, selection, view {x,y,z}, presenting, locked, connected}',
+    inputSchema: obj({}),
+  },
+  {
+    name: 'sb_labels',
+    description: 'List labels ({id,boardId,name,color}); boardId filters to one board, omitted returns all',
+    inputSchema: obj({ boardId: STR }),
+  },
+  {
+    name: 'sb_search',
+    description: 'Find cards and boards by text. query required; boardId scopes to one board (default: the open board); all:true searches every board',
+    inputSchema: obj({ query: STR, boardId: STR, all: BOOL }, ['query']),
   },
   {
     name: 'sb_openboard',
@@ -293,6 +340,21 @@ const TOOLS = [
     ),
   },
   {
+    name: 'sb_trash',
+    description: 'List trashed elements as {id, deletedAt, el}',
+    inputSchema: obj({}),
+  },
+  {
+    name: 'sb_restore',
+    description: 'Restore a trashed element to a board (default: the open board); x/y default to its old spot',
+    inputSchema: obj({ id: STR, boardId: STR, x: NUM, y: NUM }, ['id']),
+  },
+  {
+    name: 'sb_emptytrash',
+    description: 'Empty the trash permanently (one undoable entry)',
+    inputSchema: obj({}),
+  },
+  {
     name: 'sb_select',
     description: 'Select elements by id',
     inputSchema: obj({ ids: { type: 'array', items: STR } }, ['ids']),
@@ -303,9 +365,79 @@ const TOOLS = [
     inputSchema: obj({ x: NUM, y: NUM, z: NUM }),
   },
   {
+    name: 'sb_present',
+    description:
+      'Presentation mode: on enters, off exits; focus dims unselected cards, comments hides comment pins, edit prevents editing (per-board, persisted)',
+    inputSchema: obj({ on: BOOL, focus: BOOL, comments: BOOL, edit: BOOL }),
+  },
+  {
     name: 'sb_snapshot',
-    description: 'PNG snapshot of a board (default: the open board), returned as an image',
-    inputSchema: obj({ boardId: STR }),
+    description:
+      'PNG snapshot of a board (default: the open board), returned as an image. x,y,w,h crop to a board-space region (all four required together); scale defaults to 2',
+    inputSchema: obj({ boardId: STR, x: NUM, y: NUM, w: NUM, h: NUM, scale: NUM }),
+  },
+  {
+    name: 'sb_templates',
+    description: 'List templates (builtin presets and saved) as {id,name,builtin,elements}',
+    inputSchema: obj({}),
+  },
+  {
+    name: 'sb_instantiate',
+    description:
+      'Instantiate a template into a new board: child of boardId with a board card at x,y (default: open board, viewport center); boardId null makes a root project board and opens it',
+    inputSchema: obj({ id: STR, boardId: { type: ['string', 'null'] }, x: NUM, y: NUM }, ['id']),
+  },
+  {
+    name: 'sb_savetemplate',
+    description: 'Save a board (default: the open board) as a reusable template',
+    inputSchema: obj({ boardId: STR, name: STR }),
+  },
+  {
+    name: 'sb_upload',
+    description:
+      'Create an image or file card from base64 data (or a base64 data URL). Type comes from the data URL, else mime, else application/octet-stream; image/* gets a downscaled image card (caption applies), anything else a file card',
+    inputSchema: obj(
+      {
+        data: STR,
+        name: STR,
+        mime: STR,
+        caption: STR,
+        boardId: STR,
+        parentId: STR,
+        x: NUM,
+        y: NUM,
+      },
+      ['data'],
+    ),
+  },
+  {
+    name: 'sb_export',
+    description:
+      'Export a board (default: the open board). format: png (image), pdf, md, txt, doc, json, zip (media files). subs includes sub-boards in text exports; hi renders pdf at 2x. Returns {name,mime,dataUrl} or {name,mime,text}',
+    inputSchema: obj(
+      {
+        format: { type: 'string', enum: ['png', 'pdf', 'md', 'txt', 'doc', 'json', 'zip'] },
+        boardId: STR,
+        subs: BOOL,
+        hi: BOOL,
+      },
+      ['format'],
+    ),
+  },
+  {
+    name: 'sb_import',
+    description: 'Import a board JSON export (the text produced by format=json), attached under boardId or the Home/root board; opens the imported board',
+    inputSchema: obj({ data: STR, boardId: STR }, ['data']),
+  },
+  {
+    name: 'sb_unfurl',
+    description: 'Fetch the link/embed card\'s page preview and back-fill title/desc/image (link cards need the app\'s unfurl setting on)',
+    inputSchema: obj({ id: STR }, ['id']),
+  },
+  {
+    name: 'sb_duplicate',
+    description: 'Clone elements in place with fresh ids (selection, column membership and line endpoints follow); dx/dy offset defaults to 24',
+    inputSchema: obj({ ids: { type: 'array', items: STR }, dx: NUM, dy: NUM }, ['ids']),
   },
   { name: 'sb_undo', description: 'Undo the last change', inputSchema: obj({}) },
   { name: 'sb_redo', description: 'Redo', inputSchema: obj({}) },
@@ -316,7 +448,8 @@ const TOOLS = [
   },
   {
     name: 'sb_dispatch',
-    description: 'Dispatch a raw store action: element.*, board.*, label.* or batch (trash.*/template.* are rejected)',
+    description:
+      'Dispatch a raw store action: element.*, board.*, label.*, template.patch, template.delete or batch (trash.* and template.create are rejected; use sb_restore/sb_emptytrash/sb_savetemplate)',
     inputSchema: obj({ action: { type: 'object' } }, ['action']),
   },
 ];
@@ -330,26 +463,33 @@ function openBrowser(url) {
 
 const text = (s) => ({ content: [{ type: 'text', text: s }] });
 
-const mcp = new Server({ name: 'scatterboard-agent', version: '0.1.0' }, { capabilities: { tools: {} } });
+const pkg = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'package.json'), 'utf8'));
+const mcp = new Server({ name: 'scatterboard-agent', version: pkg.version }, { capabilities: { tools: {} } });
 mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args } = req.params;
   try {
     if (name === 'sb_open') {
-      const base = typeof args?.url === 'string' ? args.url : APP_URL;
+      const base = typeof args?.url === 'string' && /^https?:\/\//i.test(args.url) ? args.url : APP_URL;
       const url = `${base}${base.includes('?') ? '&' : '?'}agent=${token}`;
       openBrowser(url);
       return text(`Opened ${url}`);
     }
     if (name === 'sb_status') {
       const pairUrl = `${APP_URL}${APP_URL.includes('?') ? '&' : '?'}agent=${token}`;
-      return text(JSON.stringify({ connected: !!appSock, bridgeId, port: PORT, pairUrl }));
+      return text(JSON.stringify({ connected: !!appSock, bridgeId, port: PORT, pairUrl, agentKey: key }));
     }
     const method = METHODS[name];
     if (!method) return { ...text(`unknown tool ${name}`), isError: true };
     const result = await requestApp(method, args ?? {});
-    if (name === 'sb_snapshot' && result && typeof result.dataUrl === 'string') {
-      return { content: [{ type: 'image', data: result.dataUrl.split(',')[1] ?? '', mimeType: 'image/png' }] };
+    if (result && typeof result.dataUrl === 'string') {
+      const mime = typeof result.mime === 'string' ? result.mime : 'image/png';
+      if (mime.startsWith('image/')) {
+        return { content: [{ type: 'image', data: result.dataUrl.split(',')[1] ?? '', mimeType: mime }] };
+      }
+    }
+    if (result && typeof result.text === 'string' && typeof result.name === 'string' && typeof result.mime === 'string') {
+      return text(result.text);
     }
     return text(JSON.stringify(result));
   } catch (e) {

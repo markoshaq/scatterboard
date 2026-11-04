@@ -16,6 +16,10 @@ export interface IngestApi {
 const MAX_EDGE = 1600;
 const JPEG_Q = 0.85;
 
+// Source types that can carry transparency: JPEG would flatten their
+// alpha to black, so the PNG encode wins for these regardless of size.
+const ALPHA_TYPES = new Set(['image/png', 'image/webp', 'image/gif', 'image/svg+xml', 'image/avif']);
+
 export function fmtSize(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1).replace(/\.0$/, '')} KB`;
@@ -25,7 +29,14 @@ export function fmtSize(n: number): string {
 export function parseUrlText(text: string): string | null {
   const v = text.trim();
   if (!v || v.length > 2048 || /\s/.test(v)) return null;
-  const candidate = /^https?:\/\//i.test(v) ? v : /\./.test(v) ? `https://${v}` : v;
+  // An explicit scheme (mailto:, tel:, even javascript:) goes straight
+  // to the protocol check; bare hosts get https:// when they look like
+  // a domain (has a dot) or localhost[:port].
+  const candidate = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(v)
+    ? v
+    : /\./.test(v) || /^localhost(:\d+)?([/?#]|$)/i.test(v)
+      ? `https://${v}`
+      : v;
   try {
     const u = new URL(candidate);
     return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null;
@@ -63,9 +74,9 @@ export async function prepareImage(file: Blob): Promise<PreparedImage> {
     ctx.drawImage(bmp, 0, 0, w, h);
     const jpeg = await toBlob(cv, 'image/jpeg', JPEG_Q);
     let best = jpeg;
-    if (file.type === 'image/png') {
+    if (ALPHA_TYPES.has(file.type)) {
       const png = await toBlob(cv, 'image/png');
-      if (png && (!best || png.size < best.size)) best = png;
+      if (png) best = png;
     }
     if (!best) return { blob: file, aspect: bmp.width / bmp.height, natW: bmp.width, natH: bmp.height };
     return { blob: best, aspect: bmp.width / bmp.height, natW: w, natH: h };

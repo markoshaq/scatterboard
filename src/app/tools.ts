@@ -62,7 +62,9 @@ export class RailTools {
           const c = headingDoc(el);
           if (!c) return;
           const setLevel = (level: 1 | 2) => {
-            const cur = headingDoc(this.a.doc.elements[el.id]!);
+            if (this.a.lockedView()) return;
+            const e = this.a.doc.elements[el.id];
+            const cur = e ? headingDoc(e) : null;
             if (!cur) return;
             this.a.store.dispatch({
               type: 'element.patch',
@@ -325,6 +327,7 @@ export class RailTools {
 
   labelApplied(lid: ID): 'all' | 'some' | 'none' {
     const els = this.labelTargets();
+    if (!els.length) return 'none';
     const n = els.filter((e) => e.labels.includes(lid)).length;
     return n === 0 ? 'none' : n === els.length ? 'all' : 'some';
   }
@@ -335,7 +338,9 @@ export class RailTools {
     const actions: Action[] = this.labelTargets().map((e) => ({
       type: 'element.patch',
       id: e.id,
-      patch: { labels: apply ? [...e.labels, lid] : e.labels.filter((l) => l !== lid) },
+      patch: {
+        labels: apply ? (e.labels.includes(lid) ? e.labels : [...e.labels, lid]) : e.labels.filter((l) => l !== lid),
+      },
     }));
     if (actions.length) this.a.store.dispatch({ type: 'batch', actions });
   }
@@ -419,7 +424,7 @@ export class RailTools {
         this.a.store.dispatch({
           type: 'element.patch',
           id: el.id,
-          patch: { content: { heading: { text: c.text, level: c.level === 1 ? 2 : 1 } } },
+          patch: { content: { heading: { ...c, level: c.level === 1 ? 2 : 1 } } },
         });
       }
       return;
@@ -472,10 +477,16 @@ export class RailTools {
           { label: t('downloadFile'), onPick: () => void downloadBlobRef(c.file.blobRef, c.file.name) },
           {
             label: t('openFile'),
-            onPick: () =>
+            // window.open inside .then is popup-blocked: open the blank
+            // window inside the gesture, then navigate it to the blob
+            // URL ('noopener' would return a null handle here).
+            onPick: () => {
+              const w = window.open('', '_blank');
               void blobUrl(c.file.blobRef).then((u) => {
-                if (u) window.open(u, '_blank');
-              }),
+                if (u && w) w.location.href = u;
+                else w?.close();
+              });
+            },
           },
         );
       }
@@ -500,7 +511,7 @@ export class RailTools {
       if ('boardRef' in c) {
         const ref = c.boardRef;
         items.push(
-          { label: t('openNewTab'), onPick: () => window.open(this.a.boardUrl(ref), '_blank') },
+          { label: t('openNewTab'), onPick: () => window.open(this.a.boardUrl(ref), '_blank', 'noopener') },
           { label: t('copyLinkBoard'), onPick: () => void copyTextToClipboard(this.a.boardUrl(ref)) },
           { label: t('createShortcut'), onPick: () => this.a.panels.createShortcut(el) },
           { label: t('convertToTemplate'), onPick: () => this.a.panels.saveAsTemplate(ref) },
@@ -551,7 +562,7 @@ export class RailTools {
 
 
   alignSel(mode: 'left' | 'center-h' | 'right' | 'top' | 'middle-v' | 'bottom') {
-    const els = this.a.movableCards();
+    const els = this.a.movableCards().filter((e) => !e.locked);
     if (els.length < 2) return;
     const rects = new Map(els.map((e) => [e.id, this.a.layer.rectOf(e)]));
     const u = unionRect([...rects.values()])!;
@@ -576,7 +587,7 @@ export class RailTools {
 
 
   distributeSel(axis: 'h' | 'v') {
-    const els = this.a.movableCards();
+    const els = this.a.movableCards().filter((e) => !e.locked);
     if (els.length < 3) return;
     const rects = new Map(els.map((e) => [e.id, this.a.layer.rectOf(e)]));
     const sorted = [...els].sort((a, b) => {
@@ -615,7 +626,7 @@ export class RailTools {
         this.a.doc,
         this.a.boardId,
         { el: sorted[i]!.id, x: ra.x + ra.w / 2, y: ra.y + ra.h / 2 },
-        { el: sorted[i + 1]?.id, x: rb.x + rb.w / 2, y: rb.y + rb.h / 2 },
+        { el: sorted[i + 1]!.id, x: rb.x + rb.w / 2, y: rb.y + rb.h / 2 },
       );
       actions.push({ type: 'element.create', el: line });
     }
@@ -652,7 +663,9 @@ export class RailTools {
   weightItems(el: Element): MenuItem[] {
     const c = lineDoc(el);
     const set = (weight: LineWeight) => {
-      const cur = lineDoc(this.a.doc.elements[el.id]!);
+      if (this.a.lockedView()) return;
+      const e = this.a.doc.elements[el.id];
+      const cur = e ? lineDoc(e) : null;
       if (!cur) return;
       this.a.store.dispatch({
         type: 'element.patch',
@@ -709,6 +722,7 @@ export class RailTools {
     const nested: Element[] = [];
     const collect = (id: ID) => {
       for (const m of this.a.layer.members(id)) {
+        if (memberIds.has(m.id)) continue;
         memberIds.add(m.id);
         nested.push(m);
         collect(m.id);
@@ -756,6 +770,7 @@ export class RailTools {
     if (el.w !== undefined) doc.w = el.w;
     doc.z = el.z;
     doc.parentId = el.parentId;
+    doc.locked = el.locked;
     if (el.color !== undefined) doc.color = el.color;
     doc.labels = [...el.labels];
     if (el.reactions) doc.reactions = [...el.reactions];
@@ -784,14 +799,20 @@ export class RailTools {
   convertToNote(el: Element) {
     const c = documentDoc(el);
     if (!c || !this.a.boardId) return;
-    const note = createNote(this.a.doc, this.a.boardId, el.x, el.y, c.text);
+    // The doc title has no note field: fold it into the body (text and
+    // html) so it survives the swap.
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const text = c.title ? `${c.title}\n${c.text}` : c.text;
+    const html = c.title && c.html !== undefined ? `<h1>${esc(c.title)}</h1>${c.html}` : c.html;
+    const note = createNote(this.a.doc, this.a.boardId, el.x, el.y, text);
     if (el.w !== undefined) note.w = el.w;
     note.z = el.z;
     note.parentId = el.parentId;
+    note.locked = el.locked;
     if (el.color !== undefined) note.color = el.color;
     note.labels = [...el.labels];
     if (el.reactions) note.reactions = [...el.reactions];
-    note.content = { note: c.html !== undefined ? { text: c.text, html: c.html } : { text: c.text } };
+    note.content = { note: html !== undefined ? { text, html } : { text } };
     this.a.store.dispatch({
       type: 'batch',
       actions: [
@@ -832,8 +853,11 @@ export class RailTools {
     const sk = createSketch(this.a.doc, this.a.boardId, el.x, el.y);
     sk.w = Math.max(el.w ?? 0, 220);
     sk.z = el.z;
+    sk.parentId = el.parentId;
+    sk.locked = el.locked;
     if (el.color !== undefined) sk.color = el.color;
     sk.labels = [...el.labels];
+    if (el.reactions) sk.reactions = [...el.reactions];
     sk.content = { sketch: { strokes } };
     this.a.store.dispatch({
       type: 'batch',

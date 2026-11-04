@@ -100,7 +100,8 @@ class WorkerDb {
       for (const p of this.pending.values()) p.reject(new Error('sqlite worker failed'));
       this.pending.clear();
     };
-    setTimeout(() => onFail(new Error('sqlite worker timeout')), 8000);
+    const watchdog = setTimeout(() => onFail(new Error('sqlite worker timeout')), 8000);
+    void this.ready.then(() => clearTimeout(watchdog), () => clearTimeout(watchdog));
   }
 
   call(type: string, args?: Record<string, unknown>, dbId?: string): Promise<WReply> {
@@ -247,13 +248,24 @@ export class SqliteAdapter implements DocStorage {
   async load(): Promise<PersistedWorkspace | null> {
     try {
       const raw = await this.get(WS_KEY);
-      if (!raw) return null;
-      this.bytes = new Blob([raw]).size;
-      const c = this.json();
-      const w = (c ? await c.parse(raw) : JSON.parse(raw)) as PersistedWorkspace;
+      let w: PersistedWorkspace | null = null;
+      if (raw) {
+        const c = this.json();
+        w = (c ? await c.parse(raw) : JSON.parse(raw)) as PersistedWorkspace;
+      }
+      // A previous session may have degraded to localStorage after a
+      // failed put(): whichever copy saved later wins, and a winning
+      // local copy is pushed back into sqlite so the stores reconverge.
+      const lw = await this.local.load().catch(() => null);
+      if (lw && (!w || (lw.savedAt ?? 0) > (w.savedAt ?? 0))) {
+        w = lw;
+        void this.put(WS_KEY, JSON.stringify(lw));
+      }
+      if (!w || typeof w.doc !== 'object' || !w.doc) return null;
+      this.bytes = new Blob([JSON.stringify(w)]).size;
       // Position rows may postdate the doc serialize; the newest wins.
       for (const [bid, p] of this.pos) {
-        const b = w.doc.boards[bid];
+        const b = w.doc.boards?.[bid];
         if (b) b.position = p;
       }
       return w;
@@ -274,6 +286,10 @@ export class SqliteAdapter implements DocStorage {
 
   saveBoardPos(id: string, pos: { x: number; y: number; z: number }) {
     this.pos.set(id, pos);
+    if (this.broken) {
+      this.local.saveBoardPos(id, pos);
+      return;
+    }
     return this.put(`${POS_PREFIX}${id}`, JSON.stringify(pos));
   }
 
@@ -287,6 +303,10 @@ export class SqliteAdapter implements DocStorage {
 
   setLastBoard(id: string) {
     this.last = id;
+    if (this.broken) {
+      this.local.setLastBoard(id);
+      return;
+    }
     void this.put(LAST_KEY, id);
   }
 
@@ -298,6 +318,7 @@ export class SqliteAdapter implements DocStorage {
     }
     this.last = null;
     this.bytes = 0;
+    this.pos.clear();
     await this.local.clear();
   }
 }

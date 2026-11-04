@@ -1,6 +1,6 @@
 import { t } from '../strings';
-import { toast } from '../ui/toast';
-import { parseCommand, type AgentApi, type AgentCommand, type AgentHost } from './api';
+import { choice, toast } from '../ui/toast';
+import { parseCommand, URL_SAFE, type AgentApi, type AgentCommand, type AgentHost } from './api';
 import { fail } from './validate';
 
 // Decoded ?do= payloads may not exceed this.
@@ -33,13 +33,28 @@ export function parseCommandUrl(raw: string): AgentCommand[] {
 }
 
 // One-shot command links: plan everything first, then run inside one
-// store group so a bad command leaves the board untouched.
+// store group so a bad command leaves the board untouched. Links can
+// come from anywhere, so a list containing mutations asks first; read
+// and navigation commands run straight away.
 export async function runCommandUrl(app: AgentHost, api: AgentApi, raw: string) {
+  let commands: AgentCommand[];
   try {
-    const commands = parseCommandUrl(raw);
-    await api.runCommands(commands);
-    void app.flush();
+    commands = parseCommandUrl(raw);
   } catch {
     toast(t('agentCmdFailed'));
+    return;
   }
+  const run = async () => {
+    try {
+      await api.runCommands(commands);
+      void app.flush();
+    } catch {
+      toast(t('agentCmdFailed'));
+    }
+  };
+  if (commands.some((c) => !URL_SAFE.has(c.method))) {
+    choice(t('agentCmdAsk'), t('agentCmdRun'), () => void run(), undefined, 0);
+    return;
+  }
+  await run();
 }

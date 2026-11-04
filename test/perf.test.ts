@@ -18,11 +18,16 @@ function perfDoc(n: number): Doc {
 }
 
 // update() must be O(card), never O(doc): the method bodies below may
-// not scan doc.elements and may not read layout (innerText).
+// not scan doc.elements/doc.labels and may not read layout. The regex
+// anchors on `update(el` so interface signatures (note.ts) and helper
+// methods like comment.ts's `update(items)` cannot match instead.
+const UPDATE_RE = /^ {2}update\(el[^)]*\)\s*(?::[^\n{]+)?\{/m;
+// Files in src/cards that hold no card view; anything else must match.
+const NON_CARD = new Set(['boardindex.ts', 'factory.ts', 'formula.ts', 'layer.ts', 'measure.ts']);
 function updateBody(src: string): string {
-  const i = src.indexOf('\n  update(');
-  if (i < 0) return '';
-  const start = src.indexOf('{', i);
+  const m = UPDATE_RE.exec(src);
+  if (!m) return '';
+  const start = src.indexOf('{', m.index);
   let depth = 0;
   for (let j = start; j < src.length; j++) {
     if (src[j] === '{') depth++;
@@ -39,12 +44,15 @@ describe('card update() structural invariants', () => {
   for (const f of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
     it(`${f} keeps update() off doc scans and layout reads`, () => {
       const body = updateBody(readFileSync(join(dir, f), 'utf8'));
-      if (!body) return;
-      expect(body).not.toContain('Object.values(');
+      if (NON_CARD.has(f)) return;
+      expect(body, `${f} declares no update(el...) method`).not.toBe('');
+      expect(body).not.toMatch(/\bObject\.(values|keys|entries)\(/);
       // The anti-pattern is a read-compare per row per render; innerText
       // reads inside event closures built by update() are fine.
       expect(body).not.toMatch(/\.innerText\s*(===|!==)/);
       expect(body).not.toMatch(/\.getBoundingClientRect\(/);
+      expect(body).not.toMatch(/\.offset(Width|Height|Top|Left)\b/);
+      expect(body).not.toMatch(/\bdoc\.(elements|labels)\b/);
     });
   }
 });

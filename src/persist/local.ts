@@ -13,6 +13,7 @@ export function migrateStorageKeys() {
       ['planboard:v1', KEY],
       ['planboard:last-board', LAST_BOARD],
       ['planboard:lang', 'scatterboard:lang'],
+      ['planboard:theme', 'scatterboard:theme'],
     ]) {
       const v = localStorage.getItem(oldKey);
       if (v === null) continue;
@@ -82,7 +83,17 @@ export class LocalStorageAdapter implements StorageAdapter {
     const del: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k === KEY || k === LAST_BOARD || k?.startsWith(POS_PREFIX)) del.push(k);
+      if (
+        k === KEY ||
+        k === LAST_BOARD ||
+        k?.startsWith(POS_PREFIX) ||
+        // The pref mirrors must go too: after a reset, boot resolves
+        // lang/theme from the browser/OS, not a stale explicit choice.
+        k === 'scatterboard:lang' ||
+        k === 'scatterboard:theme'
+      ) {
+        del.push(k);
+      }
     }
     for (const k of del) localStorage.removeItem(k);
   }

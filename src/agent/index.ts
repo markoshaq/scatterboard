@@ -1,4 +1,6 @@
 import type { App } from '../app';
+import { t } from '../strings';
+import { choice } from '../ui/toast';
 import { createAgentApi, type AgentApi } from './api';
 import { runCommandUrl } from './cmdurl';
 import { startClient, type AgentClient } from './client';
@@ -32,13 +34,23 @@ export function init(app: App) {
 
   if (doRaw !== null) void runCommandUrl(app, api, doRaw);
 
-  if (agent !== null || app.prefs.agent) {
-    if (!client) {
-      const opts: { token?: string; port?: number } = {};
-      if (agent) opts.token = agent;
-      if (port && Number(port)) opts.port = Number(port);
-      client = startClient(app, api, opts);
-    }
+  const start = () => {
+    if (client) return;
+    const opts: { token?: string; port?: number } = {};
+    if (agent) opts.token = agent;
+    // An out-of-range port throws inside the WebSocket constructor;
+    // ignore anything that is not a valid port.
+    const p = Number(port);
+    if (Number.isInteger(p) && p >= 1 && p <= 65535) opts.port = p;
+    client = startClient(app, api, opts);
+  };
+
+  if (agent !== null || port !== null) {
+    // URL-driven pairing asks first: the socket can drive the board and
+    // a welcome persists credentials, same gate as mutating ?do= lists.
+    choice(t('agentPairAsk'), t('agentPairConnect'), start, undefined, 0);
+  } else if (app.prefs.agent) {
+    start();
   }
 
   if (doRaw !== null || agent !== null || port !== null) {

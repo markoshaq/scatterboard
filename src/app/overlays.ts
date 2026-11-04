@@ -57,9 +57,10 @@ export class Overlays {
 
   // --- label pills ---
 
-  private syncLabelPills(lines: SceneLine[]) {
+  // all=true skips the midpoint cull for the export snapshot.
+  syncLabelPills(lines: SceneLine[], all = false) {
     const seen = new Set<ID>();
-    const view = this.a.vp.viewRect(0);
+    const view = all ? null : this.a.vp.viewRect(0);
     for (const l of lines) {
       const c = lineDoc(l.el);
       if (!c) continue;
@@ -69,7 +70,7 @@ export class Overlays {
       // The pill sits at the line midpoint: an offscreen midpoint means
       // an offscreen pill, so unmount it like a culled card. An
       // in-flight edit stays mounted even when scrolled out.
-      if (!editing && !pointInRect(m.x, m.y, view)) continue;
+      if (!editing && view && !pointInRect(m.x, m.y, view)) continue;
       seen.add(l.el.id);
       let pill = this.labelPills.get(l.el.id);
       if (!pill) {
@@ -86,6 +87,12 @@ export class Overlays {
         pill.addEventListener('dblclick', (e) => {
           e.stopPropagation();
           this.startLabelEdit(lid);
+        });
+        // The commit reads dataset.text, not innerText: typing writes
+        // it here so the sync path never does a layout read.
+        pill.addEventListener('input', (e) => {
+          const p = e.currentTarget as HTMLElement;
+          p.dataset.text = p.innerText;
         });
         pill.addEventListener('keydown', (e) => {
           e.stopPropagation();
@@ -106,6 +113,7 @@ export class Overlays {
       pill.classList.toggle('covered', !editing && this.coveredByCard(m.x, m.y));
       if (editing) {
         if (pill.contentEditable !== 'true') {
+          pill.dataset.text = c.label;
           pill.contentEditable = 'true';
           pill.classList.add('editing');
           pill.focus();
@@ -152,9 +160,12 @@ export class Overlays {
     this.editingLabelId = null;
     if (!id || !pill || !el || this.a.lockedView()) return;
     const c = lineDoc(el);
-    const text = pill.innerText.replace(/\n/g, ' ').trim();
+    const text = (pill.dataset.text ?? '').replace(/\n/g, ' ').trim();
     if (c && c.label !== text) {
-      this.a.store.dispatch({ type: 'element.patch', id, patch: { content: { line: { ...c, label: text } } } });
+      const content = { line: { ...c, label: text } };
+      // Blur and pill unmount reach this from inside the overlay sync
+      // pass: defer the patch so dispatch never re-enters render.
+      queueMicrotask(() => this.a.store.dispatch({ type: 'element.patch', id, patch: { content } }));
     }
     this.a.requestRender();
   }
@@ -232,15 +243,7 @@ export class Overlays {
   // --- comment pins ---
 
   // all=true skips the viewport cull for the export snapshot.
-  pinItems(layer = this.a.layer, all = false): {
-    id: ID;
-    rect: Rect;
-    count: number;
-    selected: boolean;
-    unread: number;
-    color: string | undefined;
-    seat: HTMLElement | null;
-  }[] {
+  pinItems(layer = this.a.layer, all = false) {
     const out: {
       id: ID;
       rect: Rect;

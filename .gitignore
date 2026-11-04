@@ -1,6 +1,14 @@
 node_modules/
 dist/
+coverage/
 *.local
+*.log
+npm-debug.log*
 .DS_Store
+Thumbs.db
+Desktop.ini
 .env
 .env.*
+
+# machine-local MCP registration (written by scatterboard-mcp install / agent:setup)
+config.local.json

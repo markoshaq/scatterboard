@@ -129,8 +129,17 @@ export async function settleImages(root: HTMLElement, budgetMs = 3000) {
 function loadImg(url: string): Promise<HTMLImageElement> {
   return new Promise((res, rej) => {
     const img = new Image();
-    img.onload = () => res(img);
-    img.onerror = () => rej(new Error('svg image failed'));
+    // A hung svg decode never fires onload/onerror; bound the wait so
+    // export degrades to the canvas fallback instead of wedging.
+    const timer = setTimeout(() => rej(new Error('svg image timed out')), 5000);
+    img.onload = () => {
+      clearTimeout(timer);
+      res(img);
+    };
+    img.onerror = () => {
+      clearTimeout(timer);
+      rej(new Error('svg image failed'));
+    };
     img.src = url;
   });
 }
@@ -192,7 +201,7 @@ function drawMarker(ctx: CanvasRenderingContext2D, x: number, y: number, ang: nu
 function drawSceneLine(ctx: CanvasRenderingContext2D, l: SceneLine) {
   const c = lineDoc(l.el);
   if (!c) return;
-  const w = LINE_W[c.weight];
+  const w = LINE_W[c.weight ?? 'medium'];
   const ink = l.el.color ?? canvasColors().ink;
   ctx.strokeStyle = ink;
   ctx.lineWidth = w;
@@ -207,7 +216,13 @@ function drawSceneLine(ctx: CanvasRenderingContext2D, l: SceneLine) {
   drawMarker(ctx, l.x2, l.y2, Math.atan2(l.y2 - l.y1, l.x2 - l.x1), c.toMarker, w);
 }
 
-// Fallback label pill: small white lozenge behind the label text at the
+// Default card surface for the canvas fallback: the --card css var the
+// DOM cards use, so the degraded pass follows the theme.
+function cardSurface(): string {
+  return getComputedStyle(document.body).getPropertyValue('--card').trim() || '#fff';
+}
+
+// Fallback label pill: small lozenge behind the label text at the
 // line midpoint.
 function drawLineLabel(ctx: CanvasRenderingContext2D, l: SceneLine) {
   const label = lineDoc(l.el)?.label;
@@ -215,14 +230,14 @@ function drawLineLabel(ctx: CanvasRenderingContext2D, l: SceneLine) {
   const m = midpoint(l);
   ctx.font = '12px -apple-system, sans-serif';
   const tw = ctx.measureText(label).width;
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = cardSurface();
   ctx.beginPath();
   ctx.roundRect(m.x - tw / 2 - 8, m.y - 11, tw + 16, 22, 11);
   ctx.fill();
   ctx.strokeStyle = 'rgba(30,30,20,0.12)';
   ctx.lineWidth = 1;
   ctx.stroke();
-  ctx.fillStyle = '#4a4a40';
+  ctx.fillStyle = canvasColors().ink;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(label, m.x, m.y);
@@ -232,7 +247,7 @@ function drawLineLabel(ctx: CanvasRenderingContext2D, l: SceneLine) {
 
 function drawFallbackCard(ctx: CanvasRenderingContext2D, card: FallbackCard) {
   const { rect: r, label, color } = card;
-  ctx.fillStyle = cardBg(color) || '#fff';
+  ctx.fillStyle = cardBg(color) || cardSurface();
   ctx.beginPath();
   ctx.roundRect(r.x, r.y, r.w, r.h, 8);
   ctx.fill();
@@ -240,7 +255,7 @@ function drawFallbackCard(ctx: CanvasRenderingContext2D, card: FallbackCard) {
   ctx.lineWidth = 1;
   ctx.stroke();
   if (!label) return;
-  ctx.fillStyle = '#4a4a40';
+  ctx.fillStyle = canvasColors().ink;
   ctx.font = '13px -apple-system, sans-serif';
   ctx.textBaseline = 'top';
   const words = label.split(/\s+/);
@@ -277,14 +292,14 @@ function drawStrokes(ctx: CanvasRenderingContext2D, strokes: Stroke[], ox: numbe
 }
 
 function drawPin(ctx: CanvasRenderingContext2D, r: Rect) {
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = cardSurface();
   ctx.beginPath();
   ctx.arc(r.x + r.w / 2, r.y + r.h / 2, 12, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = 'rgba(30,30,20,0.15)';
   ctx.lineWidth = 1;
   ctx.stroke();
-  ctx.fillStyle = '#55554a';
+  ctx.fillStyle = canvasColors().ink;
   ctx.font = '11px -apple-system, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';

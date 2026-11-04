@@ -645,3 +645,193 @@ export function blobRefOf(el: Element): ID | null {
   if ('file' in c) return c.file.blobRef;
   return null;
 }
+
+// Schemes a link/embed card may navigate or unfurl to; anything else
+// (javascript:, data:, file:) is refused at ingest.
+export function isSafeUrl(url: string): boolean {
+  try {
+    const p = new URL(url).protocol;
+    return p === 'http:' || p === 'https:' || p === 'mailto:';
+  } catch {
+    return false;
+  }
+}
+
+// Element type -> its single content key.
+export const CONTENT_KEY: Record<ElementType, string> = {
+  note: 'note',
+  column: 'column',
+  board: 'boardRef',
+  todo: 'todo',
+  heading: 'heading',
+  swatch: 'swatch',
+  line: 'line',
+  comment: 'comment',
+  link: 'link',
+  embed: 'embed',
+  image: 'image',
+  file: 'file',
+  document: 'document',
+  sketch: 'sketch',
+  annotation: 'annotation',
+  table: 'table',
+};
+
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const isStr = (v: unknown): v is string => typeof v === 'string';
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
+const optStr = (v: unknown) => v === undefined || isStr(v);
+const optNum = (v: unknown) => v === undefined || isNum(v);
+const optBool = (v: unknown) => v === undefined || isBool(v);
+
+function saneStroke(s: unknown): boolean {
+  if (!isObj(s) || !Array.isArray(s.pts) || !isStr(s.color) || !isNum(s.size)) return false;
+  if (!s.pts.every((p) => Array.isArray(p) && isNum(p[0]) && isNum(p[1]))) return false;
+  if (s.widths !== undefined && (!Array.isArray(s.widths) || s.widths.length !== s.pts.length || !s.widths.every(isNum)))
+    return false;
+  return true;
+}
+
+const saneStrokes = (v: unknown): v is Stroke[] => Array.isArray(v) && v.every(saneStroke);
+
+function saneLineEnd(v: unknown): v is LineEnd {
+  return isObj(v) && isNum(v.x) && isNum(v.y) && optStr(v.el);
+}
+
+const LINE_MARKERS_SANE = new Set(['none', 'arrow', 'dot']);
+const LINE_WEIGHTS_SANE = new Set(['thin', 'medium', 'thick']);
+const CELL_TYPES_SANE = new Set(['auto', 'number', 'currency', 'percent', 'text', 'datetime', 'checkbox']);
+const ALIGNS_H_SANE = new Set(['left', 'center', 'right']);
+const ALIGNS_V_SANE = new Set(['top', 'middle', 'bottom']);
+
+// Structural check for raw content carried by dispatch and import
+// payloads: exactly one key matching the element type, and every
+// field the card views dereference present with the right shape. The
+// friendly create/patch props are validated field by field instead.
+export function saneContent(v: unknown, type: ElementType): v is TypeContent {
+  if (!isObj(v)) return false;
+  const keys = Object.keys(v);
+  const key = CONTENT_KEY[type];
+  if (keys.length !== 1 || keys[0] !== key) return false;
+  const c = v[key];
+  switch (key) {
+    case 'note':
+      return isObj(c) && isStr(c.text) && optStr(c.html);
+    case 'heading':
+      return isObj(c) && isStr(c.text) && (c.level === 1 || c.level === 2) && optStr(c.html);
+    case 'column':
+      return isObj(c) && isStr(c.title);
+    case 'boardRef':
+      return isStr(c);
+    case 'todo':
+      return (
+        isObj(c) &&
+        isStr(c.title) &&
+        isBool(c.showTitle) &&
+        Array.isArray(c.items) &&
+        c.items.every(
+          (it) =>
+            isObj(it) &&
+            isStr(it.id) &&
+            isStr(it.text) &&
+            isBool(it.done) &&
+            optNum(it.dueAt) &&
+            optBool(it.dueTime) &&
+            (it.assignee === undefined || it.assignee === 'self') &&
+            (it.reactions === undefined || (Array.isArray(it.reactions) && it.reactions.every(isStr))),
+        )
+      );
+    case 'swatch':
+      return isObj(c) && isStr(c.color) && isStr(c.caption) && isBool(c.showValue);
+    case 'line':
+      return (
+        isObj(c) &&
+        saneLineEnd(c.from) &&
+        saneLineEnd(c.to) &&
+        (c.fromMarker === undefined || LINE_MARKERS_SANE.has(c.fromMarker as string)) &&
+        (c.toMarker === undefined || LINE_MARKERS_SANE.has(c.toMarker as string)) &&
+        optBool(c.dashed) &&
+        (c.weight === undefined || LINE_WEIGHTS_SANE.has(c.weight as string)) &&
+        optStr(c.label)
+      );
+    case 'comment':
+      return (
+        isObj(c) &&
+        Array.isArray(c.items) &&
+        c.items.every((it) => isObj(it) && isStr(it.id) && isStr(it.text) && isNum(it.createdAt) && optNum(it.editedAt))
+      );
+    case 'link':
+      return (
+        isObj(c) &&
+        isStr(c.url) &&
+        (!c.url || isSafeUrl(c.url)) &&
+        isStr(c.title) &&
+        isStr(c.caption) &&
+        isBool(c.showPreview) &&
+        optStr(c.desc) &&
+        optStr(c.image)
+      );
+    case 'embed':
+      return (
+        isObj(c) &&
+        (c.kind === 'audio' || c.kind === 'map' || c.kind === 'video') &&
+        isStr(c.url) &&
+        (!c.url || isSafeUrl(c.url)) &&
+        isStr(c.title) &&
+        isStr(c.caption) &&
+        isBool(c.showPreview)
+      );
+    case 'image':
+      return (
+        isObj(c) &&
+        isStr(c.blobRef) &&
+        isStr(c.name) &&
+        isStr(c.caption) &&
+        isNum(c.aspect) &&
+        optStr(c.source) &&
+        optNum(c.natW) &&
+        optNum(c.natH) &&
+        (c.strokes === undefined || saneStrokes(c.strokes))
+      );
+    case 'file':
+      return isObj(c) && isStr(c.blobRef) && isStr(c.name) && isNum(c.size) && isStr(c.mime) && isStr(c.ext);
+    case 'document':
+      return (
+        isObj(c) &&
+        isStr(c.title) &&
+        isStr(c.text) &&
+        optStr(c.html) &&
+        (c.displayMode === 'icon' || c.displayMode === 'detail') &&
+        isStr(c.caption)
+      );
+    case 'sketch':
+    case 'annotation':
+      return isObj(c) && saneStrokes(c.strokes);
+    case 'table': {
+      if (!isObj(c) || !isStr(c.title) || !isStr(c.caption) || !Array.isArray(c.cells)) return false;
+      if (c.widths !== undefined && (!Array.isArray(c.widths) || !c.widths.every(isNum))) return false;
+      // cells must be a non-empty rectangular grid: a ragged import
+      // would silently drop or pad columns at render.
+      const cols = Array.isArray(c.cells[0]) ? c.cells[0].length : 0;
+      if (!cols) return false;
+      return c.cells.every(
+        (row) =>
+          Array.isArray(row) &&
+          row.length === cols &&
+          row.every(
+            (cell) =>
+              isObj(cell) &&
+              isStr(cell.text) &&
+              optStr(cell.html) &&
+              (cell.type === undefined || CELL_TYPES_SANE.has(cell.type as string)) &&
+              (cell.alignH === undefined || ALIGNS_H_SANE.has(cell.alignH as string)) &&
+              (cell.alignV === undefined || ALIGNS_V_SANE.has(cell.alignV as string)) &&
+              optStr(cell.color),
+          ),
+      );
+    }
+    default:
+      return false;
+  }
+}

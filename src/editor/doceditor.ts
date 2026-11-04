@@ -1,5 +1,5 @@
 import type { Board, DocumentDoc, Element, ID } from '../state/schema';
-import { documentDoc, wordCount } from '../state/schema';
+import { wordCount } from '../state/schema';
 import { t, wordsText } from '../strings';
 import { ICONS } from '../ui/icons';
 import {
@@ -27,12 +27,16 @@ import {
 } from '../ui/richtext';
 import { indentList } from '../ui/richtext';
 import { downloadTextFile } from '../draw/strokes';
+import { slugFileName } from '../export/download';
 import { htmlToMarkdown, htmlToWordDoc, plainTextOf } from './export';
 import { openScrim, type EditorScrim } from './shell';
 
 interface DocEditorCtx {
   boards(): Board[];
   boardUrl(id: ID): string;
+  // Current document content: each patch swaps the element object, so
+  // the mount-time reference goes stale.
+  doc(): DocumentDoc | null;
   // Live-commit a document content patch; the caller wraps the whole
   // session in one undo group.
   patch(doc: DocumentDoc): void;
@@ -52,8 +56,8 @@ function esc(s: string): string {
 
 // Document editor at #/e/<id>: editable title, single rich-text surface,
 // floating tool strip, word count and doc-local export in the header.
-export function openDocumentEditor(el: Element, ctx: DocEditorCtx): EditorHandle {
-  const scrim: EditorScrim = openScrim('ed-docwrap');
+export function openDocumentEditor(_el: Element, ctx: DocEditorCtx): EditorHandle {
+  const scrim: EditorScrim = openScrim('');
   const card = document.createElement('div');
   card.className = 'ed-doc';
   const head = document.createElement('div');
@@ -71,7 +75,7 @@ export function openDocumentEditor(el: Element, ctx: DocEditorCtx): EditorHandle
   exportBtn.innerHTML = `${ICONS.export}<span>${t('exportAs')}</span>`;
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
-  closeBtn.className = 'ed-hbtn ed-close';
+  closeBtn.className = 'ed-hbtn';
   closeBtn.innerHTML = ICONS.close;
   meta.append(words, exportBtn, closeBtn);
   head.append(titleEl, meta);
@@ -83,7 +87,7 @@ export function openDocumentEditor(el: Element, ctx: DocEditorCtx): EditorHandle
   tools.className = 'ed-tools';
   scrim.node.append(card, tools);
 
-  const content = () => documentDoc(el) ?? { title: '', text: '', displayMode: 'icon' as const, caption: '' };
+  const content = () => ctx.doc() ?? { title: '', text: '', displayMode: 'icon' as const, caption: '' };
 
   const start = content();
   if (start.html !== undefined) body.innerHTML = start.html;
@@ -99,7 +103,7 @@ export function openDocumentEditor(el: Element, ctx: DocEditorCtx): EditorHandle
     ctx.patch({ ...c, text, html });
     words.textContent = wordsText(wordCount(text));
   };
-  words.textContent = wordsText(wordCount(start.text));
+  words.textContent = wordsText(wordCount(body.innerText.replace(/\n$/, '')));
 
   body.addEventListener('input', () => {
     if (isBlankSurface(body)) body.innerHTML = '';
@@ -155,15 +159,38 @@ export function openDocumentEditor(el: Element, ctx: DocEditorCtx): EditorHandle
       sel.selectAllChildren(body);
       sel.collapseToEnd();
     }
-    const hr = document.createElement('hr');
-    const p = document.createElement('p');
-    p.appendChild(document.createElement('br'));
     const r = sel.getRangeAt(0);
     r.deleteContents();
-    r.insertNode(hr);
-    hr.after(p);
+    // Block ancestor of the caret: an <hr> must sit between blocks,
+    // not inside one.
+    let block: Node | null = r.startContainer;
+    if (block === body) block = null;
+    while (block && block.parentNode !== body) block = block.parentNode;
+    const hr = document.createElement('hr');
+    let caret: HTMLElement;
+    if (block instanceof HTMLElement) {
+      // Split the block at the caret: the tail moves into a sibling
+      // clone after the <hr>, the head keeps its place.
+      r.setEndAfter(block);
+      const tail = r.extractContents().firstChild;
+      block.after(hr);
+      if (tail instanceof HTMLElement && tail.textContent !== '') {
+        hr.after(tail);
+        caret = tail;
+      } else {
+        caret = document.createElement('p');
+        caret.appendChild(document.createElement('br'));
+        hr.after(caret);
+      }
+    } else {
+      // Caret already at body level: inserting here lands between blocks.
+      caret = document.createElement('p');
+      caret.appendChild(document.createElement('br'));
+      r.insertNode(hr);
+      hr.after(caret);
+    }
     const nr = document.createRange();
-    nr.setStart(p, 0);
+    nr.setStart(caret, 0);
     nr.collapse(true);
     sel.removeAllRanges();
     sel.addRange(nr);
@@ -256,18 +283,19 @@ export function openDocumentEditor(el: Element, ctx: DocEditorCtx): EditorHandle
 
   exportBtn.addEventListener('click', () => {
     const name = () => (content().title || t('docUntitled')).trim();
+    const file = () => slugFileName(name(), 'document');
     openMenuPopup(exportBtn, [
       {
         label: t('exWord'),
-        onPick: () => downloadTextFile(`${name()}.doc`, htmlToWordDoc(name(), body.innerHTML), 'application/msword'),
+        onPick: () => downloadTextFile(`${file()}.doc`, htmlToWordDoc(name(), body.innerHTML), 'application/msword'),
       },
       {
         label: t('exportMarkdown'),
-        onPick: () => downloadTextFile(`${name()}.md`, htmlToMarkdown(body), 'text/markdown'),
+        onPick: () => downloadTextFile(`${file()}.md`, htmlToMarkdown(body), 'text/markdown'),
       },
       {
         label: t('exportPlain'),
-        onPick: () => downloadTextFile(`${name()}.txt`, plainTextOf(body)),
+        onPick: () => downloadTextFile(`${file()}.txt`, plainTextOf(body)),
       },
     ]);
   });

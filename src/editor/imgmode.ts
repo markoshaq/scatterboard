@@ -4,8 +4,9 @@ export type ImgMode = 'draw' | 'edit' | 'bg';
 // ?editing-background. A bare #/e/<id> on an image opens Edit.
 export function imgModeFromHash(): ImgMode {
   const q = location.hash.split('?')[1] ?? '';
-  if (q.includes('editing-drawing')) return 'draw';
-  if (q.includes('editing-background')) return 'bg';
+  const params = new URLSearchParams(q);
+  if (params.has('editing-drawing')) return 'draw';
+  if (params.has('editing-background')) return 'bg';
   return 'edit';
 }
 

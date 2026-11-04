@@ -39,11 +39,13 @@ export class Panels {
     if (this.a.lockedView()) return;
     const els = this.a.movableCards().filter((e) => e.parentId === null);
     if (!els.length) return;
+    this.a.editing.endEdit();
     this.a.store.dispatch({
       type: 'batch',
       actions: els.map((e) => ({ type: 'element.patch' as const, id: e.id, patch: { parentId: UNSORTED } })),
     });
     for (const e of els) this.a.sel.delete(e.id);
+    this.a.filterIds.clear();
     this.a.requestRender();
   }
 
@@ -58,7 +60,9 @@ export class Panels {
     this.lastPanelSig = '';
     this.panel = handle;
     this.panelKind = kind;
+    const prev = handle.onClose;
     handle.onClose = () => {
+      prev?.();
       if (this.panel === handle) {
         this.panel = null;
         this.panelKind = null;
@@ -143,12 +147,7 @@ export class Panels {
   // The board tree in panel order: root boards (projects) in createdAt
   // order, each followed by its descendants one depth step deeper.
   boardsList(): BoardRow[] {
-    const cards = new Map<ID, number>();
-    for (const e of Object.values(this.a.doc.elements)) {
-      if (e.parentId === null && e.type !== 'line' && e.anchorId === undefined) {
-        cards.set(e.boardId, (cards.get(e.boardId) ?? 0) + 1);
-      }
-    }
+    const cards = this.a.layer.canvasCounts();
     const kids = new Map<ID | null, Board[]>();
     for (const b of Object.values(this.a.doc.boards)) {
       const list = kids.get(b.parentId) ?? [];
@@ -226,13 +225,18 @@ export class Panels {
         p = this.a.doc.boards[p]?.parentId ?? null;
       }
       target = p ?? this.fallbackBoard(deadBoards);
+      // A parent-cycle exit or a missing 'home' fallback can leave a
+      // dead or dangling id here.
+      if (target && (deadBoards.has(target) || !this.a.doc.boards[target])) target = null;
     }
     this.a.store.dispatch({ type: 'batch', actions });
     for (const id of deleting) this.a.sel.delete(id);
     if (target) this.a.openBoard(target);
-    choice(t('boardDeleted').replace('{name}', board.title || t('untitled')), t('drawUndo'), () =>
-      this.a.store.undo(),
-    );
+    // Undo pops whatever is newest in history, which may no longer be
+    // this delete if the user kept working while the toast sat open.
+    choice(t('boardDeleted').replace('{name}', board.title || t('untitled')), t('drawUndo'), () => {
+      if (!this.a.lockedView()) this.a.store.undo();
+    });
   }
 
 
@@ -263,6 +267,7 @@ export class Panels {
 
   // Root boards are projects: no board card lands on the current canvas.
   placeProject(tpl: import('../state/schema').Template | null) {
+    if (this.a.lockedView()) return;
     let boardId: ID;
     if (tpl) {
       const { actions, boardId: bid } = instantiateActions(this.a.doc, tpl, null, { x: 0, y: 0 });
@@ -340,6 +345,7 @@ export class Panels {
 
 
   emptyTrash() {
+    if (this.a.lockedView()) return;
     const ids = Object.keys(this.a.doc.trash);
     if (!ids.length) return;
     // Blobs are NOT released here: the trash.remove batch is undoable,
@@ -350,6 +356,7 @@ export class Panels {
 
 
   restoreTrash(id: ID, pt: { x: number; y: number }) {
+    if (this.a.lockedView()) return;
     const entry = this.a.doc.trash[id];
     if (!entry) return;
     const boardId = this.a.boardId ?? entry.el.boardId;
@@ -369,7 +376,9 @@ export class Panels {
     }
     el.labels = el.labels.filter((l) => this.a.doc.labels[l]?.boardId === boardId);
     if (boardId !== entry.el.boardId) delete el.syncGroup;
-    this.a.stampBoardColor(el);
+    // Keep the card's own colour; only inherit the board accent on a
+    // card that has none.
+    if (el.color === undefined) this.a.stampBoardColor(el);
     this.a.store.dispatch({
       type: 'batch',
       actions: [
@@ -440,7 +449,7 @@ export class Panels {
     let sig = '';
     if (this.panelKind === 'unsorted') {
       const items = this.unsortedItems();
-      sig = `u:${items.length}:${items.reduce((s, e) => s + e.modifiedAt, 0)}`;
+      sig = `u:${items.map((e) => `${e.id}:${e.modifiedAt}`).join(',')}`;
     } else if (this.panelKind === 'trash') {
       let n = 0;
       let m = 0;
@@ -475,6 +484,7 @@ export class Panels {
       for (const el of items) {
         body.appendChild(
           this.draggableRow(el, undefined, (pt) => {
+            if (this.a.lockedView()) return;
             this.a.store.dispatch({
               type: 'element.patch',
               id: el.id,
@@ -514,6 +524,7 @@ export class Panels {
     tpl: import('../state/schema').Template | null,
     parentId: ID | null = null,
   ) {
+    if (this.a.lockedView()) return;
     if (tpl) {
       const { actions, cardId } = instantiateActions(this.a.doc, tpl, hostId, pt);
       if (parentId && cardId) actions.push({ type: 'element.patch', id: cardId, patch: { parentId } });
@@ -537,6 +548,7 @@ export class Panels {
 
 
   saveAsTemplate(ref: ID) {
+    if (this.a.lockedView()) return;
     const tpl = snapshotTemplate(this.a.doc, ref, this.a.doc.boards[ref]?.title ?? '');
     if (!tpl) return;
     this.a.store.dispatch({ type: 'template.create', tpl });
@@ -547,6 +559,7 @@ export class Panels {
   // A second board card pointing at the same board, placed beside the
   // original like a duplicate.
   createShortcut(el: Element) {
+    if (this.a.lockedView()) return;
     const ref = boardRefOf(el);
     if (!ref || !this.a.boardId) return;
     const card = createBoardCard(this.a.doc, this.a.boardId, ref, el.x + 24, el.y + 24);
@@ -557,6 +570,7 @@ export class Panels {
 
 
   setBoardIcon(boardId: ID, icon: string | undefined) {
+    if (this.a.lockedView()) return;
     // The old icon blob stays: undo restores the 'b:' ref, and the
     // boot-time orphan purge reclaims it once it is truly dead.
     this.a.store.dispatch({ type: 'board.patch', id: boardId, patch: { icon } });
@@ -574,6 +588,7 @@ export class Panels {
 
 
   uploadBoardIcon(boardId: ID) {
+    if (this.a.lockedView()) return;
     const input = document.createElement('input');
     input.type = 'file';
     input.name = 'board-icon-upload';

@@ -42,7 +42,9 @@ export function searchBoard(doc: Doc, boardId: ID, query: string): SearchHit[] {
   if (!q) return [];
   const hits: SearchHit[] = [];
   for (const el of Object.values(doc.elements)) {
-    if (el.boardId !== boardId || el.parentId === UNSORTED) continue;
+    // Anchored comments render as pins: jumping to one would select an
+    // invisible element.
+    if (el.boardId !== boardId || el.parentId === UNSORTED || el.anchorId !== undefined) continue;
     const texts: (string | undefined)[] = [];
     const c = el.content;
     if ('note' in c) texts.push(c.note.text);
@@ -132,10 +134,17 @@ export function openSearchPanel(opts: {
   results.className = 'sp-results';
   handle.body.append(input, sort, results);
 
+  // Cache the raw hits per query: a sort flip only re-orders, it does
+  // not re-run the scan.
+  let cacheQ = '';
+  let cacheHits: SearchHit[] = [];
+
   const render = () => {
     results.textContent = '';
     const q = input.value.trim();
     if (!q) {
+      cacheQ = '';
+      cacheHits = [];
       const recents = opts.recents();
       if (!recents.length) return;
       const head = document.createElement('div');
@@ -157,7 +166,11 @@ export function openSearchPanel(opts: {
       }
       return;
     }
-    const hits = sortHits(opts.search(q), sort.value as SearchSort, opts.recentIds());
+    if (q !== cacheQ) {
+      cacheQ = q;
+      cacheHits = opts.search(q);
+    }
+    const hits = sortHits(cacheHits, sort.value as SearchSort, opts.recentIds());
     if (!hits.length) {
       results.appendChild(panelEmpty(t('searchEmpty')));
       return;
@@ -178,6 +191,11 @@ export function openSearchPanel(opts: {
   // keystroke; sort flips re-render instantly against cached hits.
   const DEBOUNCE_MS = 120;
   let timer = 0;
+  const innerClose = handle.close;
+  handle.close = () => {
+    window.clearTimeout(timer);
+    innerClose();
+  };
   input.addEventListener('input', () => {
     window.clearTimeout(timer);
     timer = window.setTimeout(render, DEBOUNCE_MS);

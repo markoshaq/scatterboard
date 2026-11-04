@@ -15,6 +15,12 @@ export function dragGhost(
   let ghost: HTMLElement | null = null;
   let moved = false;
   const move = (ev: PointerEvent) => {
+    // The pointer may leave the window before releasing: no pointerup,
+    // just a move with no buttons. Treat it as a cancel.
+    if (ev.buttons === 0) {
+      cancel();
+      return;
+    }
     if (!ghost) {
       if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < DRAG_SLOP) return;
       ghost = makeGhost();

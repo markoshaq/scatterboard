@@ -42,6 +42,7 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
     b.className = 'im-chip';
     b.textContent = label;
     b.addEventListener('click', () => {
+      if (m === cur) return;
       if (cur === 'draw') commitDraw();
       ctx.nav(m);
     });
@@ -113,8 +114,8 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
 
   // Display scale: fit the natural-size stage into the editor area.
   function fitScale(): number {
-    const maxW = Math.min(880, innerWidth - 240);
-    const maxH = innerHeight - 220;
+    const maxW = Math.max(1, Math.min(880, innerWidth - 240));
+    const maxH = Math.max(1, innerHeight - 220);
     return Math.min(2, Math.min(maxW / natW, maxH / natH));
   }
 
@@ -174,6 +175,7 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
       toast(t('imageMissing'));
       return;
     }
+    if (closed) return;
     const next: ImageDoc = { ...c, blobRef: ref, aspect: out.width / out.height, natW: out.width, natH: out.height };
     if (!keepStrokes) delete next.strokes;
     ctx.patch(next);
@@ -255,7 +257,10 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
     card.appendChild(wrap);
 
     function render() {
-      const s = Math.min(2, Math.min(Math.min(880, innerWidth - 240) / stage.width, (innerHeight - 220) / stage.height));
+      const s = Math.min(
+        2,
+        Math.min(Math.max(1, Math.min(880, innerWidth - 240)) / stage.width, Math.max(1, innerHeight - 220) / stage.height),
+      );
       cv.width = stage.width;
       cv.height = stage.height;
       cv.style.width = `${stage.width * s}px`;
@@ -362,7 +367,6 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
 
     let cutout: HTMLCanvasElement | null = null;
     let on = false;
-    let busy = false;
     const bar = mkBar();
     const sw = document.createElement('button');
     sw.type = 'button';
@@ -373,14 +377,12 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
     lab.textContent = t('imRemoveBg');
     sw.append(track, lab);
     sw.addEventListener('click', () => {
-      if (busy || !bmp) return;
+      if (!bmp) return;
       if (!cutout) {
-        busy = true;
         cutout = removeBackground(bmp);
         outCv.width = cutout.width;
         outCv.height = cutout.height;
         outCv.getContext('2d')!.drawImage(cutout, 0, 0);
-        busy = false;
       }
       on = !on;
       sw.classList.toggle('on', on);
@@ -400,9 +402,10 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
     return () => {};
   }
 
-  // DrawPad owns keys in draw mode; edit/bg Esc exits like Cancel.
+  // DrawPad owns keys in draw mode; edit/bg Esc exits like Cancel. A
+  // null pad (failed or pending blob load) means Esc exits here.
   const onKey = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape' || cur === 'draw') return;
+    if (e.key !== 'Escape' || (cur === 'draw' && pad)) return;
     if (document.querySelector('.tool-pop')) return;
     e.preventDefault();
     e.stopPropagation();

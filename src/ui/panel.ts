@@ -50,13 +50,14 @@ export function openPanel(opts: PanelOpts): PanelHandle {
   body.className = 'sp-body';
   node.appendChild(body);
 
+  let closed = false;
   const handle: PanelHandle = {
     node,
     body,
     close() {
-      if (node.classList.contains('out')) return;
+      if (closed) return;
+      closed = true;
       popDismiss(handle);
-      node.classList.add('out');
       node.remove();
       handle.onClose?.();
     },

@@ -1467,6 +1467,38 @@ matte: S(
   <line x1="18" x2="18" y1="2" y2="22" />
 `,
   ),
+kbd: S(
+    `
+<rect x="2" y="5" width="20" height="14" rx="2" />
+<path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12.5h.01M18 12.5h.01M9 12.5h6M8 16h8" />
+`,
+  ),
+lock: S(
+    `
+<rect x="4" y="10.5" width="16" height="10" rx="2" />
+<path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+`,
+  ),
+dots: S(
+    `
+<circle cx="5" cy="5" r="1.6" fill="currentColor" stroke="none" />
+<circle cx="12" cy="5" r="1.6" fill="currentColor" stroke="none" />
+<circle cx="19" cy="5" r="1.6" fill="currentColor" stroke="none" />
+<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none" />
+<circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+<circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none" />
+<circle cx="5" cy="19" r="1.6" fill="currentColor" stroke="none" />
+<circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none" />
+<circle cx="19" cy="19" r="1.6" fill="currentColor" stroke="none" />
+`,
+  ),
+ext: S(
+    `
+<path d="M14 4h6v6" />
+<path d="M20 4 11 13" />
+<path d="M19 13.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4.5" />
+`,
+  ),
 };
 
 export function typeIcon(type: string): string {

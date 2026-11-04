@@ -95,15 +95,19 @@ export class Topbar {
     this.redoBtn.addEventListener('click', events.onRedo);
     zoom.append(this.undoBtn, this.redoBtn);
     const out = document.createElement('button');
+    out.type = 'button';
     out.textContent = '\u2212';
     out.addEventListener('click', events.onZoomOut);
     this.zoomEl = document.createElement('button');
+    this.zoomEl.type = 'button';
     this.zoomEl.className = 'zoom-pct';
     this.zoomEl.addEventListener('click', events.onReset);
     const inBtn = document.createElement('button');
+    inBtn.type = 'button';
     inBtn.textContent = '+';
     inBtn.addEventListener('click', events.onZoomIn);
     const fit = document.createElement('button');
+    fit.type = 'button';
     fit.textContent = t('zoomFit');
     fit.addEventListener('click', events.onFit);
     zoom.append(out, this.zoomEl, inBtn, fit);
@@ -121,7 +125,7 @@ export class Topbar {
   }
 
   setCrumbs(crumbs: Crumb[]) {
-    const sig = crumbs.map((c) => `${c.id}|${c.title}|${c.icon ?? ''}`).join(';');
+    const sig = crumbs.map((c) => `${c.id}|${c.title.length}|${c.title}|${c.icon ?? ''}`).join(';');
     if (sig === this.crumbsSig) return;
     this.crumbsSig = sig;
     this.titleEl.textContent = '';
