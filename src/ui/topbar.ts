@@ -2,11 +2,13 @@ import type { ID } from '../state/schema';
 import { t } from '../strings';
 import { mountBoardIcon } from './boardicons';
 import { ICONS } from './icons';
+import { haspopup } from './popup';
+import { tip } from './tip';
 
 interface TopbarEvents {
   onZoomIn: () => void;
   onZoomOut: () => void;
-  onReset: () => void;
+  onZoomMenu: (anchor: HTMLElement) => void;
   onFit: () => void;
   onNavigate: (id: ID) => void;
   onUnsorted: () => void;
@@ -15,6 +17,7 @@ interface TopbarEvents {
   onExport: (anchor: HTMLElement) => void;
   onSettings: (anchor: HTMLElement) => void;
   onAgent: (anchor: HTMLElement) => void;
+  onMore: (anchor: HTMLElement) => void;
   onCrumbIcon: (id: ID, anchor: HTMLElement) => void;
   onCrumbBoards?: (id: ID, anchor: HTMLElement) => void;
   onUndo: () => void;
@@ -54,6 +57,11 @@ export class Topbar {
     this.unsortedEl = document.createElement('button');
     this.unsortedEl.type = 'button';
     this.unsortedEl.className = 'unsorted-chip';
+    const unsIc = document.createElement('span');
+    unsIc.className = 'unsorted-ic';
+    unsIc.innerHTML = ICONS.inbox;
+    this.unsortedEl.append(unsIc, document.createElement('span'));
+    haspopup(this.unsortedEl, 'dialog');
     this.unsortedEl.addEventListener('click', () => this.events.onUnsorted());
     this.chipEl = document.createElement('span');
     this.chipEl.className = 'save-chip';
@@ -62,60 +70,79 @@ export class Topbar {
     exportBtn.type = 'button';
     exportBtn.className = 'view-btn';
     exportBtn.textContent = t('exportMenu');
+    haspopup(exportBtn, 'menu');
     exportBtn.addEventListener('click', () => this.events.onExport(exportBtn));
     const viewBtn = document.createElement('button');
     viewBtn.type = 'button';
     viewBtn.className = 'view-btn';
     viewBtn.textContent = t('viewMenu');
+    haspopup(viewBtn, 'menu');
     viewBtn.addEventListener('click', () => this.events.onView(viewBtn));
     const helpBtn = document.createElement('button');
     helpBtn.type = 'button';
     helpBtn.className = 'view-btn gear-btn';
     helpBtn.innerHTML = ICONS.help;
-    helpBtn.title = t('helpTitle');    helpBtn.setAttribute('aria-label', t('helpTitle'));
+    tip(helpBtn, t('helpTitle'));
+    haspopup(helpBtn, 'menu');
     helpBtn.addEventListener('click', () => this.events.onHelp(helpBtn));
     const agentBtn = document.createElement('button');
     agentBtn.type = 'button';
     agentBtn.className = 'view-btn gear-btn';
     agentBtn.innerHTML = ICONS.bot;
-    agentBtn.title = t('setAgent');    agentBtn.setAttribute('aria-label', t('setAgent'));
+    tip(agentBtn, t('setAgent'));
+    haspopup(agentBtn, 'dialog');
     agentBtn.addEventListener('click', () => this.events.onAgent(agentBtn));
     const gear = document.createElement('button');
     gear.type = 'button';
     gear.className = 'view-btn gear-btn';
     gear.innerHTML = ICONS.gear;
-    gear.title = t('settingsTitle');    gear.setAttribute('aria-label', t('settingsTitle'));
+    tip(gear, t('settingsTitle'));
+    haspopup(gear, 'dialog');
     gear.addEventListener('click', () => this.events.onSettings(gear));
-    bar.append(brand, brandSep, this.titleEl, this.unsortedEl, exportBtn, viewBtn, helpBtn, agentBtn, gear);
+    // Phone shell: the five trailing controls collapse into one
+    // overflow button; .more-btn stays hidden at desktop widths.
+    const moreBtn = document.createElement('button');
+    moreBtn.type = 'button';
+    moreBtn.className = 'view-btn gear-btn more-btn';
+    moreBtn.innerHTML = ICONS.more;
+    tip(moreBtn, t('moreMenu'));
+    haspopup(moreBtn, 'menu');
+    moreBtn.addEventListener('click', () => this.events.onMore(moreBtn));
+    bar.append(brand, brandSep, this.titleEl, this.unsortedEl, exportBtn, viewBtn, helpBtn, agentBtn, gear, moreBtn);
 
     const zoom = document.createElement('div');
     zoom.className = 'zoombar';
     this.undoBtn = document.createElement('button');
     this.undoBtn.className = 'zb-ur';
     this.undoBtn.innerHTML = ICONS.undo;
-    this.undoBtn.title = t('drawUndo');    this.undoBtn.setAttribute('aria-label', t('drawUndo'));
+    tip(this.undoBtn, t('drawUndo'));
     this.undoBtn.addEventListener('click', events.onUndo);
     this.redoBtn = document.createElement('button');
     this.redoBtn.className = 'zb-ur';
     this.redoBtn.innerHTML = ICONS.redo;
-    this.redoBtn.title = t('drawRedo');    this.redoBtn.setAttribute('aria-label', t('drawRedo'));
+    tip(this.redoBtn, t('drawRedo'));
     this.redoBtn.addEventListener('click', events.onRedo);
     zoom.append(this.undoBtn, this.redoBtn);
     const out = document.createElement('button');
     out.type = 'button';
     out.textContent = '\u2212';
+    tip(out, t('zoomOut'));
     out.addEventListener('click', events.onZoomOut);
     this.zoomEl = document.createElement('button');
     this.zoomEl.type = 'button';
     this.zoomEl.className = 'zoom-pct';
-    this.zoomEl.addEventListener('click', events.onReset);
+    tip(this.zoomEl, t('zoomMenu'));
+    haspopup(this.zoomEl, 'menu');
+    this.zoomEl.addEventListener('click', () => events.onZoomMenu(this.zoomEl));
     const inBtn = document.createElement('button');
     inBtn.type = 'button';
     inBtn.textContent = '+';
+    tip(inBtn, t('zoomIn'));
     inBtn.addEventListener('click', events.onZoomIn);
     const fit = document.createElement('button');
     fit.type = 'button';
     fit.textContent = t('zoomFit');
+    tip(fit, t('fitBoard'));
     fit.addEventListener('click', events.onFit);
     zoom.append(out, this.zoomEl, inBtn, fit);
 
@@ -150,7 +177,8 @@ export class Topbar {
         const ic = document.createElement('span');
         ic.className = 'crumb-ic';
         mountBoardIcon(ic, c.icon, c.title);
-        ic.title = t('toolIcon');        ic.setAttribute('aria-label', t('toolIcon'));
+        ic.title = t('toolIcon');        ic.setAttribute('role', 'button');
+        ic.setAttribute('aria-label', t('toolIcon'));
         ic.addEventListener('click', (e) => {
           e.stopPropagation();
           this.events.onCrumbIcon(c.id, ic);
@@ -169,7 +197,7 @@ export class Topbar {
   setUnsorted(n: number) {
     if (n === this.lastUnsorted) return;
     this.lastUnsorted = n;
-    this.unsortedEl.textContent = `${n} ${t('unsortedTitle')}`;
+    this.unsortedEl.lastElementChild!.textContent = `${n} ${t('unsortedTitle')}`;
   }
 
   // Save chip pops bottom-left while a save runs, flashes 'Saved' and

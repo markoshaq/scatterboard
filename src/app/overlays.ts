@@ -49,7 +49,18 @@ export class Overlays {
       const id = this.connectHandle.dataset.id;
       if (id) this.a.startConnect(id, e);
     });
-    this.chips = new ChipsLayer(a.doc);
+    this.chips = new ChipsLayer(a.doc, {
+      onChip: (id, kind, chip) => {
+        if (this.a.lockedView()) return;
+        // Chip clicks act like the rail tools: the card joins the
+        // selection unless it already is, then the same popups open.
+        // Swallowed pointerdown skips onDown's endEdit, so end any
+        // open edit session first (same as pin clicks).
+        this.a.editing.endEdit();
+        if (!this.a.sel.has(id)) this.a.selectOnly(id);
+        this.a.tools.onTool(kind === 'label' ? 'labels' : 'reactions', chip);
+      },
+    });
     this.pins = new CommentPins((id, pinEl) => this.onPinClick(id, pinEl));
     a.docEl.append(this.anno.node, this.labelHost, this.connectHandle, this.chips.node, this.pins.node);
   }

@@ -2,7 +2,8 @@ import type { Currency, Lang } from '../persist/storage';
 import { LANGS, t } from '../strings';
 import { fmtSize } from './files';
 import { ICONS } from './icons';
-import { openToolPopup, type ToolPopup } from './popup';
+import { haspopup, openToolPopup, type ToolPopup } from './popup';
+import { isIos, inStandalone } from './install';
 
 interface SettingsApi {
   // 'system' = no saved pref, follows prefers-color-scheme.
@@ -69,6 +70,7 @@ interface AgentMenuApi {
 }
 
 export function openAgentPopup(anchor: HTMLElement, api: AgentMenuApi): ToolPopup {
+  haspopup(anchor, 'dialog');
   const node = document.createElement('div');
   node.className = 'stp-body';
   const pop = openToolPopup(anchor, node, true);
@@ -151,6 +153,7 @@ export function openAgentPopup(anchor: HTMLElement, api: AgentMenuApi): ToolPopu
 // Create-palette editor: reorder with up/down arrows, hide per row,
 // Reset restores the default order. One row per create type.
 function openToolbarEditor(anchor: HTMLElement, api: SettingsApi) {
+  haspopup(anchor, 'dialog');
   const node = document.createElement('div');
   node.className = 'menu-body tbe-body';
   const pop = openToolPopup(anchor, node, true);
@@ -168,6 +171,8 @@ function openToolbarEditor(anchor: HTMLElement, api: SettingsApi) {
       up.type = 'button';
       up.className = 'tbe-mini';
       up.textContent = '↑';
+      up.title = t('moveUp');
+      up.setAttribute('aria-label', t('moveUp'));
       up.disabled = i === 0;
       up.addEventListener('click', () => {
         api.onRailMove(it.key, -1);
@@ -177,6 +182,8 @@ function openToolbarEditor(anchor: HTMLElement, api: SettingsApi) {
       down.type = 'button';
       down.className = 'tbe-mini';
       down.textContent = '↓';
+      down.title = t('moveDown');
+      down.setAttribute('aria-label', t('moveDown'));
       down.disabled = i === items.length - 1;
       down.addEventListener('click', () => {
         api.onRailMove(it.key, 1);
@@ -216,9 +223,24 @@ function openToolbarEditor(anchor: HTMLElement, api: SettingsApi) {
 // Topbar settings surface: theme, language, interface scale, canvas
 // prefs, formatting, toolbar palette, templates, storage usage.
 export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
+  haspopup(anchor, 'dialog');
   const node = document.createElement('div');
   node.className = 'stp-body';
   const pop = openToolPopup(anchor, node, true);
+
+  const headRow = document.createElement('div');
+  headRow.className = 'stp-head';
+  const headTitle = document.createElement('span');
+  headTitle.className = 'sp-title';
+  headTitle.textContent = t('settingsTitle');
+  const headClose = document.createElement('button');
+  headClose.type = 'button';
+  headClose.className = 'sp-close';
+  headClose.innerHTML = ICONS.close;
+  headClose.setAttribute('aria-label', t('close'));
+  headClose.addEventListener('click', () => pop.close());
+  headRow.append(headTitle, headClose);
+  node.appendChild(headRow);
 
   const group = (label: string) => node.appendChild(head(label));
 
@@ -233,6 +255,7 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'pop-row';
+    b.setAttribute('role', 'checkbox');
     const box = document.createElement('span');
     box.className = 'set-box';
     box.innerHTML = ICONS.check;
@@ -240,7 +263,11 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
     lab.className = 'pop-label';
     lab.textContent = label;
     b.append(box, lab);
-    const sync = () => box.classList.toggle('on', checked());
+    const sync = () => {
+      const on = checked();
+      box.classList.toggle('on', on);
+      b.setAttribute('aria-checked', String(on));
+    };
     sync();
     b.addEventListener('click', () => {
       pick(!checked());
@@ -251,13 +278,16 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
     node.appendChild(b);
   };
   // Segmented row: one line for a small single-choice set.
-  const seg = (options: { label: string; on: () => boolean; pick: () => void }[]) => {
+  const seg = (options: { label: string; on: () => boolean; pick: () => void }[], label: string) => {
     const row = document.createElement('div');
     row.className = 'seg';
+    row.setAttribute('role', 'radiogroup');
+    row.setAttribute('aria-label', label);
     const btns: [HTMLButtonElement, (typeof options)[number]][] = options.map((o) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'seg-btn';
+      b.setAttribute('role', 'radio');
       b.textContent = o.label;
       b.addEventListener('click', () => {
         o.pick();
@@ -267,7 +297,11 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
       return [b, o];
     });
     const sync = () => {
-      for (const [b, o] of btns) b.classList.toggle('on', o.on());
+      for (const [b, o] of btns) {
+        const on = o.on();
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-checked', String(on));
+      }
     };
     sync();
     node.appendChild(row);
@@ -278,7 +312,7 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
     { label: t('setSystem'), on: () => api.theme() === 'system', pick: () => api.onTheme('system') },
     { label: t('setLight'), on: () => api.theme() === 'light', pick: () => api.onTheme('light') },
     { label: t('setDark'), on: () => api.theme() === 'dark', pick: () => api.onTheme('dark') },
-  ]);
+  ], t('setTheme'));
 
   group(t('setLanguage'));
   const langWrap = document.createElement('div');
@@ -308,7 +342,7 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
     { label: t('scaleSmaller'), on: () => api.scale() === SCALE_STEPS[0], pick: () => api.onScale(SCALE_STEPS[0]!) },
     { label: t('scaleDefault'), on: () => api.scale() === SCALE_STEPS[1], pick: () => api.onScale(SCALE_STEPS[1]!) },
     { label: t('scaleLarger'), on: () => api.scale() === SCALE_STEPS[2], pick: () => api.onScale(SCALE_STEPS[2]!) },
-  ]);
+  ], t('setScale'));
 
   group(t('setFormat'));
   toggle(t('setBrowserLang'), api.browserLang, api.onBrowserLang);
@@ -316,7 +350,7 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   seg([
     { label: t('setAuto'), on: () => api.currency() === null, pick: () => api.onCurrency(null) },
     ...CURRENCIES.map((c) => ({ label: c, on: () => api.currency() === c, pick: () => api.onCurrency(c) })),
-  ]);
+  ], t('setCurrency'));
 
   group(t('setCanvas'));
   toggle(t('setNoOverlap'), () => api.flag('noOverlap'), (v) => api.onFlag('noOverlap', v));
@@ -328,7 +362,7 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
     { label: t('guideFull'), on: () => api.guideAlpha() === 1, pick: () => api.onGuideAlpha(1) },
     { label: t('guideFaint'), on: () => api.guideAlpha() === 0.5, pick: () => api.onGuideAlpha(0.5) },
     { label: t('guideHidden'), on: () => api.guideAlpha() === 0, pick: () => api.onGuideAlpha(0) },
-  ]);
+  ], t('setGuides'));
 
   group(t('setOnline'));
   toggle(t('setUnfurl'), () => api.flag('unfurl'), (v) => api.onFlag('unfurl', v));
@@ -388,7 +422,7 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
 // Help > About: version, storage usage and the source link.
 export function openAboutPopup(
   anchor: HTMLElement,
-  api: { storage(): Promise<{ doc: number; blobs: number }> },
+  api: { storage(): Promise<{ doc: number; blobs: number; persisted: boolean }> },
 ): ToolPopup {
   const node = document.createElement('div');
   node.className = 'stp-body';
@@ -408,9 +442,9 @@ export function openAboutPopup(
   node.appendChild(meter);
   void api
     .storage()
-    .then(({ doc, blobs }) => {
+    .then(({ doc, blobs, persisted }) => {
       if (meter.isConnected) {
-        meter.textContent = t('storageLine').replace('{doc}', fmtSize(doc)).replace('{media}', fmtSize(blobs));
+        meter.textContent = `${t('storageLine').replace('{doc}', fmtSize(doc)).replace('{media}', fmtSize(blobs))} (${t(persisted ? 'persistYes' : 'persistNo')})`;
       }
     })
     .catch(() => {
@@ -430,5 +464,14 @@ export function openAboutPopup(
     window.open('https://github.com/markoshaq/scatterboard', '_blank', 'noopener'),
   );
   node.appendChild(ghRow);
+  // iOS never fires beforeinstallprompt: the only install path is the
+  // Share menu, so spell it out where users look for it.
+  if (isIos() && !inStandalone()) {
+    const hint = document.createElement('div');
+    hint.className = 'about-install';
+    hint.textContent = t('installIosHint');
+    node.appendChild(hint);
+  }
+  haspopup(anchor, 'dialog');
   return openToolPopup(anchor, node, true);
 }

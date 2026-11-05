@@ -1,7 +1,7 @@
 import type { Element, EmbedKind, TypeContent } from '../state/schema';
 import { embedDoc, isSafeUrl } from '../state/schema';
 import { t } from '../strings';
-import { EMBED_ALLOW, embedSrc, hostOf, urlTitle } from '../ui/embeds';
+import { EMBED_ALLOW, embedSrc, hostOf, providerOf, urlTitle } from '../ui/embeds';
 import { ICONS } from '../ui/icons';
 import { parseUrlText } from '../ui/files';
 import type { CardCtx } from './factory';
@@ -92,7 +92,12 @@ export class LinkCard implements CardView {
     this.playBtn = document.createElement('button');
     this.playBtn.type = 'button';
     this.playBtn.className = 'em-play';
-    this.playBtn.innerHTML = ICONS.play;
+    // Maps get an expand affordance; the play triangle only means media.
+    const isMap = this.kind === 'map';
+    this.playBtn.innerHTML = isMap ? ICONS.ext : ICONS.play;
+    if (isMap) this.playBtn.classList.add('em-map');
+    this.playBtn.title = t(isMap ? 'openMap' : 'playEmbed');
+    this.playBtn.setAttribute('aria-label', t(isMap ? 'openMap' : 'playEmbed'));
     this.playBtn.dataset.noclick = '1';
     this.heroEl.append(this.glyphEl, this.playBtn);
     if (!isEmbed) this.playBtn.style.display = 'none';
@@ -223,6 +228,7 @@ export class LinkCard implements CardView {
     const src = this.kind && url ? embedSrc(this.kind, url) : null;
     this.noPreview = !!this.kind && !!url && !src;
     this.node.classList.toggle('no-preview', this.noPreview);
+    this.heroEl.dataset.provider = this.kind && url ? (providerOf(this.kind, url) ?? '') : '';
     let np = this.heroEl.querySelector<HTMLElement>('.em-nopreview');
     if (this.noPreview) {
       if (!np) {

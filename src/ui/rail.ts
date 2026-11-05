@@ -2,7 +2,8 @@ import type { Element, ElementType, EmbedKind } from '../state/schema';
 import { documentDoc } from '../state/schema';
 import { t } from '../strings';
 import { ICONS } from './icons';
-import { dragGhost, DROP_EXCLUDE } from './util';
+import { dragGhost, DROP_EXCLUDE, mobileShell } from './util';
+import { bindVvh, haspopup, openToolPopup, type ToolPopup } from './popup';
 
 export type ToolId =
   | 'color'
@@ -58,6 +59,8 @@ interface RailEvents {
   onUpload: () => void;
   onDraw: () => void;
   onCapture: (anchor: HTMLElement) => void;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
 interface RailItem {
@@ -248,6 +251,14 @@ function sigFor(sel: Element[]): string {
   return '';
 }
 
+// Context-menu view of the rail: the element tools a selection would
+// show, minus the More overflow (callers append its items inline).
+export function toolMenuItems(sel: Element[]): { id: ToolId; label: string; icon: string }[] {
+  return toolsFor(sel)
+    .filter((id) => id !== 'more')
+    .map((id) => ({ id, label: TOOL_DEFS[id].label, icon: TOOL_DEFS[id].icon }));
+}
+
 const DEFAULT_WELL = '#ebedee';
 
 export class Rail {
@@ -259,11 +270,24 @@ export class Rail {
   private toolBtns = new Map<ToolId, HTMLButtonElement>();
   private disabled = new Set<ToolId>();
   private palette: { order?: string[] | undefined; hidden?: string[] | undefined; sig: string } = { sig: '' };
+  // Pref-gated undo/redo items in the phone idle bar; the desktop
+  // zoombar hosts them instead, so they only render under mobileShell().
+  private undo = { show: false, canUndo: false, canRedo: false };
+  private undoBtn: HTMLButtonElement | null = null;
+  private redoBtn: HTMLButtonElement | null = null;
+  private railEl!: HTMLElement;
+  private trash!: HTMLElement;
+  private rootEl!: HTMLElement;
+  private lastMode = '';
 
   constructor(root: HTMLElement, events: RailEvents) {
     this.events = events;
+    // The phone bar's keyboard lift and sheet popups both read --vvh;
+    // bind it now so card editing works before any popup has opened.
+    bindVvh();
     const rail = document.createElement('div');
     rail.className = 'rail';
+    this.railEl = rail;
     this.itemsEl = document.createElement('div');
     this.itemsEl.className = 'rail-items';
     const trash = document.createElement('button');
@@ -274,6 +298,8 @@ export class Rail {
     trashLab.textContent = t('toolTrash');
     trash.appendChild(trashLab);
     trash.addEventListener('click', () => this.events.onTrash());
+    this.trash = trash;
+    this.rootEl = root;
     this.well = document.createElement('input');
     this.well.name = 'board-color';
     this.well.type = 'color';
@@ -293,7 +319,20 @@ export class Rail {
     // The can sits outside .rail: during a card-over-trash drag it drops
     // under the lifted viewport while the rest of the rail stays on top.
     root.append(rail, trash);
+    this.itemsEl.addEventListener('scroll', () => this.updateFade(), { passive: true });
+    window.addEventListener('resize', () => this.updateFade());
     this.sync([], null);
+  }
+
+  // Edge fades tell the thumb the phone bar scrolls: flip the side
+  // classes on scroll, resize and rebuild so a mode that fits shows
+  // no mask at all.
+  private updateFade() {
+    const el = this.itemsEl;
+    el.classList.toggle('can-left', el.scrollLeft > 2);
+    el.classList.toggle('can-right', el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+    el.classList.toggle('can-top', el.scrollTop > 2);
+    el.classList.toggle('can-bottom', el.scrollTop + el.clientHeight < el.scrollHeight - 2);
   }
 
   // Palette customization (order + hidden keys) from workspace prefs;
@@ -311,32 +350,96 @@ export class Rail {
   sync(sel: Element[], editing: Element | null) {
     const edit = editing && EDIT_TOOLS[editing.type] ? editing : null;
     const items = edit || sel.length ? null : paletteItems(this.palette.order, this.palette.hidden);
-    const sig = edit
-      ? `e:${edit.type}`
-      : items
-        ? `c${this.palette.sig}`
-        : sel.length === 1
-          ? `t:${sel[0]!.type}${sigFor(sel)}`
-          : `m:${toolsFor(sel).join('.')}`;
+    const mob = mobileShell();
+    // Phone bar: the can docks inside as the trailing item; on desktop
+    // it returns to its fixed sibling spot beside the rail.
+    if (mob) {
+      if (this.trash.parentElement !== this.railEl) this.railEl.appendChild(this.trash);
+    } else if (this.trash.parentElement !== this.rootEl) {
+      this.rootEl.appendChild(this.trash);
+    }
+    const sig =
+      (mob ? 'p:' : '') +
+      (edit
+        ? `e:${edit.type}`
+        : items
+          ? `c${this.palette.sig}${this.undo.show ? ':u' : ''}`
+          : sel.length === 1
+            ? `t:${sel[0]!.type}${sigFor(sel)}`
+            : `m:${toolsFor(sel).join('.')}`);
     if (sig === this.signature) return;
     this.signature = sig;
     this.wellWrap.style.display = items ? '' : 'none';
+    // Phone shell reads this to dock the floating can against the
+    // corner when the colour well is hidden (tools/edit modes).
+    this.railEl.classList.toggle('has-well', !!items);
     this.itemsEl.textContent = '';
     this.toolBtns.clear();
+    this.undoBtn = null;
+    this.redoBtn = null;
     if (edit) {
       for (const id of EDIT_TOOLS[edit.type]!) this.itemsEl.appendChild(this.toolButton(id));
     } else if (items) {
-      for (const item of items) this.itemsEl.appendChild(this.paletteButton(item));
+      if (mob) {
+        // Phone idle bar: '+' opens the create palette as a sheet; the
+        // file/draw/capture actions stay inline. Undo/redo ride along
+        // when the pref is on (their desktop host, the zoombar, hides).
+        this.itemsEl.appendChild(
+          this.actionButton(ICONS.addCol, t('addCard'), (b) => this.openPaletteSheet(b)),
+        );
+        if (this.undo.show) {
+          this.undoBtn = this.actionButton(ICONS.undo, t('drawUndo'), () => this.events.onUndo());
+          this.redoBtn = this.actionButton(ICONS.redo, t('drawRedo'), () => this.events.onRedo());
+          this.undoBtn.disabled = !this.undo.canUndo;
+          this.redoBtn.disabled = !this.undo.canRedo;
+          this.itemsEl.append(this.undoBtn, this.redoBtn);
+        }
+      } else {
+        for (const item of items) this.itemsEl.appendChild(this.paletteButton(item));
+      }
       this.itemsEl.appendChild(this.actionButton(ICONS.image, t('addImage'), () => this.events.onAddImage()));
       this.itemsEl.appendChild(this.actionButton(ICONS.upload, t('uploadFile'), () => this.events.onUpload()));
       this.itemsEl.appendChild(this.actionButton(ICONS.draw, t('railDraw'), () => this.events.onDraw()));
       this.itemsEl.appendChild(
-        this.actionButton(ICONS.inbox, t('railCapture'), () => this.events.onCapture(this.itemsEl)),
+        this.actionButton(ICONS.inbox, t('railCapture'), (b) => this.events.onCapture(b)),
       );
     } else {
       for (const id of toolsFor(sel)) this.itemsEl.appendChild(this.toolButton(id));
     }
     this.applyDisabled();
+    this.updateFade();
+    // Swap-in stagger when the rail switches modes (create/tools/edit);
+    // reduced motion flattens it via the global rule.
+    const mode = sig.charAt(mob ? 2 : 0);
+    if (this.lastMode && this.lastMode !== mode) {
+      this.railEl.classList.add('rail-swap');
+      let i = 0;
+      for (const child of this.itemsEl.children) (child as HTMLElement).style.setProperty('--i', String(i++));
+      window.setTimeout(() => this.railEl.classList.remove('rail-swap'), 400);
+    }
+    this.lastMode = mode;
+  }
+
+  // The '+' sheet: the full create palette docked at the bottom edge.
+  // Tap spawns at view center; a drag still lands on the canvas, the
+  // sheet dismissing as soon as the ghost lifts.
+  private openPaletteSheet(anchor: HTMLElement) {
+    haspopup(anchor, 'grid');
+    const node = document.createElement('div');
+    node.className = 'pal-grid';
+    const pop = openToolPopup(anchor, node);
+    for (const item of paletteItems(this.palette.order, this.palette.hidden)) {
+      node.appendChild(this.paletteButton(item, pop));
+    }
+  }
+
+  // Mirrors Topbar.setUndoArrows for the phone bar; flipping `show`
+  // invalidates the signature so the next sync rebuilds the idle row.
+  setUndoArrows(show: boolean, canUndo: boolean, canRedo: boolean) {
+    if (show !== this.undo.show) this.signature = '';
+    this.undo = { show, canUndo, canRedo };
+    if (this.undoBtn) this.undoBtn.disabled = !canUndo;
+    if (this.redoBtn) this.redoBtn.disabled = !canRedo;
   }
 
   // Grey-out tools that need context (e.g. Link/Comment need a text
@@ -354,7 +457,9 @@ export class Rail {
     this.well.value = color ?? DEFAULT_WELL;
   }
 
-  private paletteButton(item: RailItem): HTMLElement {
+  // pop is set for sheet-rendered items: a tap-spawn or the start of a
+  // drag-dismiss closes it.
+  private paletteButton(item: RailItem, pop?: ToolPopup): HTMLElement {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'rail-item';
@@ -363,6 +468,11 @@ export class Rail {
     const lab = document.createElement('span');
     lab.textContent = item.label;
     btn.appendChild(lab);
+    let sheet = pop;
+    const closeSheet = () => {
+      sheet?.close();
+      sheet = undefined;
+    };
     btn.addEventListener('pointerdown', (e) => {
       dragGhost(
         e,
@@ -377,24 +487,31 @@ export class Rail {
           // not the only create gesture a first-time user will try.
           if (!moved) {
             this.events.onDrop(item.type, null, item.kind);
+            closeSheet();
             return;
           }
           const over = document.elementFromPoint(ev.clientX, ev.clientY);
           if (over?.closest(DROP_EXCLUDE)) return;
           this.events.onDrop(item.type, ev, item.kind);
         },
-        (ev) => this.events.onDropHint(ev, item.type),
+        (ev) => {
+          if (ev) closeSheet();
+          this.events.onDropHint(ev, item.type);
+        },
       );
     });
     // Keyboard activation arrives as a click with detail 0; pointer
     // clicks already ran through the pointerup path above.
     btn.addEventListener('click', (e) => {
-      if (e.detail === 0) this.events.onDrop(item.type, null, item.kind);
+      if (e.detail === 0) {
+        this.events.onDrop(item.type, null, item.kind);
+        closeSheet();
+      }
     });
     return btn;
   }
 
-  private actionButton(icon: string, label: string, onClick: () => void): HTMLElement {
+  private actionButton(icon: string, label: string, onClick: (btn: HTMLButtonElement) => void): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'rail-item rail-tool';
@@ -403,7 +520,7 @@ export class Rail {
     const lab = document.createElement('span');
     lab.textContent = label;
     btn.appendChild(lab);
-    btn.addEventListener('click', onClick);
+    btn.addEventListener('click', () => onClick(btn));
     return btn;
   }
 

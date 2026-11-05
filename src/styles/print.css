@@ -1,0 +1,21 @@
+/* Casual print: chrome hides and the current viewport captures the
+   board (App fits everything on beforeprint and restores the view on
+   afterprint). Real exports stay PNG/PDF/zip. */
+@media print {
+  .topbar,
+  .rail,
+  .rail-trash,
+  .zoombar,
+  .save-chip,
+  .toasts,
+  .toast,
+  .tool-pop,
+  .due-pop,
+  .side-panel,
+  .ed-scrim,
+  .short-scrim,
+  .present-stop,
+  .board-empty {
+    display: none !important;
+  }
+}

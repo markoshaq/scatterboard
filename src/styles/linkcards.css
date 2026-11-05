@@ -1,0 +1,225 @@
+/* link popup */
+
+.lk-body {
+  padding: 4px;
+}
+
+.lk-input {
+  width: 200px;
+  font: inherit;
+  font-size: calc(12.5px * var(--ui));
+  padding: 7px 9px;
+  border: 1px solid var(--edge-strong);
+  border-radius: 7px;
+  outline: none;
+}
+
+.lk-input:focus {
+  border-color: var(--accent);
+}
+
+/* todo assignee chip */
+
+.todo-you {
+  flex: none;
+  align-self: center;
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+/* link + embed cards (shared family) */
+
+.card.link,
+.card.embed {
+  background: var(--card);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 1px var(--card-edge);
+  padding: 10px;
+}
+
+.card.link.empty,
+.card.embed.empty {
+  padding: 8px;
+}
+
+.lk-empty {
+  display: none;
+}
+
+.card.link.empty .lk-empty,
+.card.embed.empty .lk-empty {
+  display: block;
+}
+
+.card.link.empty .lk-hero,
+.card.link.empty .lk-meta,
+.card.embed.empty .lk-hero,
+.card.embed.empty .lk-meta {
+  display: none;
+}
+
+.lk-url-input {
+  width: 100%;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 8px 10px;
+  border: 1px solid var(--edge-strong);
+  border-radius: 7px;
+  outline: none;
+  background: var(--card);
+}
+
+.lk-url-input:focus {
+  border-color: var(--accent);
+}
+
+.lk-hero {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 7px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #46536b, #5a5a72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--chrome);
+}
+
+/* Provider tints: muted so the hero still sits quietly next to cards. */
+.lk-hero[data-provider='youtube'] {
+  background: linear-gradient(135deg, #4a3230, #6d3a35);
+}
+.lk-hero[data-provider='vimeo'] {
+  background: linear-gradient(135deg, #2e4553, #35617c);
+}
+.lk-hero[data-provider='spotify'] {
+  background: linear-gradient(135deg, #2e4536, #1f5c40);
+}
+.lk-hero[data-provider='soundcloud'] {
+  background: linear-gradient(135deg, #4f3d2c, #7c5230);
+}
+.lk-hero[data-provider='maps'] {
+  background: linear-gradient(135deg, #2e453a, #3d5c48);
+}
+
+.lk-glyph {
+  display: flex;
+}
+
+.lk-glyph svg {
+  width: 40px;
+  height: 40px;
+}
+
+.em-play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--knob);
+  color: var(--toast-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px var(--shadow-3);
+}
+
+.em-play svg {
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+}
+
+/* The map expand glyph is symmetric; the play nudge does not apply. */
+.em-play.em-map svg {
+  margin-left: 0;
+}
+
+.em-play:hover {
+  background: var(--card);
+}
+
+.em-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.em-nopreview {
+  position: absolute;
+  bottom: 6px;
+  right: 8px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.lk-meta {
+  margin-top: 8px;
+}
+
+.lk-chip {
+  font-size: 11px;
+  color: var(--ink-4);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lk-chip:hover {
+  color: var(--accent);
+}
+
+.lk-title {
+  font-weight: 650;
+  font-size: 13px;
+  margin-top: 2px;
+  outline: none;
+  word-break: break-word;
+  min-height: 18px;
+}
+
+.lk-cap {
+  font-size: 12px;
+  color: var(--ink-4);
+  margin-top: 2px;
+  outline: none;
+  word-break: break-word;
+  min-height: 16px;
+}
+
+.card.link:not(.has-cap):not(.editing) .lk-cap,
+.card.embed:not(.has-cap):not(.editing) .lk-cap {
+  display: none;
+}
+
+.card.link.editing .lk-title:empty::before,
+.card.embed.editing .lk-title:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+  font-weight: 400;
+}
+
+.card.link.editing .lk-cap:empty::before,
+.card.embed.editing .lk-cap:empty::before,
+.card.image.editing .im-cap:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+}
+
+.card.editing .lk-title,
+.card.editing .lk-cap,
+.card.editing .im-cap {
+  user-select: text;
+  cursor: text;
+}
+

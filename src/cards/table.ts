@@ -986,7 +986,7 @@ export class TableCard implements CardView {
     if (!cell || !el) return;
     const type = cell.type ?? 'auto';
     el.classList.toggle('tb-empty', cell.text === '' && type !== 'checkbox');
-    el.style.background = cell.color ?? '';
+    el.style.background = cardBg(cell.color);
     el.dataset.h = cell.alignH ?? 'left';
     el.dataset.v = cell.alignV ?? 'top';
     if (this.editingCell && this.focus?.r === r && this.focus?.c === c) return;
@@ -998,6 +998,7 @@ export class TableCard implements CardView {
         const input = document.createElement('input');
         input.type = 'checkbox';
         input.name = 'cell-checkbox';
+        input.setAttribute('aria-label', t('cellCheckbox'));
         input.dataset.noclick = '1';
         el.appendChild(input);
       }
@@ -1010,16 +1011,29 @@ export class TableCard implements CardView {
     }
     const rich = !isFormula(cell.text) && (type === 'auto' || type === 'text') && cell.html;
     if (rich) {
+      el.classList.remove('tb-num');
       if (el.dataset.shown !== cell.html) {
         el.dataset.shown = cell.html;
         el.innerHTML = cell.html!;
       }
     } else {
       const shown = displayOf(cell, doc.cells);
+      // Single tokens (numbers, currency, dates) never wrap mid-token;
+      // the span lets the overflow ellipsize instead of hard-clipping.
+      const single = shown !== '' && !/\s/.test(shown.trim());
+      el.classList.toggle('tb-num', single);
       // dataset.shown avoids the innerText layout read per cell.
       if (el.dataset.shown !== shown) {
         el.dataset.shown = shown;
-        el.textContent = shown;
+        if (single) {
+          el.textContent = '';
+          const sp = document.createElement('span');
+          sp.className = 'tb-val';
+          sp.textContent = shown;
+          el.appendChild(sp);
+        } else {
+          el.textContent = shown;
+        }
       }
     }
   }

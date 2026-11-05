@@ -1,0 +1,422 @@
+/* Keyboard focus ring, one accent outline for all chrome. Placed ahead
+   of the text surfaces' outline:none so equal specificity keeps those
+   ring-free (the caret is their focus marker). */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.viewport {
+  position: fixed;
+  inset: 0;
+  touch-action: none;
+}
+
+body.pan-mode .viewport {
+  cursor: grab;
+}
+
+.board-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Semantic zoom: past ~20% card faces collapse to their colour block so
+   a big board stays navigable. visibility (not display) keeps measured
+   heights stable; overlay affordances hide outright. */
+.doc.far .card > *,
+.doc.far .card::before,
+.doc.far .card::after {
+  visibility: hidden;
+}
+
+.doc.far .card {
+  border-radius: 10px;
+}
+
+.doc.far .card-chips,
+.doc.far .comment-pins,
+.doc.far .line-labels,
+.doc.far .connect-handle {
+  display: none;
+}
+
+/* Stacked after .doc: selection/drag chrome paints over cards. */
+.board-chrome {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+/* No will-change here: pinning the whole board as a composited layer
+   lets the compositor show a stale scaled raster between repaints,
+   which reads as blur during and after pan/zoom. */
+.doc {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.cards {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.card {
+  position: absolute;
+  pointer-events: auto;
+  user-select: none;
+  contain: layout style paint;
+  /* Shadow changes (drag lift, drop hints) ease instead of snapping. */
+  transition: box-shadow 0.15s ease;
+}
+
+.note {
+  background: var(--card);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 1px var(--card-edge);
+  padding: 12px 14px;
+  min-height: 44px;
+}
+
+.note-text {
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 20px;
+}
+
+.note-text:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+}
+
+.card.editing {
+  box-shadow: 0 0 0 1.5px var(--accent), 0 1px 3px var(--shadow-1);
+  cursor: text;
+}
+
+.card.editing .note-text,
+.card.editing .col-title,
+.card.editing .bc-title {
+  user-select: text;
+  cursor: text;
+}
+
+/* --iz (inverse zoom) keeps DOM hit affordances constant screen px. */
+.resize-handle {
+  display: none;
+  position: absolute;
+  right: calc(-10px * var(--iz, 1));
+  bottom: calc(-10px * var(--iz, 1));
+  width: calc(22px * var(--iz, 1));
+  height: calc(22px * var(--iz, 1));
+  cursor: nwse-resize;
+}
+
+/* Visible square sits inside a larger invisible hit zone. */
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  right: calc(5px * var(--iz, 1));
+  bottom: calc(5px * var(--iz, 1));
+  width: calc(11px * var(--iz, 1));
+  height: calc(11px * var(--iz, 1));
+  border-radius: calc(3px * var(--iz, 1));
+  background: var(--card);
+  border: calc(1.5px * var(--iz, 1)) solid var(--accent);
+}
+
+/* Scoped to direct children: a selected column would otherwise light up
+   the dead .resize-handle sitting inside every member card. */
+.card.handle > .resize-handle {
+  display: block;
+}
+
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(44px + env(safe-area-inset-top, 0px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: env(safe-area-inset-top, 0px) calc(14px + env(safe-area-inset-right, 0px)) 0
+    calc(5px + env(safe-area-inset-left, 0px));
+  pointer-events: none;
+  z-index: 10;
+}
+
+.topbar .brand {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--ink-1);
+  pointer-events: auto;
+  background: var(--chrome);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 3px 10px;
+}
+
+/* Every navigable title segment is a chrome pill, same as rail tools. */
+.crumb {
+  border-radius: 10px;
+  padding: 3px 10px;
+  background: var(--chrome);
+  border: 1px solid var(--edge);
+}
+
+.crumb:hover {
+  background: var(--card);
+}
+
+.topbar .crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.crumb {
+  color: var(--ink-4);
+  cursor: pointer;
+}
+
+.crumb:hover {
+  color: var(--ink-1);
+}
+
+.crumb.cur {
+  color: var(--ink-1);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.crumb-sep {
+  color: var(--faint);
+}
+
+/* Bottom-left keeps the chip clear of the centered toast stack and the
+   right-side zoom bar. */
+.save-chip {
+  position: fixed;
+  left: calc(90px + env(safe-area-inset-left, 0px));
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  font-size: calc(12px * var(--ui));
+  color: var(--ink-4);
+  background: var(--chrome);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 3px 10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 10;
+}
+
+.save-chip.show {
+  opacity: 1;
+}
+
+.save-chip.saving {
+  color: var(--warn);
+}
+
+.zoombar {
+  position: fixed;
+  right: calc(14px + env(safe-area-inset-right, 0px));
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  gap: 2px;
+  background: var(--chrome);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 2px;
+  z-index: 10;
+  box-shadow: 0 1px 4px var(--shadow-1);
+}
+
+.zoombar button {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: calc(13px * var(--ui));
+  min-width: 30px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: var(--ink-1);
+  cursor: pointer;
+}
+
+.zoombar button:hover {
+  background: var(--hover);
+}
+
+.zoombar .zoom-pct {
+  min-width: 52px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.toasts {
+  position: fixed;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 80;
+  pointer-events: none;
+}
+
+.toast {
+  background: var(--toast-bg);
+  color: var(--toast-ink);
+  font-size: calc(13px * var(--ui));
+  border-radius: 7px;
+  padding: 7px 14px;
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+
+.toast.out {
+  opacity: 0;
+}
+
+/* Tone edge: both themes share the dark toast surface, so the accent
+   shades are fixed rather than token-driven. */
+.toast.ok {
+  box-shadow: inset 3px 0 0 #7cc98a;
+}
+
+.toast.warn {
+  box-shadow: inset 3px 0 0 #e0b060;
+}
+
+.toast.err {
+  box-shadow: inset 3px 0 0 #e07a62;
+}
+
+.toast.busy {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.toast-spin {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--toast-hi);
+  border-top-color: var(--toast-ink);
+  animation: toast-rot 0.8s linear infinite;
+}
+
+@keyframes toast-rot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Visually hidden but reachable by screen readers: the card-nav live
+   region lives here. */
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Empty-board guidance: centered in screen space over the canvas and
+   inert to the pointer so it never blocks the first click. */
+.board-empty {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: min(360px, 80vw);
+  text-align: center;
+  pointer-events: none;
+  color: var(--ink-6);
+}
+
+.be-title {
+  font-size: calc(15px * var(--ui));
+  font-weight: 600;
+  color: var(--ink-4);
+}
+
+.be-hint {
+  margin-top: 4px;
+  font-size: calc(13px * var(--ui));
+}
+
+/* Inline actions make the empty state a starting point, not just copy;
+   the parent is pointer-events:none so the buttons opt back in. */
+.be-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.be-actions button {
+  font: inherit;
+  font-size: calc(12.5px * var(--ui));
+  color: var(--ink-1);
+  background: var(--chrome);
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.be-actions button:hover {
+  background: var(--card);
+}
+
+/* App chrome is not selectable: dragging across controls should not
+   highlight their text. Rail has its own rule above; .ed-scrim is
+   excluded because editor surfaces need real text selection. */
+.topbar,
+.zoombar,
+.toasts,
+.side-panel,
+.tool-pop,
+.due-pop,
+.short-scrim,
+.rail-ghost {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea,
+[contenteditable='true'] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+

@@ -127,5 +127,23 @@ export function embedSrc(kind: EmbedKind, url: string): string | null {
   return null;
 }
 
+// Provider key for hero tinting, or null when the URL is not a
+// recognised provider for this embed kind.
+export function providerOf(kind: EmbedKind, url: string): string | null {
+  if (kind === 'video') {
+    if (youtubeId(url)) return 'youtube';
+    if (vimeoId(url)) return 'vimeo';
+    return null;
+  }
+  if (kind === 'audio') {
+    const u = parseUrl(url);
+    if (u?.hostname.toLowerCase() === 'open.spotify.com') return 'spotify';
+    if (u && hostIs(u, 'soundcloud.com')) return 'soundcloud';
+    return null;
+  }
+  const u = parseUrl(url);
+  return u && isGoogleMaps(u) ? 'maps' : null;
+}
+
 export const EMBED_ALLOW =
   'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';

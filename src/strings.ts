@@ -6,11 +6,18 @@ const en = {
   saving: 'Saving...',
   saved: 'Saved',
   persistDegraded: 'Storage degraded: saving to browser backup storage',
+  close: 'Close',
+  errCrash: 'Something went wrong.',
+  errReload: 'Reload',
   notePlaceholder: 'Start typing...',
   headingPlaceholder: 'Start typing...',
   gridOn: 'Grid on',
   gridOff: 'Grid off',
   zoomFit: 'Fit',
+  zoomOut: 'Zoom out',
+  zoomIn: 'Zoom in',
+  zoomReset: 'Reset zoom',
+  zoomMenu: 'Zoom',
   untitled: 'Untitled board',
   railNote: 'Note',
   railColumn: 'Column',
@@ -26,6 +33,8 @@ const en = {
   setDueDate: 'Set due date',
   addDueTime: 'Add due time',
   clear: 'Clear',
+  prevMonth: 'Previous month',
+  nextMonth: 'Next month',
   railComment: 'Comment',
   toolColor: 'Color',
   toolLabels: 'Labels',
@@ -82,10 +91,10 @@ const en = {
   searchEmpty: 'No matches',
   matchCount: '{n} matches',
   matchOne: '1 match',
-  projectsTitle: 'Projects',
-  projectNew: 'New project',
-  projectUntitled: 'Untitled project',
-  projectsFilterPh: 'Filter projects...',
+  projectsTitle: 'Boards',
+  projectNew: 'New board',
+  projectUntitled: 'Untitled board',
+  projectsFilterPh: 'Filter boards...',
   boardsOne: '1 board',
   boardsMany: '{n} boards',
   boardRename: 'Rename',
@@ -220,6 +229,8 @@ const en = {
   viewPresent: 'Present',
   viewGrid: 'Dot grid',
   viewPresenting: 'While presenting',
+  fitBoard: 'Fit board',
+  moreMenu: 'More',
   exportMenu: 'Export',
   exImgHead: 'Image',
   exPng: 'PNG',
@@ -235,7 +246,11 @@ const en = {
   exJson: 'Board as JSON',
   exImport: 'Import board (.json)',
   exFail: 'Export did not finish',
+  exBusy: 'Exporting...',
+  exDone: 'Export finished',
   exImportFail: 'That file is not a Scatterboard export',
+  exImportBusy: 'Importing...',
+  exImportDone: 'Board imported',
   toolIcon: 'Icon',
   iconSearchPh: 'Search icons...',
   iconRecommended: 'Recommended',
@@ -246,6 +261,15 @@ const en = {
   iconUpload: 'Upload an image',
   iconClear: 'Use default icon',
   emptyBoard: 'Empty board',
+  emptyBoardTitle: 'This board is empty',
+  emptyBoardHint: 'Pick a tool on the left to add your first card',
+  emptyBoardHintMob: 'Tap + below to add your first card',
+  emptyAddNote: 'Add a note',
+  emptyShortcuts: 'Show shortcuts',
+  scGrpCards: 'Cards',
+  scGrpEditing: 'Editing',
+  scGrpView: 'View',
+  scGrpPresent: 'Presentation',
   templatesHead: 'Templates',
   myTemplates: 'Your templates',
   renameTemplate: 'Rename',
@@ -291,6 +315,8 @@ const en = {
   guideHidden: 'Hidden',
   setToolbar: 'Manage toolbar palette',
   toolbarReset: 'Reset order',
+  moveUp: 'Move up',
+  moveDown: 'Move down',
   toolHide: 'Hide from palette',
   toolShow: 'Show in palette',
   setTemplates: 'Manage templates',
@@ -322,9 +348,14 @@ const en = {
     'Install the Scatterboard MCP bridge with `npx -y scatterboard-mcp install`, then call sb_open to pair this tab.',
   setAbout: 'About',
   aboutSource: 'Source code (GitHub)',
+  installApp: 'Install app',
+  installIosHint: 'To install on iOS: Share, then Add to Home Screen',
+  persistYes: 'persistent',
+  persistNo: 'best-effort',
   helpTitle: 'Help',
   helpIssue: 'Report an issue',
-  railCapture: 'Quick capture',
+  railCapture: 'Capture',
+  addCard: 'Add',
   qcTitle: 'Quick capture',
   qcPh: 'Write it down...',
   qcAdd: 'Add to Unsorted',
@@ -338,6 +369,7 @@ const en = {
   todoTitleBtn: 'Add title',
   reactSearchPh: 'Search emoji...',
   reactTone: 'Skin tone',
+  addReaction: 'Add reaction',
   openFile: 'Open',
   recentHead: 'Recently viewed',
   sortLabel: 'Sort',
@@ -345,6 +377,8 @@ const en = {
   sortModified: 'Last modified',
   sortRelevance: 'Relevance',
   embedOffline: 'Offline',
+  playEmbed: 'Play',
+  openMap: 'Open map',
   dueRel: 'Due {rel}',
   dueDate: 'Due {date}',
   justNow: 'just now',
@@ -433,24 +467,29 @@ const LANG_TAGS: Record<Lang, string> = { en: 'en', de: 'de', es: 'es', fr: 'fr'
 
 export function bootLang(): Lang {
   try {
-    // scatterboard:lang mirrors prefs.lang so the active language is
-    // readable before module-level label tables are captured, even
-    // when the workspace lives in sqlite rather than localStorage.
-    // The pre-rename planboard:* keys are still read once and moved
-    // forward for users upgrading before boot() runs the key rename.
-    const oldLang = localStorage.getItem('planboard:lang');
-    if (oldLang !== null) {
-      if (localStorage.getItem('scatterboard:lang') === null) localStorage.setItem('scatterboard:lang', oldLang);
-      localStorage.removeItem('planboard:lang');
+    // Node >=22 exposes a bare localStorage stub (no Storage methods,
+    // a process warning on access) that vitest DOM envs leave in
+    // place. Only real browser windows have usable storage.
+    if (typeof process === 'undefined' || !process.versions?.node) {
+      // scatterboard:lang mirrors prefs.lang so the active language is
+      // readable before module-level label tables are captured, even
+      // when the workspace lives in sqlite rather than localStorage.
+      // The pre-rename planboard:* keys are still read once and moved
+      // forward for users upgrading before boot() runs the key rename.
+      const oldLang = localStorage.getItem('planboard:lang');
+      if (oldLang !== null) {
+        if (localStorage.getItem('scatterboard:lang') === null) localStorage.setItem('scatterboard:lang', oldLang);
+        localStorage.removeItem('planboard:lang');
+      }
+      const direct = localStorage.getItem('scatterboard:lang');
+      const l =
+        direct ??
+        (() => {
+          const raw = localStorage.getItem('scatterboard:v1') ?? localStorage.getItem('planboard:v1');
+          return raw ? (JSON.parse(raw) as { prefs?: { lang?: Lang } }).prefs?.lang : undefined;
+        })();
+      if (l && l in LANG_TAGS) return l as Lang;
     }
-    const direct = localStorage.getItem('scatterboard:lang');
-    const l =
-      direct ??
-      (() => {
-        const raw = localStorage.getItem('scatterboard:v1') ?? localStorage.getItem('planboard:v1');
-        return raw ? (JSON.parse(raw) as { prefs?: { lang?: Lang } }).prefs?.lang : undefined;
-      })();
-    if (l && l in LANG_TAGS) return l as Lang;
   } catch {
     // Fall through to browser detection.
   }

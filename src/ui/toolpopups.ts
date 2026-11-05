@@ -1,7 +1,7 @@
 import type { ID, Label, PresentOpts } from '../state/schema';
 import { t } from '../strings';
 import { ICONS } from './icons';
-import { closeToolPopup, openToolPopup, type ToolPopup } from './popup';
+import { closeToolPopup, haspopup, openToolPopup, type ToolPopup } from './popup';
 import { HIGHLIGHTS, TEXT_COLORS, type BlockStyle } from './richtext';
 import { kbd } from './shortcutpanel';
 
@@ -109,22 +109,29 @@ function baseEmoji(e: string): string {
   return e;
 }
 
-export function openColorPopup(anchor: HTMLElement, onPick: (color: string | undefined) => void): ToolPopup {
+export function openColorPopup(anchor: HTMLElement | DOMRect, onPick: (color: string | undefined) => void): ToolPopup {
+  haspopup(anchor, 'listbox');
   const node = document.createElement('div');
   node.className = 'cp-body';
   const grid = document.createElement('div');
   grid.className = 'cp-grid';
+  grid.setAttribute('role', 'listbox');
+  grid.setAttribute('aria-label', t('toolColor'));
   for (const c of CARD_COLORS) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'cp-swatch';
     b.style.background = c;
     b.title = c;    b.setAttribute('aria-label', c);
+    b.setAttribute('role', 'option');
+    b.setAttribute('aria-selected', 'false');
     b.addEventListener('click', () => onPick(c));
     grid.appendChild(b);
   }
   const custom = document.createElement('label');
   custom.className = 'cp-swatch cp-custom';
+  custom.setAttribute('role', 'option');
+  custom.setAttribute('aria-selected', 'false');
   custom.title = t('colorCustom');  custom.setAttribute('aria-label', t('colorCustom'));
   const well = document.createElement('input');
   well.type = 'color';
@@ -150,7 +157,8 @@ interface LabelsApi {
   onDelete(id: ID): void;
 }
 
-export function openLabelsPopup(anchor: HTMLElement, api: LabelsApi): ToolPopup {
+export function openLabelsPopup(anchor: HTMLElement | DOMRect, api: LabelsApi): ToolPopup {
+  haspopup(anchor, 'dialog');
   const node = document.createElement('div');
   node.className = 'lp-body';
   const list = document.createElement('div');
@@ -223,6 +231,7 @@ export function openReactionsPopup(
   active: () => Set<string>,
   onToggle: (emoji: string) => void,
 ): ToolPopup {
+  haspopup(anchor, 'dialog');
   const node = document.createElement('div');
   node.className = 'rp-body';
 
@@ -258,7 +267,9 @@ export function openReactionsPopup(
         b.type = 'button';
         b.className = 'rp-emoji';
         b.textContent = shown;
-        b.classList.toggle('on', act.has(shown) || bases.has(it.e));
+        const on = act.has(shown) || bases.has(it.e);
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', String(on));
         b.addEventListener('click', () => {
           onToggle(shown);
           render();
@@ -275,19 +286,25 @@ export function openReactionsPopup(
     }
   }
 
+  toneRow.setAttribute('role', 'radiogroup');
+  toneRow.setAttribute('aria-label', t('reactTone'));
   TONES.forEach((m) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'rp-tone';
     b.textContent = m ? `👋${m}` : '👋';
     b.title = t('reactTone');    b.setAttribute('aria-label', t('reactTone'));
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(m === tone));
     b.classList.toggle('on', m === tone);
     b.addEventListener('click', () => {
       tone = m;
       toneRow.querySelectorAll('.rp-tone').forEach((x) => {
         x.classList.remove('on');
+        x.setAttribute('aria-checked', 'false');
       });
       b.classList.add('on');
+      b.setAttribute('aria-checked', 'true');
       render();
     });
     toneRow.appendChild(b);
@@ -312,15 +329,23 @@ export interface MenuItem {
   onPick(): void;
 }
 
-export function openMenuPopup(anchor: HTMLElement, items: MenuItem[], keepSelection = false, below = false): ToolPopup {
+export function openMenuPopup(anchor: HTMLElement | DOMRect, items: MenuItem[], keepSelection = false, below = false): ToolPopup {
+  haspopup(anchor, 'menu');
   const node = document.createElement('div');
   node.className = 'menu-body';
+  node.setAttribute('role', 'menu');
   if (keepSelection) node.addEventListener('pointerdown', (e) => e.preventDefault());
   const pop = openToolPopup(anchor, node, below);
   for (const item of items) {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'pop-row';
+    if (item.checked !== undefined) {
+      row.setAttribute('role', 'menuitemcheckbox');
+      row.setAttribute('aria-checked', String(item.checked));
+    } else {
+      row.setAttribute('role', 'menuitem');
+    }
     if (item.icon) {
       const ic = document.createElement('span');
       ic.className = 'pop-icon';
@@ -369,9 +394,11 @@ const STYLE_ROWS: [BlockStyle, string][] = [
   ['quote', t('styleQuote')],
 ];
 
-function swatchRow(colors: (string | null)[], onPick: (c: string | null) => void): HTMLElement {
+function swatchRow(colors: (string | null)[], onPick: (c: string | null) => void, label: string): HTMLElement {
   const grid = document.createElement('div');
   grid.className = 'ts-swatches';
+  grid.setAttribute('role', 'listbox');
+  grid.setAttribute('aria-label', label);
   for (const c of colors) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -379,6 +406,8 @@ function swatchRow(colors: (string | null)[], onPick: (c: string | null) => void
     if (c === null) b.classList.add('cp-none');
     else b.style.background = c;
     b.title = c ?? t('colorDefault');    b.setAttribute('aria-label', c ?? t('colorDefault'));
+    b.setAttribute('role', 'option');
+    b.setAttribute('aria-selected', 'false');
     b.addEventListener('click', () => onPick(c));
     grid.appendChild(b);
   }
@@ -386,17 +415,23 @@ function swatchRow(colors: (string | null)[], onPick: (c: string | null) => void
 }
 
 // Edit-rail text style popup: block style rows + colour and highlight rows.
-export function openTextStylePopup(anchor: HTMLElement, api: TextStyleApi): ToolPopup {
+export function openTextStylePopup(anchor: HTMLElement | DOMRect, api: TextStyleApi): ToolPopup {
+  haspopup(anchor, 'dialog');
   const node = document.createElement('div');
   node.className = 'ts-body';
   // Keep the editing surface's selection while swatches/rows are clicked.
   node.addEventListener('pointerdown', (e) => e.preventDefault());
   const pop = openToolPopup(anchor, node);
   const cur = api.current();
+  const styleGroup = document.createElement('div');
+  styleGroup.setAttribute('role', 'radiogroup');
+  styleGroup.setAttribute('aria-label', t('toolTextStyle'));
   for (const [style, label] of STYLE_ROWS) {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'pop-row';
+    row.setAttribute('role', 'radio');
+    row.setAttribute('aria-checked', String(cur === style));
     const lab = document.createElement('span');
     lab.className = 'pop-label';
     lab.textContent = label;
@@ -411,15 +446,16 @@ export function openTextStylePopup(anchor: HTMLElement, api: TextStyleApi): Tool
       api.onStyle(style);
       pop.close();
     });
-    node.appendChild(row);
+    styleGroup.appendChild(row);
   }
+  node.appendChild(styleGroup);
   const colorHead = document.createElement('div');
   colorHead.className = 'ts-head';
   colorHead.textContent = t('textColor');
   const hlHead = document.createElement('div');
   hlHead.className = 'ts-head';
   hlHead.textContent = t('textHighlight');
-  node.append(colorHead, swatchRow(TEXT_COLORS, api.onColor), hlHead, swatchRow(HIGHLIGHTS, api.onHighlight));
+  node.append(colorHead, swatchRow(TEXT_COLORS, api.onColor, t('textColor')), hlHead, swatchRow(HIGHLIGHTS, api.onHighlight, t('textHighlight')));
   return pop;
 }
 
@@ -431,19 +467,26 @@ interface CellAlignApi {
 }
 
 // Table cell alignment: two groups, horizontal then vertical.
-export function openCellAlignPopup(anchor: HTMLElement, api: CellAlignApi): ToolPopup {
+export function openCellAlignPopup(anchor: HTMLElement | DOMRect, api: CellAlignApi): ToolPopup {
+  haspopup(anchor, 'dialog');
   const node = document.createElement('div');
   node.className = 'menu-body';
   const pop = openToolPopup(anchor, node);
   const group = (label: string, rows: [string, string, () => void][]) => {
+    const grp = document.createElement('div');
+    grp.setAttribute('role', 'radiogroup');
+    grp.setAttribute('aria-label', label);
     const head = document.createElement('div');
     head.className = 'ts-head';
+    head.setAttribute('role', 'presentation');
     head.textContent = label;
-    node.appendChild(head);
+    grp.appendChild(head);
     for (const [text, cur, pick] of rows) {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'pop-row';
+      row.setAttribute('role', 'radio');
+      row.setAttribute('aria-checked', String(!!cur));
       const lab = document.createElement('span');
       lab.className = 'pop-label';
       lab.textContent = text;
@@ -458,8 +501,9 @@ export function openCellAlignPopup(anchor: HTMLElement, api: CellAlignApi): Tool
         pop.close();
         pick();
       });
-      node.appendChild(row);
+      grp.appendChild(row);
     }
+    node.appendChild(grp);
   };
   const h = api.h ?? 'left';
   const v = api.v ?? 'top';
@@ -478,6 +522,7 @@ export function openCellAlignPopup(anchor: HTMLElement, api: CellAlignApi): Tool
 
 // Single-field hyperlink popup; Enter commits an anchor around the selection.
 export function openLinkPopup(anchor: HTMLElement | DOMRect, onCommit: (url: string) => void): ToolPopup {
+  haspopup(anchor, 'dialog');
   const node = document.createElement('div');
   node.className = 'lk-body';
   const input = document.createElement('input');
@@ -500,7 +545,8 @@ export function openLinkPopup(anchor: HTMLElement | DOMRect, onCommit: (url: str
 }
 
 // Link info popup: shows the card's URL with a copy row.
-export function openLinkInfoPopup(anchor: HTMLElement, url: string, onCopy: () => void): ToolPopup {
+export function openLinkInfoPopup(anchor: HTMLElement | DOMRect, url: string, onCopy: () => void): ToolPopup {
+  haspopup(anchor, 'dialog');
   const node = document.createElement('div');
   node.className = 'li-body';
   const text = document.createElement('div');
@@ -532,20 +578,24 @@ interface ViewMenuApi {
   grid(): boolean;
   onToggleGrid(): void;
   onPresent(): void;
+  onFit(): void;
 }
 
 // Topbar View menu: present entry, the per-board dot-grid toggle and
 // the presentation toggles. Check rows keep the popup open and flip
 // their check in place.
 export function openViewMenu(anchor: HTMLElement, api: ViewMenuApi): ToolPopup {
+  haspopup(anchor, 'menu');
   const node = document.createElement('div');
   node.className = 'menu-body';
+  node.setAttribute('role', 'menu');
   const pop = openToolPopup(anchor, node, true);
 
-  const row = (label: string, icon: string) => {
+  const row = (label: string, icon: string, itemRole = 'menuitem') => {
     const r = document.createElement('button');
     r.type = 'button';
     r.className = 'pop-row';
+    r.setAttribute('role', itemRole);
     const ic = document.createElement('span');
     ic.className = 'pop-icon';
     ic.innerHTML = icon;
@@ -557,12 +607,14 @@ export function openViewMenu(anchor: HTMLElement, api: ViewMenuApi): ToolPopup {
     return r;
   };
   const toggleRow = (label: string, icon: string, checked: () => boolean, onPick: () => void) => {
-    const r = row(label, icon);
+    const r = row(label, icon, 'menuitemcheckbox');
     const ck = document.createElement('span');
     ck.className = 'pop-check';
     ck.innerHTML = ICONS.check;
     const sync = () => {
-      ck.style.visibility = checked() ? 'visible' : 'hidden';
+      const on = checked();
+      ck.style.visibility = on ? 'visible' : 'hidden';
+      r.setAttribute('aria-checked', String(on));
     };
     sync();
     r.appendChild(ck);
@@ -574,6 +626,7 @@ export function openViewMenu(anchor: HTMLElement, api: ViewMenuApi): ToolPopup {
   const head = (label: string) => {
     const h = document.createElement('div');
     h.className = 'ts-head';
+    h.setAttribute('role', 'presentation');
     h.textContent = label;
     node.appendChild(h);
   };
@@ -588,6 +641,12 @@ export function openViewMenu(anchor: HTMLElement, api: ViewMenuApi): ToolPopup {
     api.onPresent();
   });
 
+  const fit = row(t('fitBoard'), ICONS.fit);
+  fit.addEventListener('click', () => {
+    pop.close();
+    api.onFit();
+  });
+
   toggleRow(t('viewGrid'), ICONS.dots, api.grid, api.onToggleGrid);
 
   head(t('viewPresenting'));
@@ -598,21 +657,69 @@ export function openViewMenu(anchor: HTMLElement, api: ViewMenuApi): ToolPopup {
   return pop;
 }
 
-export interface HelpApi {
+interface ZoomMenuApi {
+  zoom(): number;
+  onZoom(z: number): void;
+  onFit(): void;
+}
+
+// Zoombar percent button: preset levels plus Fit board, current level
+// checked. Replaces the bare reset-on-click affordance.
+export function openZoomMenu(anchor: HTMLElement, api: ZoomMenuApi): ToolPopup {
+  const cur = Math.round(api.zoom() * 100);
+  const items: MenuItem[] = [50, 100, 200].map((z) => ({
+    label: `${z}%`,
+    checked: cur === z,
+    onPick: () => api.onZoom(z / 100),
+  }));
+  items.push({ label: t('fitBoard'), icon: ICONS.fit, onPick: () => api.onFit() });
+  return openMenuPopup(anchor, items, false, true);
+}
+
+interface MobileMenuApi {
+  onFit(): void;
+  onView(anchor: HTMLElement): void;
+  onExport(anchor: HTMLElement): void;
+  onAgent(anchor: HTMLElement): void;
+  onSettings(anchor: HTMLElement): void;
+  onHelp(anchor: HTMLElement): void;
+}
+
+// Phone topbar overflow: the five trailing controls collapse into one
+// button whose menu rows forward to the popups they used to open.
+export function openMobileMenu(anchor: HTMLElement, api: MobileMenuApi): ToolPopup {
+  const items: MenuItem[] = [
+    { label: t('fitBoard'), icon: ICONS.fit, onPick: () => api.onFit() },
+    { label: t('viewMenu'), icon: ICONS.cardView, onPick: () => api.onView(anchor) },
+    { label: t('exportMenu'), icon: ICONS.export, onPick: () => api.onExport(anchor) },
+    { label: t('setAgent'), icon: ICONS.bot, onPick: () => api.onAgent(anchor) },
+    { label: t('settingsTitle'), icon: ICONS.gear, onPick: () => api.onSettings(anchor) },
+    { label: t('helpTitle'), icon: ICONS.help, onPick: () => api.onHelp(anchor) },
+  ];
+  return openMenuPopup(anchor, items, false, true);
+}
+
+interface HelpApi {
   onShortcuts(): void;
   onAbout(anchor: HTMLElement): void;
+  // Install row appears only while a captured beforeinstallprompt lives.
+  canInstall?(): boolean;
+  onInstall?(): void;
 }
 
 // Topbar help menu: shortcuts, issue reporting and About.
 export function openHelpMenu(anchor: HTMLElement, api: HelpApi): ToolPopup {
-  return openMenuPopup(anchor, [
+  const items: MenuItem[] = [
     { label: t('shortcutsTitle'), hint: '/', icon: ICONS.kbd, onPick: () => api.onShortcuts() },
+  ];
+  if (api.canInstall?.()) items.push({ label: t('installApp'), icon: ICONS.download, onPick: () => api.onInstall!() });
+  items.push(
     {
       label: t('helpIssue'),
       icon: ICONS.ext,
-      onPick: () =>
-        window.open('https://github.com/markoshaq/scatterboard/issues', '_blank', 'noopener'),
+      onPick: () => window.open('https://github.com/markoshaq/scatterboard/issues', '_blank', 'noopener'),
     },
     { label: t('setAbout'), icon: ICONS.info, onPick: () => api.onAbout(anchor) },
-  ], false, true);
+  );
+  return openMenuPopup(anchor, items, false, true);
 }

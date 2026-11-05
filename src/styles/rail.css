@@ -1,0 +1,88 @@
+/* left rail */
+
+.rail {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(76px + env(safe-area-inset-left, 0px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 20;
+  user-select: none;
+  /* The column is transparent: dead space between items must not eat
+     taps meant for the topbar or canvas beneath. */
+  pointer-events: none;
+}
+
+.rail > * {
+  pointer-events: auto;
+}
+
+.rail-item {
+  width: 66px;
+  border: 1px solid var(--edge);
+  background: var(--chrome);
+  border-radius: 10px;
+  padding: 6px 0 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: calc(10px * var(--ui));
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* A live rail drag flips the cursor app-wide so the grab reads over
+   cards and canvas too. */
+body.ghost-drag,
+body.ghost-drag * {
+  cursor: grabbing !important;
+}
+
+.rail-item:hover {
+  background: var(--card);
+}
+
+.rail-item > span {
+  max-width: 100%;
+  margin: 0;
+  text-align: center;
+  line-height: 1.1;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+.rail-item svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.rail-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 50;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--card);
+  border-radius: 8px;
+  padding: 7px 11px;
+  font-size: calc(12px * var(--ui));
+  color: var(--ink-1);
+  box-shadow: 0 6px 18px var(--shadow-2);
+}
+
+.rail-ghost svg {
+  width: 16px;
+  height: 16px;
+}
+

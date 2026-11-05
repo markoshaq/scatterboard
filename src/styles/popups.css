@@ -1,0 +1,307 @@
+/* tool popups */
+
+.tool-pop {
+  position: fixed;
+  z-index: 60;
+  min-width: 170px;
+  /* --vvh tracks visualViewport.height: popups stay inside the region
+     that survives the on-screen keyboard, not just the URL bar. */
+  max-height: min(480px, calc(var(--vvh, 90dvh) - 16px));
+  overflow: auto;
+  background: var(--card);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px var(--shadow-2), 0 0 0 1px var(--edge);
+  padding: 8px;
+  font-size: calc(12px * var(--ui));
+  color: var(--ink-1);
+}
+
+.pop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: calc(12.5px * var(--ui));
+  color: var(--ink-1);
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.pop-row:hover {
+  background: var(--hover);
+}
+
+.pop-row:disabled {
+  color: var(--ink-7);
+  cursor: default;
+}
+
+.pop-row:disabled:hover {
+  background: none;
+}
+
+.pop-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: flex;
+}
+
+.pop-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.pop-label {
+  flex: 1;
+}
+
+.menu-body .pop-label {
+  white-space: nowrap;
+}
+
+.pop-check {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+  display: flex;
+}
+
+.pop-check svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cp-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 26px);
+  gap: 6px;
+  padding: 4px 2px 8px;
+}
+
+.cp-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--edge);
+  cursor: pointer;
+  padding: 0;
+}
+
+.cp-custom {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  background: conic-gradient(#e8734a, var(--co-edge), #5f9e5f, #3d84e0, #8a5fd6, #e8734a);
+}
+
+.cp-custom input {
+  position: absolute;
+  inset: -4px;
+  width: 40px;
+  height: 40px;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.lp-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow: auto;
+  min-width: 190px;
+}
+
+.lp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: calc(12.5px * var(--ui));
+}
+
+.lp-row:hover {
+  background: var(--hover-2);
+}
+
+.lp-row input[type='checkbox'] {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.lp-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.lp-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lp-del {
+  border: 0;
+  background: none;
+  color: var(--ink-6);
+  cursor: pointer;
+  padding: 2px;
+  display: none;
+}
+
+.lp-row:hover .lp-del {
+  display: block;
+}
+
+.lp-del svg {
+  width: 11px;
+  height: 11px;
+  display: block;
+}
+
+.lp-del:hover {
+  color: var(--danger);
+}
+
+.lp-empty {
+  padding: 8px;
+  color: var(--ink-6);
+}
+
+.lp-add {
+  margin-top: 6px;
+  border-top: 1px solid var(--edge);
+  padding-top: 8px;
+}
+
+.lp-add input {
+  width: 100%;
+  font: inherit;
+  font-size: calc(12.5px * var(--ui));
+  padding: 6px 8px;
+  border: 1px solid var(--edge-strong);
+  border-radius: 6px;
+}
+
+.rp-group {
+  font-size: calc(10px * var(--ui));
+  font-weight: 650;
+  color: var(--ink-6);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px 4px 2px;
+}
+
+.rp-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 30px);
+  gap: 2px;
+}
+
+.rp-emoji {
+  font-size: calc(17px * var(--ui));
+  border: 0;
+  background: none;
+  border-radius: 6px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.rp-emoji:hover {
+  background: var(--hover);
+}
+
+.rp-emoji.on {
+  background: var(--accent-soft2);
+}
+
+/* Phones: every tool popup docks as a bottom sheet. --vvh tracks the
+   keyboard-shrunk viewport, so the sheet rides above it and caps at
+   60% of what remains; the grab strip is injected by openToolPopup so
+   builders need no extra markup. */
+@media (max-width: 720px) {
+  .tool-pop.sheet {
+    left: 0 !important;
+    right: 0;
+    top: auto !important;
+    bottom: max(0px, calc(100dvh - var(--vvh, 100dvh)));
+    width: auto;
+    min-width: 0;
+    max-height: calc(var(--vvh, 100dvh) * 0.6);
+    border-radius: 12px 12px 0 0;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    overscroll-behavior: contain;
+  }
+
+  /* The grab strip is a real element (not a ::before) so it can own a
+     touch-action and receive the pull-down dismiss gesture. */
+  .sheet-grab {
+    padding: 4px 0 10px;
+    touch-action: none;
+    cursor: grab;
+  }
+
+  .sheet-grab::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 0 auto;
+    border-radius: 2px;
+    background: var(--edge-strong);
+  }
+
+  /* Fixed-width bodies stretch to the sheet's full width. */
+  .tool-pop.sheet .bip-body,
+  .tool-pop.sheet .qc-body,
+  .tool-pop.sheet .cthread {
+    width: auto;
+  }
+
+  /* Comment threads in a sheet get roomier padding around the thread
+     body so the text does not hug the rounded corners. */
+  .tool-pop.sheet .cthread {
+    padding: 8px 12px 4px;
+    gap: 10px;
+  }
+
+  .tool-pop.sheet .ct-list {
+    gap: 12px;
+  }
+
+  .tool-pop.sheet .lk-input {
+    width: 100%;
+  }
+}
+
+/* The '+' create-palette sheet on phones: the same icon+label items as
+   the rail, laid out as a tap-friendly grid. */
+.pal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 4px;
+}
+
+.pal-grid .rail-item {
+  width: auto;
+}
+
+/* Sheet items keep vertical drags for drop-onto-canvas while letting
+   horizontal swipes scroll instead of starting a ghost. */
+@media (max-width: 720px) {
+  .pal-grid .rail-item {
+    touch-action: pan-x;
+  }
+}
+

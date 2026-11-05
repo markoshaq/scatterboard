@@ -1,0 +1,430 @@
+/* column card */
+
+/* Paint containment off the column: a member mid-reorder rides the
+   pointer outside the column's box and must not clip at its edge. */
+.card.column {
+  background: var(--card-soft);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 1px var(--card-edge);
+  padding: 10px;
+  contain: layout style;
+}
+
+.col-title {
+  font-weight: 650;
+  outline: none;
+  min-height: 20px;
+  word-break: break-word;
+}
+
+.col-title:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+  font-weight: 400;
+}
+
+.col-count {
+  font-size: 11px;
+  color: var(--ink-6);
+  margin-top: 2px;
+}
+
+/* Member-attached line spans: between the column surface and the
+   member stack (below positioned members), clipped to the column box. */
+.col-lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.col-body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 4px;
+}
+
+.col-body > .card {
+  position: relative;
+  left: auto;
+  top: auto;
+  width: 100%;
+  flex: none;
+}
+
+/* Selection ring lives on the card itself: the canvas outline paints
+   under .doc, so it hides whenever another card covers the selected
+   one. An outline (not box-shadow) rides the card's own z and never
+   fights per-type shadows. */
+.card.selected {
+  outline: 2px solid var(--accent);
+}
+
+/* Any drag lift: member reorders ride the pointer above their slot
+   while .col-insert opens the gap, and free-canvas drags wear the
+   same shadow so the grab feels physical. */
+.card.drag-lift {
+  z-index: 5;
+  box-shadow: 0 8px 24px var(--shadow-2);
+}
+
+/* Pointer affordance: unselected cards raise a faint edge on hover.
+   Guarded to real hover pointers: touch hover sticks after the tap. */
+@media (hover: hover) {
+  .card:not(.selected):not(.editing):not(.drag-lift):not(.drop-hint):not(.connect-target):hover {
+    outline: 1.5px solid var(--edge-strong);
+    box-shadow: 0 2px 8px var(--shadow-1), 0 0 0 1px var(--card-edge);
+  }
+}
+
+.col-insert {
+  flex: none;
+  height: 1.5px;
+  border-radius: 1px;
+  margin: 0 8px;
+  background: var(--accent);
+}
+
+.card.column.drop-hint {
+  box-shadow: 0 0 0 2px var(--accent), 0 2px 8px var(--shadow-1);
+}
+
+/* Connect/endpoint drag hovers: the attach target gets the same ring. */
+.card.connect-target {
+  box-shadow: 0 0 0 2px var(--accent), 0 2px 8px var(--shadow-1);
+}
+
+/* board card */
+
+.card.board-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 1px var(--card-edge);
+  padding: 10px;
+}
+
+.bc-tile {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--tile-ink);
+}
+
+.bc-meta {
+  min-width: 0;
+}
+
+.bc-title {
+  font-weight: 600;
+  outline: none;
+  overflow-wrap: break-word;
+}
+
+.bc-count {
+  font-size: 11px;
+  color: var(--ink-6);
+  margin-top: 1px;
+}
+
+/* heading card */
+
+.card.heading {
+  padding: 4px 8px;
+  min-height: 30px;
+  border-radius: 10px;
+}
+
+.head-text {
+  outline: none;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 26px;
+}
+
+.card.heading[data-level='2'] .head-text {
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.head-text:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+}
+
+/* todo card */
+
+.card.todo {
+  background: var(--card);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 1px var(--card-edge);
+  padding: 10px 12px;
+}
+
+.todo-title {
+  display: none;
+  font-weight: 650;
+  outline: none;
+  min-height: 20px;
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+.card.todo.show-title .todo-title {
+  display: block;
+}
+
+.todo-title:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+  font-weight: 400;
+}
+
+.todo-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding: 2px 0;
+}
+
+.todo-check {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1.5px solid var(--ink-7);
+  background: var(--card);
+  cursor: pointer;
+  position: relative;
+}
+
+.todo-check.done {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.todo-check.done::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  background: no-repeat center / contain
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4.5 12.8l5 5L19.5 7' fill='none' stroke='%23fff' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.todo-text {
+  flex: 1;
+  min-width: 0;
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 20px;
+}
+
+.todo-text:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+}
+
+.todo-item.done .todo-text {
+  color: var(--ink-6);
+  text-decoration: line-through;
+}
+
+.todo-due {
+  flex: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink-4);
+  padding: 2px 4px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.todo-due svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+/* Icon affordances (reaction/due with no value) reveal on row hover,
+   no edit session needed; visibility keeps their slot so the reveal
+   never shifts the row. */
+.card.todo:not(.editing) .todo-item:not(:hover) .todo-due:not(.has-due) {
+  visibility: hidden;
+}
+
+.todo-due.has-due {
+  background: var(--hover);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.todo-due.overdue {
+  color: var(--danger);
+}
+
+.card.editing .head-text,
+.card.editing .todo-title,
+.card.editing .todo-text,
+.card.editing .sw-caption,
+.line-label.editing {
+  user-select: text;
+  cursor: text;
+}
+
+/* swatch card */
+
+.card.swatch {
+  background: var(--card);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 1px var(--card-edge);
+  padding: 10px;
+}
+
+.sw-block {
+  height: 104px;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px var(--edge);
+}
+
+.sw-meta {
+  margin-top: 8px;
+}
+
+.sw-value {
+  font-size: 11px;
+  color: var(--ink-4);
+  letter-spacing: 0.02em;
+}
+
+.sw-caption {
+  outline: none;
+  margin-top: 2px;
+  min-height: 18px;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.sw-caption:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+}
+
+.sw-picker {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+/* connect handle + line labels */
+
+.connect-handle {
+  position: absolute;
+  width: calc(16px * var(--iz, 1));
+  height: calc(16px * var(--iz, 1));
+  transform: translate(calc(2px * var(--iz, 1)), -50%);
+  border-radius: 50%;
+  background: var(--card);
+  border: calc(1.5px * var(--iz, 1)) solid var(--accent);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: crosshair;
+  pointer-events: auto;
+  z-index: 5;
+}
+
+.connect-handle svg {
+  width: calc(10px * var(--iz, 1));
+  height: calc(10px * var(--iz, 1));
+  display: block;
+}
+
+.line-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.line-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  max-width: 220px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 1px var(--edge);
+  font-size: 12px;
+  color: var(--ink-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: auto;
+  outline: none;
+}
+
+.line-label.editing {
+  white-space: normal;
+  box-shadow: 0 0 0 1.5px var(--accent), 0 1px 3px var(--shadow-1);
+}
+
+/* Lines paint under cards; a covered midpoint hides the pill too. */
+.line-label.covered {
+  display: none;
+}
+
+.line-label:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+}
+
+
+/* Selected cards sit a step above their siblings: the ring stays an
+   outline (z-order-proof) while this shadow adds the depth, below the
+   drag-lift shadow and off while drop affordances own the card. */
+.card.selected:not(.drag-lift):not(.over-trash):not(.drop-hint):not(.connect-target) {
+  box-shadow: 0 4px 16px var(--shadow-2), 0 0 0 1px var(--card-edge);
+}
+
+/* Dark-mode depth: card fill sits a hair above the board, so a faint
+   top inset gives each surface a lit edge. ::before keeps it under the
+   card's own content. */
+body.dark .card:not(.heading)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+}

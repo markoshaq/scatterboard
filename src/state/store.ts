@@ -133,6 +133,7 @@ export class Store {
     const entry = this.past.pop();
     if (!entry) return;
     const change: Change = emptyChange();
+    change.replay = true;
     for (const a of entry.undo) applyAction(this.doc, a, change);
     // Push AFTER emit: listeners may flush an open edit group during the
     // emit (endEdit -> endGroup -> future = []), which would wipe the
@@ -145,6 +146,7 @@ export class Store {
     const entry = this.future.pop();
     if (!entry) return;
     const change: Change = emptyChange();
+    change.replay = true;
     for (const a of entry.redo) applyAction(this.doc, a, change);
     this.emit(change);
     this.past.push(entry);

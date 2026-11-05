@@ -1,0 +1,341 @@
+/* settings popup */
+
+.stp-body {
+  min-width: 210px;
+}
+
+/* Header row mirrors the .sp-head convention used by the side panels. */
+.stp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 8px;
+}
+
+.stp-head .sp-title {
+  flex: 1;
+}
+
+.agent-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 7px 8px;
+  font-size: calc(12.5px * var(--ui));
+  color: var(--ink-1);
+}
+
+.agent-row .pop-label {
+  flex: none;
+}
+
+.agent-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-6);
+}
+
+.agent-dot.on {
+  background: #4e9e51;
+}
+
+.agent-dot.wait {
+  background: #d9a03f;
+}
+
+.agent-state {
+  flex: none;
+  min-width: 60px;
+  color: var(--ink-4);
+  font-size: calc(12px * var(--ui));
+}
+
+.agent-btn {
+  flex: none;
+  border: 1px solid var(--card-edge);
+  background: var(--card);
+  color: var(--ink-1);
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  padding: 3px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.agent-btn:hover {
+  background: var(--hover);
+}
+
+.agent-how {
+  padding-top: 0;
+}
+
+.agent-prompt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 4px 6px;
+  padding: 7px 9px;
+  width: calc(100% - 8px);
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  text-align: left;
+  color: var(--ink-4);
+  background: var(--card-soft);
+  border: 0;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--card-edge);
+  cursor: pointer;
+}
+
+.agent-prompt:hover {
+  box-shadow: inset 0 0 0 1px var(--edge);
+}
+
+.agent-prompt-text {
+  flex: 1;
+}
+
+.agent-prompt-icon {
+  flex: none;
+  display: flex;
+  color: var(--ink-6);
+}
+
+.agent-prompt-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Segmented row: one line for a small single-choice set. */
+.seg {
+  display: flex;
+  gap: 2px;
+  margin: 2px 4px 6px;
+  padding: 2px;
+  background: var(--card-soft);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--card-edge);
+}
+
+.seg-btn {
+  flex: 1;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  color: var(--ink-4);
+  padding: 5px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.seg-btn:hover {
+  color: var(--ink-1);
+}
+
+.set-select {
+  position: relative;
+  margin: 2px 4px 6px;
+}
+
+.set-select select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  font-size: calc(12.5px * var(--ui));
+  color: var(--ink-1);
+  background: var(--card-soft);
+  border: 0;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--card-edge);
+  padding: 7px 28px 7px 9px;
+  cursor: pointer;
+}
+
+.set-select select:hover {
+  box-shadow: inset 0 0 0 1px var(--edge);
+}
+
+.set-chev {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  display: flex;
+  color: var(--ink-6);
+  pointer-events: none;
+}
+
+.set-chev svg {
+  width: 14px;
+  height: 14px;
+}
+
+.seg-btn.on {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 1px 3px var(--shadow-1);
+}
+
+/* Toggle checkbox: a square box so independent options do not read as
+   the single-choice trailing check. */
+.set-box {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--ink-7);
+  border-radius: 4px;
+  display: flex;
+  color: transparent;
+}
+
+.set-box svg {
+  width: 11px;
+  height: 11px;
+  margin: auto;
+}
+
+.set-box.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.pop-sep {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--edge);
+}
+
+.stp-danger {
+  color: var(--danger);
+}
+
+.stp-meter {
+  font-size: calc(12px * var(--ui));
+  color: var(--ink);
+  padding: 4px 8px 8px;
+}
+
+.about-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 8px 2px;
+  font-size: calc(14px * var(--ui));
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.about-ver {
+  font-size: calc(11px * var(--ui));
+  font-weight: 400;
+  color: var(--ink-6);
+}
+
+.about-install {
+  font-size: calc(12px * var(--ui));
+  color: var(--ink-6);
+  padding: 8px 8px 4px;
+  border-top: 1px solid var(--edge);
+}
+
+/* board icons on cards and crumbs */
+
+.bc-tile svg {
+  width: 22px;
+  height: 22px;
+}
+
+.bc-tile.bicon-img {
+  padding: 0;
+  overflow: hidden;
+}
+
+.bc-tile.bicon-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.crumb-ic {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--ink-4);
+  cursor: pointer;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.crumb-ic svg {
+  width: 14px;
+  height: 14px;
+}
+
+.crumb-ic img {
+  width: 16px;
+  height: 16px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.crumb-ic:hover {
+  background: var(--hover);
+  color: var(--ink-1);
+}
+
+.gear-btn svg {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+}
+
+/* dismissible hint toast */
+
+.toast.sticky {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toast-x {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: calc(15px * var(--ui));
+  cursor: pointer;
+  padding: 0 4px;
+  min-width: 24px;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+}
+
+.toast-x:hover {
+  opacity: 1;
+}
+

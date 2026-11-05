@@ -30,6 +30,7 @@ import { downloadTextFile } from '../draw/strokes';
 import { slugFileName } from '../export/download';
 import { htmlToMarkdown, htmlToWordDoc, plainTextOf } from './export';
 import { openScrim, type EditorScrim } from './shell';
+import { tip } from '../ui/tip';
 
 interface DocEditorCtx {
   boards(): Board[];
@@ -77,6 +78,8 @@ export function openDocumentEditor(_el: Element, ctx: DocEditorCtx): EditorHandl
   closeBtn.type = 'button';
   closeBtn.className = 'ed-hbtn';
   closeBtn.innerHTML = ICONS.close;
+  closeBtn.title = t('close');
+  closeBtn.setAttribute('aria-label', t('close'));
   meta.append(words, exportBtn, closeBtn);
   head.append(titleEl, meta);
   const body = document.createElement('div');
@@ -201,7 +204,7 @@ export function openDocumentEditor(_el: Element, ctx: DocEditorCtx): EditorHandl
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'ed-tool';
-    b.title = label;
+    tip(b, label);
     b.innerHTML = icon;
     b.addEventListener('pointerdown', (e) => e.preventDefault());
     b.addEventListener('click', () => onClick(b));

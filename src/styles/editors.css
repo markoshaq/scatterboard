@@ -1,0 +1,519 @@
+/* dedicated editors: dimmed board behind, surface centered */
+
+.ed-scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--ed-scrim);
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
+}
+
+.ed-doc {
+  width: min(720px, 92vw);
+  min-height: 60vh;
+  margin: 48px 0 48px 56px;
+  background: var(--card);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px var(--shadow-3);
+  padding: 26px 42px 60px;
+}
+
+.ed-doc-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  border-bottom: 1px solid var(--edge);
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+}
+
+.ed-doc-title {
+  flex: 1;
+  font-size: calc(22px * var(--ui));
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  outline: none;
+  min-height: 30px;
+  word-break: break-word;
+}
+
+.ed-doc-title:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+  font-weight: 400;
+}
+
+.ed-doc-meta {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.ed-doc-words {
+  font-size: calc(11.5px * var(--ui));
+  color: var(--ink-6);
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
+.ed-hbtn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  color: var(--ink-2);
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.ed-hbtn:hover {
+  background: var(--hover-solid);
+}
+
+.ed-hbtn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ed-doc-body {
+  min-height: 40vh;
+  font-size: calc(14.5px * var(--ui));
+  cursor: text;
+}
+
+.ed-doc-body:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+}
+
+.ed-tools {
+  position: fixed;
+  /* Docked off the doc's left edge: doc left sits at
+     50vw - min(360px, 46vw) + 28px (its 56px margin-left centred), so
+     50px of strip + gap lands fully clear of the surface. */
+  left: max(10px, calc(50vw - min(360px, 46vw) - 22px));
+  top: 96px;
+  /* Short viewports (landscape phones) scroll the strip rather than
+     clipping its lower tools offscreen. */
+  max-height: calc(100dvh - 110px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--chrome);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 6px 4px;
+  box-shadow: 0 4px 18px var(--shadow-3);
+}
+
+.ed-tool {
+  width: 34px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  border-radius: 7px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.ed-tool:hover {
+  background: var(--hover);
+}
+
+.ed-tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.ed-tool:disabled:hover {
+  background: none;
+}
+
+.ed-tool svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* sketch card + editor surface */
+
+.card.sketch {
+  background: var(--card);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 1px var(--card-edge);
+  padding: 8px;
+}
+
+.sk-stage {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--stage);
+}
+
+.sk-stage svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.sk-empty {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--ink-6);
+  font-size: 11.5px;
+}
+
+.card.sketch.empty .sk-empty {
+  display: flex;
+}
+
+.sk-empty svg {
+  width: 22px;
+  height: 22px;
+}
+
+.ed-skwrap {
+  align-items: center;
+}
+
+.ed-sk-card {
+  background: var(--card);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px var(--shadow-3);
+  padding: 14px;
+  margin-top: 9vh;
+}
+
+.sk-pad {
+  position: relative;
+  background: var(--stage);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--edge);
+  touch-action: none;
+}
+
+.sk-pad[data-tool='pen'] {
+  cursor: crosshair;
+}
+
+.sk-pad[data-tool='eraser'] {
+  cursor: cell;
+}
+
+.draw-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.draw-path.draw-sel {
+  stroke: var(--accent);
+  opacity: 0.85;
+}
+
+/* draw toolbar (shared: sketch editor + board draw) */
+
+.draw-tools {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--chrome);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 5px 7px;
+  box-shadow: 0 6px 22px var(--shadow-3);
+  z-index: 45;
+}
+
+.dt-btn {
+  width: 32px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  border-radius: 7px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.dt-btn:hover {
+  background: var(--hover);
+}
+
+.dt-btn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.dt-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.dt-btn:disabled:hover {
+  background: none;
+}
+
+.dt-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+.dt-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--edge);
+  margin: 0 4px;
+}
+
+.dt-swatch {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1px solid var(--edge-strong);
+  display: block;
+}
+
+.dt-weight {
+  display: flex;
+  gap: 1px;
+}
+
+.dt-wbtn {
+  width: 24px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  border-radius: 6px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.dt-wbtn:hover {
+  background: var(--hover);
+}
+
+.dt-wbtn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.dt-wbtn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.dt-act {
+  font: inherit;
+  font-size: calc(12.5px * var(--ui));
+  border: 0;
+  background: none;
+  border-radius: 7px;
+  padding: 6px 10px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.dt-act:hover {
+  background: var(--hover);
+}
+
+.dt-save {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.dt-save:hover {
+  background: var(--accent-hi);
+}
+
+.dt-save:disabled {
+  background: var(--accent-dim);
+  cursor: default;
+}
+
+/* board draw mode */
+
+.draw-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--veil);
+  touch-action: none;
+}
+
+.draw-veil[data-tool='pen'] {
+  cursor: crosshair;
+}
+
+.draw-veil[data-tool='eraser'] {
+  cursor: cell;
+}
+
+.draw-wrap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.draw-wrap .draw-svg {
+  width: 1px;
+  height: 1px;
+}
+
+/* annotation overlay */
+
+.anno-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* svgs may be seated inside .cards to honour z-order, so selectors are
+   host-agnostic. */
+.anno {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.anno-path {
+  pointer-events: stroke;
+  cursor: default;
+}
+
+.anno.selected .anno-path {
+  filter: drop-shadow(0 0 2px rgba(53, 109, 243, 0.9));
+}
+
+/* document card */
+
+.card.document {
+  background: var(--card);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 1px var(--card-edge);
+  padding: 10px 12px;
+}
+
+.dc-glyph {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-4);
+}
+
+.dc-glyph > svg {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+
+.dc-meta {
+  min-width: 0;
+}
+
+.dc-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink-1);
+  outline: none;
+  word-break: break-word;
+  min-height: 18px;
+}
+
+.dc-words {
+  font-size: 11px;
+  color: var(--ink-6);
+  margin-top: 1px;
+}
+
+.dc-prev {
+  display: none;
+  max-height: 320px;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--ink-1);
+  margin-top: 8px;
+  pointer-events: none;
+}
+
+.card.document.detail .dc-prev {
+  display: block;
+}
+
+.card.document.detail .dc-words,
+.card.document.detail .dc-glyph > svg {
+  display: none;
+}
+
+.card.document.detail .dc-title {
+  font-size: 15px;
+}
+
+.dc-cap {
+  display: none;
+  font-size: 12px;
+  color: var(--ink-4);
+  margin-top: 6px;
+  outline: none;
+  min-height: 16px;
+  word-break: break-word;
+}
+
+.card.document.detail.has-cap .dc-cap,
+.card.document.detail.editing .dc-cap {
+  display: block;
+}
+
+.card.document.editing .dc-title:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+  font-weight: 400;
+}
+
+.card.document.editing .dc-cap:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+}
+
+.card.editing .dc-title,
+.card.editing .dc-cap {
+  user-select: text;
+  cursor: text;
+}
+

@@ -1,0 +1,109 @@
+/* note rich text */
+
+.note-text h1,
+.note-text h2,
+.note-text h3,
+.note-text h4,
+.note-text h5,
+.note-text h6,
+.note-text p,
+.note-text div,
+.note-text pre,
+.note-text blockquote,
+.note-text ul,
+.note-text ol {
+  margin: 3px 0;
+}
+
+.note-text h2 {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.note-text h3 {
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.note-text .tx-sm {
+  font-size: 12px;
+  color: var(--ink-1);
+}
+
+.note-text pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  background: var(--pre);
+  border-radius: 6px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.note-text .tx-co {
+  background: var(--co);
+  border-left: 3px solid var(--co-edge);
+  border-radius: 0 6px 6px 0;
+  padding: 6px 10px;
+}
+
+.note-text blockquote {
+  border-left: 3px solid var(--faint);
+  padding-left: 10px;
+  color: var(--ink-2);
+}
+
+.note-text ul,
+.note-text ol {
+  padding-left: 20px;
+}
+
+
+
+.note-text hr {
+  border: 0;
+  border-top: 1.5px solid var(--faint);
+  margin: 8px 0;
+}
+
+.note-text a,
+.head-text a {
+  color: var(--accent);
+}
+
+.note-text code.tx-ic,
+.head-text code.tx-ic {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  background: var(--pre);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+/* text style popup */
+
+.ts-head {
+  font-size: calc(11px * var(--ui));
+  color: var(--ink-6);
+  padding: 8px 8px 3px;
+}
+
+.ts-swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 22px);
+  gap: 5px;
+  padding: 2px 8px 6px;
+}
+
+.ts-swatches .cp-swatch {
+  width: 22px;
+  height: 22px;
+}
+
+.cp-swatch.cp-none {
+  background:
+    linear-gradient(to top right, transparent 44%, #b0553f 46%, #b0553f 54%, transparent 56%),
+    #fff;
+}
+

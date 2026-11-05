@@ -1,0 +1,140 @@
+/* rail: mode containers + pinned trash */
+
+.rail {
+  padding: calc(52px + env(safe-area-inset-top, 0px)) 0 calc(62px + env(safe-area-inset-bottom, 0px))
+    env(safe-area-inset-left, 0px);
+}
+
+.rail-items {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 0 5px;
+}
+
+.rail-items::-webkit-scrollbar {
+  display: none;
+}
+
+/* Vertical overflow fades for the desktop rail column; the phone bar's
+   horizontal pair lives in responsive.css. */
+@media (min-width: 721px) {
+  .rail-items.can-top {
+    mask-image: linear-gradient(180deg, transparent 0, #000 14px);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14px);
+  }
+
+  .rail-items.can-bottom {
+    mask-image: linear-gradient(180deg, #000 calc(100% - 14px), transparent 100%);
+    -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 14px), transparent 100%);
+  }
+
+  .rail-items.can-top.can-bottom {
+    mask-image: linear-gradient(180deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  }
+}
+
+/* The can is a fixed sibling of .rail (left/bottom match the old flex
+   pin). It sits one step above the rail normally, and drops a step under
+   the lifted viewport while a card hovers it: the dragged card covers
+   only the can, never the other tools. */
+.rail-trash {
+  position: fixed;
+  left: calc(5px + env(safe-area-inset-left, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  z-index: 21;
+  user-select: none;
+}
+
+body.over-trash .rail-trash {
+  z-index: 14;
+}
+
+/* Drag-over feedback for the card-delete drop: the can goes danger-red
+   and the viewport lifts (staying under the rail and panels) so the
+   dragged cards ride over the can wearing the same ring. Hit-testing is
+   off so the lifted cards can't intercept pointer targets. */
+.rail-trash.drop-hint {
+  color: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger);
+}
+
+body.over-trash .viewport {
+  z-index: 16;
+}
+
+body.over-trash .viewport,
+body.over-trash .viewport * {
+  pointer-events: none;
+}
+
+.card.over-trash {
+  outline: 2px solid var(--danger);
+  outline-offset: -2px;
+}
+
+.rail-tool,
+.rail-trash {
+  cursor: pointer;
+}
+
+.unsorted-chip {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  color: var(--ink-4);
+  background: var(--chrome);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 3px 10px;
+  cursor: pointer;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.unsorted-ic {
+  display: flex;
+}
+
+.unsorted-ic svg {
+  width: 13px;
+  height: 13px;
+}
+
+.unsorted-chip:hover {
+  color: var(--ink-1);
+  background: var(--card);
+}
+
+.view-btn {
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  color: var(--ink-4);
+  background: var(--chrome);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 3px 10px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.view-btn:hover {
+  color: var(--ink-1);
+  background: var(--card);
+}
+
+/* Phone-only overflow button: hidden until the <=720px shell swaps the
+   topbar's trailing controls for it. */
+.more-btn {
+  display: none;
+}
+

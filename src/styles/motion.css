@@ -1,0 +1,166 @@
+/* Surface entrances: everything mounts detached/attached in one frame,
+   so keyframe animations give the appearance a settling motion without
+   any JS close choreography. The reduced-motion block below flattens
+   them for users who ask for that. */
+.tool-pop,
+.due-pop {
+  animation: pop-in 0.15s ease-out;
+}
+
+.side-panel {
+  animation: panel-in 0.18s ease-out;
+}
+
+.toast {
+  animation: toast-in 0.2s ease-out;
+}
+
+.ed-scrim,
+.short-scrim {
+  animation: scrim-in 0.18s ease-out;
+}
+
+.short-box {
+  animation: box-in 0.2s ease-out;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes box-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+
+/* Hover settling on the row/menu surfaces that used to snap. */
+.pop-row,
+.sp-row,
+.bpl-row,
+.lp-row,
+.view-btn,
+.crumb,
+.rail-item,
+.dp-day {
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+
+/* Card births: the layer stamps .card-in only on elements new to the
+   open board, so boot, board switches, undo and culled remounts stay
+   silent. */
+.card-in {
+  animation: card-in 0.16s ease-out;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+/* Card exits: only real deletes (filed to the trash) get the shrink;
+   the layer defers destroy by the animation length. Undo/redo replays
+   and culls skip it entirely. */
+.card-out {
+  animation: card-out 0.13s ease-in forwards;
+  pointer-events: none !important;
+}
+
+@keyframes card-out {
+  to {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+/* Rail mode swaps: rebuilt items stagger in so the create/tools/edit
+   transition reads as a swap rather than a hard cut. --i is the item's
+   index, stamped by Rail.sync. */
+.rail-swap .rail-item {
+  animation: rail-item-in 0.14s ease-out both;
+  animation-delay: calc(var(--i, 0) * 18ms);
+}
+
+@keyframes rail-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+
+/* Surface exits: close paths stamp .out and remove the node once the
+   animation lands (see outro() in ui/popup.ts), so dismissals settle
+   instead of vanishing mid-frame. */
+.tool-pop.out,
+.due-pop.out {
+  animation: pop-out 0.13s ease-in forwards;
+}
+
+.tool-pop.sheet.out {
+  animation: sheet-out 0.18s ease-in forwards;
+}
+
+.side-panel.out {
+  animation: panel-out 0.16s ease-in forwards;
+}
+
+.ed-scrim.out,
+.short-scrim.out {
+  animation: scrim-out 0.16s ease-in forwards;
+}
+
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes sheet-out {
+  to {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+@keyframes panel-out {
+  to {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+}
+
+@keyframes scrim-out {
+  to {
+    opacity: 0;
+  }
+}
+

@@ -1,0 +1,177 @@
+/* table card */
+
+.card.table {
+  background: var(--card);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 1px var(--card-edge);
+  padding: 10px;
+}
+
+.tb-title {
+  display: none;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink-1);
+  outline: none;
+  word-break: break-word;
+  min-height: 18px;
+  margin-bottom: 8px;
+}
+
+.card.table.has-title .tb-title,
+.card.table.editing .tb-title {
+  display: block;
+}
+
+.card.table.editing .tb-title:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+  font-weight: 400;
+}
+
+.tb-grid {
+  display: grid;
+  border-right: 1px solid var(--edge);
+  border-bottom: 1px solid var(--edge);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tb-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 32px;
+  min-width: 0;
+  padding: 5px 8px;
+  border-top: 1px solid var(--edge);
+  border-left: 1px solid var(--edge);
+  font-size: 12.5px;
+  color: var(--ink-1);
+  outline: none;
+  overflow-wrap: break-word;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Single-token values (numbers, currency, dates) never break mid-token;
+   the span gives the overflow an ellipsis instead of a hard clip. */
+.tb-cell.tb-num {
+  overflow-wrap: normal;
+  hyphens: none;
+}
+
+.tb-val {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tb-cell[data-h='left'] {
+  text-align: left;
+}
+.tb-cell[data-h='center'] {
+  text-align: center;
+}
+.tb-cell[data-h='right'] {
+  text-align: right;
+}
+.tb-cell[data-v='top'] {
+  justify-content: flex-start;
+}
+.tb-cell[data-v='middle'] {
+  justify-content: center;
+}
+.tb-cell[data-v='bottom'] {
+  justify-content: flex-end;
+}
+
+.tb-cell.tb-empty::after {
+  content: '·';
+  position: absolute;
+  left: 8px;
+  top: 5px;
+  color: var(--faint);
+}
+
+.tb-cell input[type='checkbox'] {
+  margin: 0;
+  accent-color: var(--accent);
+  align-self: flex-start;
+  cursor: pointer;
+}
+
+.tb-cell[data-h='center'] input[type='checkbox'] {
+  align-self: center;
+}
+.tb-cell[data-h='right'] input[type='checkbox'] {
+  align-self: flex-end;
+}
+
+.card.table.editing .tb-cell.focused {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.card.table .tb-cell[contenteditable='true'] {
+  user-select: text;
+  cursor: text;
+}
+
+.tb-cell h1,
+.tb-cell h2,
+.tb-cell h3,
+.tb-cell p,
+.tb-cell div,
+.tb-cell pre,
+.tb-cell blockquote,
+.tb-cell ul,
+.tb-cell ol {
+  margin: 2px 0;
+}
+
+.tb-cap {
+  display: none;
+  font-size: 12px;
+  color: var(--ink-4);
+  margin-top: 8px;
+  outline: none;
+  min-height: 16px;
+  word-break: break-word;
+}
+
+.card.table.has-cap .tb-cap,
+.card.table.editing .tb-cap {
+  display: block;
+}
+
+.card.table.editing .tb-cap:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-6);
+}
+
+.card.editing .tb-title,
+.card.editing .tb-cap {
+  user-select: text;
+  cursor: text;
+}
+
+.pop-hint {
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: calc(10.5px * var(--ui));
+  color: var(--ink-6);
+}
+
+/* image card draw-on overlay */
+
+.im-ink {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+

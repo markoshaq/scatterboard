@@ -1,0 +1,298 @@
+/* session 13: reactions search + tone, todo row reactions, table grips,
+   offline embed, quick capture, toolbar editor, undo arrows, unread pins */
+
+.rp-search {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--edge-strong, #b8b8ae);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  background: var(--bg);
+  color: inherit;
+  margin-bottom: 6px;
+}
+
+.rp-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.rp-tones {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.rp-tone {
+  border: 0;
+  background: none;
+  font-size: calc(15px * var(--ui));
+  padding: 2px 3px;
+  border-radius: 5px;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.rp-tone.on,
+.rp-tone:hover {
+  opacity: 1;
+  background: var(--accent-soft2);
+}
+
+.todo-reacts {
+  display: inline-flex;
+  gap: 2px;
+  font-size: calc(11px * var(--ui));
+  line-height: 1;
+  align-self: center;
+}
+
+.todo-react {
+  line-height: 1.2;
+}
+
+.tb-grips {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.card.table .tb-grid {
+  position: relative;
+}
+
+.tb-grip {
+  position: absolute;
+  top: 0;
+  height: calc(8px * var(--iz, 1));
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.tb-grip-drag {
+  background: var(--accent-soft2);
+  border-radius: 3px;
+  cursor: grabbing;
+}
+
+.tb-edge {
+  position: absolute;
+  top: 0;
+  width: calc(6px * var(--iz, 1));
+  pointer-events: auto;
+  cursor: col-resize;
+}
+
+.tb-edge:hover {
+  background: var(--accent-soft2);
+}
+
+/* Insertion line for grip reorders. */
+.tb-mark {
+  position: absolute;
+  pointer-events: none;
+}
+
+.tb-mark.h {
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: calc(2px * var(--iz, 1)) solid var(--accent);
+}
+
+.tb-mark.v {
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: calc(2px * var(--iz, 1)) solid var(--accent);
+}
+
+.em-offline {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(12px * var(--ui));
+  color: var(--ink, #5c5c52);
+  opacity: 0.7;
+}
+
+.qc-body {
+  width: 240px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qc-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid var(--accent-dim);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: calc(13px * var(--ui));
+  background: var(--bg);
+  color: inherit;
+}
+
+.qc-add {
+  align-self: flex-end;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.tbe-body {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.tbe-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+
+.tbe-row:hover {
+  background: var(--hover);
+}
+
+.tbe-label {
+  flex: 1;
+  font-size: calc(12px * var(--ui));
+}
+
+.tbe-off .tbe-label {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.tbe-mini {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.tbe-mini:hover:not(:disabled) {
+  background: var(--accent-soft2);
+}
+
+.tbe-mini:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.tbe-mini.tbe-hide svg {
+  width: 11px;
+  height: 11px;
+  vertical-align: -1px;
+}
+
+.zb-ur svg {
+  width: 13px;
+  height: 13px;
+  vertical-align: -2px;
+}
+
+.cp-unread {
+  position: absolute;
+  top: calc(-6px * var(--iz, 1));
+  right: calc(-6px * var(--iz, 1));
+  background: var(--accent);
+  color: #fff;
+  border-radius: calc(8px * var(--iz, 1));
+  font-size: calc(9px * var(--iz, 1));
+  min-width: calc(14px * var(--iz, 1));
+  height: calc(14px * var(--iz, 1));
+  line-height: calc(14px * var(--iz, 1));
+  text-align: center;
+  padding: 0 calc(3px * var(--iz, 1));
+  box-sizing: border-box;
+}
+
+.sp-sort {
+  margin: 0 12px 6px;
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  background: var(--bg);
+  color: inherit;
+  border: 1px solid var(--accent-dim);
+  border-radius: 6px;
+  padding: 2px 4px;
+}
+
+.toast-act {
+  border: 0;
+  border-radius: 5px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  padding: 3px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tb-rgrip {
+  position: absolute;
+  left: 0;
+  width: calc(8px * var(--iz, 1));
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.doc.filtering :is(.card, .chip-row, .comment-pin, .line-label, .anno):not(.filter-hit) {
+  opacity: 0.25;
+}
+
+.lk-hero-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Hover tooltip for icon-only chrome (tip() in ui/tip.ts). */
+.tip {
+  position: fixed;
+  z-index: 90;
+  background: var(--toast-bg);
+  color: var(--toast-ink);
+  font-size: calc(11px * var(--ui));
+  border-radius: 6px;
+  padding: 3px 8px;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: pop-in 0.12s ease-out;
+}
+
+.lk-desc {
+  font-size: calc(11px * var(--ui));
+  opacity: 0.65;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+

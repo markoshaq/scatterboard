@@ -1,0 +1,142 @@
+* {
+  box-sizing: border-box;
+  /* Thin themed scrollbars for scrollable chrome (panels, popups,
+     editors); mostly visible on Windows/Linux where bars reserve
+     space. Rail strips opt out with scrollbar-width/display none. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--faint) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--faint);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-6);
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: fallback pair: 100dvh where supported, 100% elsewhere */
+  height: 100dvh;
+  margin: 0;
+}
+
+body {
+  --ui: 1;
+  --bg: #f6f6f2;
+  --card: #ffffff;
+  --card-soft: #fbfbf7;
+  --panel: #fbfbf8;
+  --chrome: rgba(255, 255, 255, 0.9);
+  --ink: #26261f;
+  --ink-1: #4a4a40;
+  --ink-2: #55554a;
+  --ink-4: #6e6e5a;
+  --ink-6: #747463;
+  --ink-7: #b9b9ac;
+  --faint: #c8c8bc;
+  --edge: rgba(30, 30, 20, 0.09);
+  --edge-strong: rgba(30, 30, 20, 0.14);
+  --card-edge: rgba(30, 30, 20, 0.07);
+  --hover: rgba(30, 30, 20, 0.06);
+  --hover-2: rgba(30, 30, 20, 0.05);
+  --hover-solid: #f4f4ee;
+  --shadow-1: rgba(30, 30, 20, 0.1);
+  --shadow-2: rgba(30, 30, 20, 0.2);
+  --shadow-3: rgba(20, 20, 12, 0.3);
+  --scrim: rgba(30, 30, 20, 0.3);
+  --ed-scrim: rgba(38, 38, 31, 0.42);
+  --veil: rgba(246, 246, 242, 0.62);
+  --mask: rgba(30, 30, 20, 0.45);
+  --accent: #356df3;
+  --accent-hi: #2b5fd9;
+  --accent-dim: #c3cddf;
+  --accent-soft: #e8f0fe;
+  --accent-soft2: rgba(53, 109, 243, 0.14);
+  --pre: #f1f0ea;
+  --co: #fdf2e0;
+  --co-edge: #d9a62e;
+  --warn: #b08030;
+  --danger: #c2503c;
+  --toast-bg: #33332c;
+  --toast-hi: #44443a;
+  --toast-ink: #f4f4ee;
+  --stage: #fdfdfa;
+  --tile-ink: rgba(38, 38, 31, 0.7);
+  --knob: #ffffff;
+  --checker-a: #d9d9cd;
+  --checker-b: #fbfbf6;
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: calc(14px * var(--ui));
+  color: var(--ink);
+  background: var(--bg);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-soft2);
+}
+
+body.dark,
+html.dark body {
+  --bg: #1d1d19;
+  --card: #2a2a25;
+  --card-soft: #24241f;
+  --panel: #22221d;
+  --chrome: rgba(40, 40, 35, 0.9);
+  --ink: #e4e4d8;
+  --ink-1: #d0d0c4;
+  --ink-2: #babaaa;
+  --ink-4: #8f8f82;
+  --ink-6: #77776c;
+  --ink-7: #626258;
+  --faint: #4d4d45;
+  --edge: rgba(255, 255, 255, 0.1);
+  --edge-strong: rgba(255, 255, 255, 0.17);
+  --card-edge: rgba(255, 255, 255, 0.11);
+  --hover: rgba(255, 255, 255, 0.07);
+  --hover-2: rgba(255, 255, 255, 0.05);
+  --hover-solid: #3a3a33;
+  --shadow-1: rgba(0, 0, 0, 0.35);
+  --shadow-2: rgba(0, 0, 0, 0.5);
+  --shadow-3: rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.5);
+  --ed-scrim: rgba(0, 0, 0, 0.55);
+  --veil: rgba(29, 29, 25, 0.62);
+  --mask: rgba(0, 0, 0, 0.55);
+  --accent: #6d97f5;
+  --accent-hi: #5482f2;
+  --accent-dim: #3c4d78;
+  --accent-soft: #2c3a55;
+  --accent-soft2: rgba(109, 151, 245, 0.18);
+  --pre: #33332b;
+  --co: #463a23;
+  --co-edge: #8a7020;
+  --warn: #d0a050;
+  --danger: #d96a54;
+  --toast-bg: #44443a;
+  --toast-hi: #55554a;
+  --toast-ink: #f4f4ee;
+  --stage: #26261f;
+  --tile-ink: rgba(228, 228, 216, 0.85);
+  --knob: #e4e4d8;
+  --checker-a: #3a3a32;
+  --checker-b: #2a2a24;
+}
+

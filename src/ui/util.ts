@@ -1,4 +1,4 @@
-export const DRAG_SLOP = 4;
+const DRAG_SLOP = 4;
 
 // Shared pointer-drag with a floating ghost chip. onUp receives the release
 // event whether or not the pointer moved; moved tells a click from a drag.
@@ -7,6 +7,12 @@ export const DRAG_SLOP = 4;
 // Chrome that is never a drop target: a release over it cancels the
 // drop instead of placing a card hidden behind the surface.
 export const DROP_EXCLUDE = '.rail, .rail-trash, .side-panel, .ed-scrim';
+
+// The phone breakpoint shared by chrome layout and JS-side presentation
+// choices: bottom bar, sheet popups, fit insets.
+export function mobileShell(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 720px)').matches;
+}
 
 export function dragGhost(
   e: PointerEvent,
@@ -20,6 +26,7 @@ export function dragGhost(
   let moved = false;
   let outside = false;
   const cleanup = () => {
+    document.body.classList.remove('ghost-drag');
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
     window.removeEventListener('pointercancel', cancel);
@@ -42,6 +49,7 @@ export function dragGhost(
       ghost = makeGhost();
       ghost.classList.add('rail-ghost');
       document.body.appendChild(ghost);
+      document.body.classList.add('ghost-drag');
       moved = true;
     }
     ghost.style.transform = `translate(${ev.clientX + 10}px, ${ev.clientY + 12}px)`;

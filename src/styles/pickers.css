@@ -1,0 +1,137 @@
+/* board icon picker */
+
+.bip-body {
+  width: 262px;
+}
+
+.bip-search {
+  width: 100%;
+  font: inherit;
+  font-size: calc(12.5px * var(--ui));
+  padding: 7px 9px;
+  border: 1px solid var(--edge-strong);
+  border-radius: 7px;
+  outline: none;
+  margin-bottom: 6px;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.bip-search:focus {
+  border-color: var(--accent);
+}
+
+.bip-list {
+  max-height: 264px;
+  overflow-y: auto;
+}
+
+.bip-group {
+  font-size: calc(10px * var(--ui));
+  font-weight: 650;
+  color: var(--ink-6);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px 4px 3px;
+}
+
+.bip-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 3px;
+  padding-bottom: 6px;
+}
+
+.bip-ic {
+  height: 34px;
+  border: 0;
+  background: none;
+  border-radius: 7px;
+  color: var(--ink-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bip-ic:hover {
+  background: var(--hover);
+}
+
+.bip-ic svg {
+  width: 19px;
+  height: 19px;
+}
+
+.bip-mono {
+  font-weight: 650;
+  font-size: calc(13px * var(--ui));
+  color: var(--ink-1);
+}
+
+.bip-empty {
+  grid-column: 1 / -1;
+  color: var(--ink-6);
+  font-size: calc(12px * var(--ui));
+  padding: 8px 4px;
+}
+
+.bip-foot {
+  border-top: 1px solid var(--edge);
+  padding-top: 6px;
+  margin-top: 4px;
+}
+
+/* new-board template picker */
+
+.nbp-body {
+  min-width: 230px;
+}
+
+.nbp-row {
+  display: flex;
+  align-items: center;
+}
+
+.nbp-row .pop-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.nbp-mini {
+  border: 0;
+  background: none;
+  color: var(--ink-4);
+  cursor: pointer;
+  padding: 5px;
+  display: none;
+  border-radius: 5px;
+}
+
+.nbp-row:hover .nbp-mini {
+  display: block;
+}
+
+.nbp-mini svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.nbp-mini:hover {
+  color: var(--danger);
+  background: var(--hover);
+}
+
+.nbp-rename {
+  flex: 1;
+  font: inherit;
+  font-size: calc(12.5px * var(--ui));
+  padding: 6px 8px;
+  margin: 2px;
+  border: 1px solid var(--edge-strong);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+}
+

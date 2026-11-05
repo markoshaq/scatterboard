@@ -10,6 +10,7 @@ import { hostOf, urlTitle } from './ui/embeds';
 import { Viewport } from './canvas/viewport';
 import { Renderer, type DraftLine, type Guide, type SceneLine } from './canvas/renderer';
 import { CardsLayer } from './cards/layer';
+import { cardAriaLabel } from './cards/factory';
 import { openThreadPopup } from './cards/comment';
 import { Topbar, type Crumb } from './ui/topbar';
 import { Rail } from './ui/rail';
@@ -27,8 +28,9 @@ import { openCapturePopup } from './ui/capture';
 import { setFormatting } from './ui/locale';
 import type { Lang } from './persist/storage';
 import { CREATE_ITEMS } from './ui/rail';
-import { openHelpMenu, openViewMenu } from './ui/toolpopups';
-import { DROP_EXCLUDE } from './ui/util';
+import { openHelpMenu, openMobileMenu, openViewMenu, openZoomMenu } from './ui/toolpopups';
+import { installAvailable, runInstall } from './ui/install';
+import { DROP_EXCLUDE, mobileShell } from './ui/util';
 import { closeBoardPopup, closeToolPopup } from './ui/popup';
 import { remapElements } from './state/clone';
 import { builtinTemplates } from './state/templates';
@@ -113,6 +115,13 @@ export class App {
 
   private draft: DraftLine | null = null;
 
+  // Screen-space helpers outside .doc's transform: the empty-board
+  // hint render() toggles, and a visually-hidden live region that
+  // announces where keyboard card nav lands.
+  private emptyEl: HTMLElement;
+
+  private liveEl: HTMLElement;
+
   private endDraft: { id: ID; which: 'from' | 'to'; x: number; y: number } | null = null;
 
   readonly overlays: Overlays;
@@ -160,6 +169,31 @@ export class App {
     vpEl.append(this.canvasEl, this.docEl, this.chromeEl);
     root.appendChild(vpEl);
 
+    this.emptyEl = document.createElement('div');
+    this.emptyEl.className = 'board-empty';
+    this.emptyEl.style.display = 'none';
+    const beTitle = document.createElement('div');
+    beTitle.className = 'be-title';
+    const beHint = document.createElement('div');
+    beHint.className = 'be-hint';
+    const beActions = document.createElement('div');
+    beActions.className = 'be-actions';
+    const beNote = document.createElement('button');
+    beNote.type = 'button';
+    beNote.textContent = t('emptyAddNote');
+    beNote.addEventListener('click', () => this.createFromRail('note', null));
+    const beKeys = document.createElement('button');
+    beKeys.type = 'button';
+    beKeys.textContent = t('emptyShortcuts');
+    beKeys.addEventListener('click', () => openShortcutsPanel());
+    beActions.append(beNote, beKeys);
+    this.emptyEl.append(beTitle, beHint, beActions);
+    this.liveEl = document.createElement('div');
+    this.liveEl.className = 'vh';
+    this.liveEl.setAttribute('aria-live', 'polite');
+    this.liveEl.setAttribute('aria-atomic', 'true');
+    vpEl.append(this.emptyEl, this.liveEl);
+
     this.layer = new CardsLayer(
       store.doc,
       this.vp,
@@ -183,7 +217,8 @@ export class App {
     this.topbar = new Topbar(root, {
       onZoomIn: () => this.vp.zoomStep(1),
       onZoomOut: () => this.vp.zoomStep(-1),
-      onReset: () => this.vp.reset(),
+      onZoomMenu: (anchor) =>
+        openZoomMenu(anchor, { zoom: () => this.vp.z, onZoom: (z) => this.vp.zoomTo(z), onFit: () => this.fitView() }),
       onFit: () => this.fitView(),
       onNavigate: (id) => this.openBoard(id),
       onUnsorted: () => this.panels.openUnsorted(),
@@ -192,6 +227,7 @@ export class App {
       onExport: (anchor) => this.exporter.openExportMenu(anchor),
       onSettings: (anchor) => this.openSettings(anchor),
       onAgent: (anchor) => this.openAgentMenu(anchor),
+      onMore: (anchor) => this.openMobileMenu(anchor),
       onCrumbIcon: (id, anchor) => this.panels.iconPickerFor(id, anchor),
       onCrumbBoards: () => this.panels.openBoards(),
       onUndo: () => {
@@ -209,6 +245,12 @@ export class App {
       onUpload: () => this.pickFiles('*/*'),
       onDraw: () => this.enterDrawMode(),
       onCapture: (anchor) => this.openCapture(anchor),
+      onUndo: () => {
+        if (!this.lockedView()) this.store.undo();
+      },
+      onRedo: () => {
+        if (!this.lockedView()) this.store.redo();
+      },
       onTrash: () => this.onRailTrash(),
       onBoardColor: (hex) => {
         if (this.boardId && !this.lockedView()) {
@@ -235,6 +277,7 @@ export class App {
       this.requestRender();
     };
     this.store.onChange((c) => {
+      if (c.deleted.size && !c.replay) this.layer.markExits(c.deleted);
       for (const id of c.elements) this.dirtyEls.add(id);
       for (const id of c.deleted) {
         this.dirtyEls.add(id);
@@ -257,6 +300,31 @@ export class App {
     attachPointer(vpEl, this);
     attachShortcuts(this);
 
+    // Keyboard focus on a card selects it; Tab-ing out of an edit into
+    // another card commits it, matching the pointer path.
+    document.addEventListener('focusin', (e) => {
+      const card = e.target instanceof HTMLElement ? e.target.closest('.card') : null;
+      const id = card instanceof HTMLElement ? card.dataset.id : undefined;
+      if (!id) return;
+      if (this.editingId && this.editingId !== id) this.endEdit();
+      if (!this.editingId && !this.sel.has(id)) this.selectOnly(id);
+    });
+
+    // Casual print path: styles/print.css hides the chrome while we
+    // fit the board so the page captures everything, then restore the
+    // view the user had.
+    let printSnap: { x: number; y: number; z: number } | null = null;
+    window.addEventListener('beforeprint', () => {
+      printSnap = this.vp.snapshot();
+      const r = unionRect(this.layer.elements().map((e) => this.layer.rectOf(e)));
+      const t = this.vp.fitTarget(r, { l: 20, t: 20, r: 20, b: 20 });
+      this.vp.snapTo(t ?? this.vp.resetTarget());
+    });
+    window.addEventListener('afterprint', () => {
+      if (!printSnap) return;
+      this.vp.restore(printSnap);
+      printSnap = null;
+    });
     window.addEventListener('resize', () => this.layout());
     window.addEventListener('online', () => {
       this.refreshCards = true;
@@ -339,6 +407,11 @@ export class App {
       return;
     }
     this.vp.restore(board.position);
+    // The swap repaints in one frame; a quick fade on .doc keeps the
+    // jump between boards from reading as a hard cut.
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      this.docEl.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 170, easing: 'ease-out' });
+    }
   }
 
 
@@ -622,6 +695,20 @@ export class App {
   }
 
 
+  // Phone topbar overflow: one button fans out to the popups that
+  // collapse out of the bar on narrow screens.
+  private openMobileMenu(anchor: HTMLElement) {
+    openMobileMenu(anchor, {
+      onFit: () => this.fitView(),
+      onView: (a) => this.openViewMenu(a),
+      onExport: (a) => this.exporter.openExportMenu(a),
+      onAgent: (a) => this.openAgentMenu(a),
+      onSettings: (a) => this.openSettings(a),
+      onHelp: (a) => this.openHelp(a),
+    });
+  }
+
+
   private openViewMenu(anchor: HTMLElement) {
     if (!this.boardId) return;
     openViewMenu(anchor, {
@@ -630,6 +717,7 @@ export class App {
       grid: () => this.board()?.grid ?? true,
       onToggleGrid: () => this.toggleGrid(),
       onPresent: () => this.enterPresent(),
+      onFit: () => this.fitView(),
     });
   }
 
@@ -641,6 +729,8 @@ export class App {
     const sx = Math.round(this.vp.x * dpr) / dpr;
     const sy = Math.round(this.vp.y * dpr) / dpr;
     this.docEl.style.transform = `translate(${sx}px, ${sy}px) scale(${this.vp.z})`;
+    // Semantic zoom threshold: below ~20% card faces collapse to blocks.
+    this.docEl.classList.toggle('far', this.vp.z < 0.2);
     // --iz restyles every counter-scaled node; only push it when the
     // inverse zoom moved enough to see, so zoom ticks stay cheap.
     const iz = 1 / this.vp.z;
@@ -690,9 +780,8 @@ export class App {
         const lift = this.gestures.liftDelta(e.id);
         return {
           rect: lift ? { x: r.x + lift.dx, y: r.y + lift.dy, w: r.w, h: r.h } : r,
-          // .card / .card.column / .card.board-card radii, so the selection
-          // ring hugs the card's actual corner.
-          radius: e.type === 'column' || e.type === 'board' ? 10 : 8,
+            // Card radius is unified at 10px; the ring hugs the corner.
+          radius: 10,
         };
       });
     const lines = this.resolvedLines();
@@ -742,6 +831,7 @@ export class App {
     this.wasFiltering = filtering;
     this.docEl.classList.toggle('filtering', this.filterIds.size > 0);
     this.topbar.setUndoArrows(this.prefs.undoArrows !== false, this.store.canUndo, this.store.canRedo);
+    this.rail.setUndoArrows(this.prefs.undoArrows !== false, this.store.canUndo, this.store.canRedo);
     this.rail.setPalette(this.prefs.railOrder, this.prefs.railHidden);
     this.rail.sync(this.selectedEls(), this.editing.editingEl());
     this.rail.setBoardColor(board?.color);
@@ -749,6 +839,19 @@ export class App {
     this.topbar.setCrumbs(this.crumbs());
     this.topbar.setUnsorted(this.unsortedCount());
     this.panels.renderPanel();
+    // A board with no visible cards gets a centered hint; the moment a
+    // card lands (or presenting starts) it is gone again.
+    const empty =
+      !!board &&
+      !this.presenting &&
+      !this.layer
+        .elements()
+        .some((e) => e.type !== 'line' && e.type !== 'annotation' && !(e.type === 'comment' && e.anchorId !== undefined));
+    this.emptyEl.style.display = empty ? '' : 'none';
+    if (empty) {
+      this.emptyEl.querySelector<HTMLElement>('.be-title')!.textContent = t('emptyBoardTitle');
+      this.emptyEl.querySelector<HTMLElement>('.be-hint')!.textContent = t(mobileShell() ? 'emptyBoardHintMob' : 'emptyBoardHint');
+    }
   }
 
 
@@ -1257,16 +1360,30 @@ export class App {
 
 
   // Quick-capture: files the text as a note into this board's Unsorted.
-  private openCapture(anchor: HTMLElement) {
+  private openCapture(anchor: HTMLElement | DOMRect) {
     if (!this.boardId || this.lockedView()) return;
-    const boardId = this.boardId;
-    openCapturePopup(anchor, (text) => {
-      const el = createNote(this.doc, boardId, 0, 0, text);
-      el.parentId = UNSORTED;
-      this.stampBoardColor(el);
-      this.store.dispatch({ type: 'element.create', el });
-      toast(t('qcSaved'));
-    });
+    openCapturePopup(anchor, (text) => this.fileCaptured(text));
+  }
+
+  // One capture path shared by the quick-capture popup and the OS
+  // share target (manifest share_target boots with ?share=1).
+  fileCaptured(text: string) {
+    if (!this.boardId || this.lockedView()) return;
+    const el = createNote(this.doc, this.boardId, 0, 0, text);
+    el.parentId = UNSORTED;
+    this.stampBoardColor(el);
+    this.store.dispatch({ type: 'element.create', el });
+    toast(t('qcSaved'), 'ok');
+  }
+
+  // Manifest shortcut entries (?capture=1 / ?newboard=1 at boot): no
+  // real anchor exists yet, so the surfaces anchor to a screen point.
+  openShortcutCapture() {
+    this.openCapture(new DOMRect(innerWidth / 2, Math.max(60, innerHeight - 220), 0, 0));
+  }
+
+  openShortcutNewBoard() {
+    this.panels.newProject(new DOMRect(innerWidth / 2, innerHeight * 0.35, 0, 0));
   }
 
 
@@ -1646,8 +1763,65 @@ export class App {
   }
 
 
+  // Keyboard card nav: dir 0 picks the card nearest the viewport
+  // centre (the arrow-key entry when nothing is selected), ±1 walks
+  // the cards in reading order from the focused one.
+  stepCard(dir: -1 | 0 | 1) {
+    const els = this.layer
+      .elements()
+      .filter((e) => e.type !== 'line' && e.type !== 'annotation' && !(e.type === 'comment' && e.anchorId !== undefined))
+      .map((e) => ({ e, r: this.layer.rectOf(e) }))
+      .sort((a, b) => a.r.y - b.r.y || a.r.x - b.r.x);
+    if (!els.length) return;
+    let target: Element;
+    if (dir === 0) {
+      const vr = this.vp.viewRect();
+      const cx = vr.x + vr.w / 2;
+      const cy = vr.y + vr.h / 2;
+      let best = els[0]!;
+      let bd = Infinity;
+      for (const c of els) {
+        const d = (c.r.x + c.r.w / 2 - cx) ** 2 + (c.r.y + c.r.h / 2 - cy) ** 2;
+        if (d < bd) {
+          bd = d;
+          best = c;
+        }
+      }
+      target = best.e;
+    } else {
+      const curCard = document.activeElement instanceof HTMLElement ? document.activeElement.closest('.card') : null;
+      const cur = curCard instanceof HTMLElement ? curCard.dataset.id : undefined;
+      const i = els.findIndex((c) => c.e.id === cur);
+      target = els[(i + dir + els.length) % els.length]!.e;
+    }
+    const r = this.layer.rectOf(target);
+    if (!rectsIntersect(r, this.vp.viewRect())) this.panels.centerOn(r);
+    this.selectOnly(target.id);
+    // Render now so the view mounts before it takes focus.
+    this.render();
+    this.layer.view(target.id)?.node.focus({ preventScroll: true });
+    // The card's own aria-label names only the type; add its title.
+    this.announce(`${cardAriaLabel(target)}: ${this.panels.snippetFor(target)}`);
+  }
+
+  // Polite announcement channel for transient states (card nav) that
+  // toasts should not carry visually. A beat of empty text first:
+  // identical back-to-back messages do not re-announce otherwise.
+  private announce(msg: string) {
+    this.liveEl.textContent = '';
+    requestAnimationFrame(() => {
+      this.liveEl.textContent = msg;
+    });
+  }
+
+
   nudge(dx: number, dy: number) {
-    if (!this.sel.size || this.lockedView()) return;
+    // Arrows with no selection enter keyboard card nav instead.
+    if (!this.sel.size) {
+      this.stepCard(0);
+      return;
+    }
+    if (this.lockedView()) return;
     this.store.dispatch({
       type: 'batch',
       actions: this.movableCards()
@@ -1668,9 +1842,17 @@ export class App {
 
   fitView() {
     const r = unionRect(this.layer.elements().map((e) => this.layer.rectOf(e)));
-    // Usable box inside the chrome: 76px rail + 16 gap on the left,
-    // 44px topbar + 14 gap up top, zoom HUD reserved at the bottom.
-    this.vp.fit(r, { l: 92, t: 58, r: 24, b: 64 });
+    // Usable box inside the chrome: on desktop, 76px rail + 16 gap on
+    // the left, 44px topbar + 14 gap up top, zoom HUD reserved at the
+    // bottom; on phones the bar plus the floating trash/well own the
+    // bottom edge, so the inset measures the buttons' top rather than
+    // trusting a constant (they ride 80px above the screen bottom).
+    let insets = { l: 92, t: 58, r: 24, b: 64 };
+    if (mobileShell()) {
+      const top = document.querySelector('.rail-trash')?.getBoundingClientRect().top;
+      insets = { l: 12, t: 52, r: 12, b: top ? innerHeight - top + 8 : 84 };
+    }
+    this.vp.fit(r, insets);
   }
 
   dragMove(ids: ID[], origins: Map<ID, { x: number; y: number }>, start: { x: number; y: number }, ev: PointerEvent) {
@@ -1812,7 +1994,7 @@ export class App {
             patch: { content: { image: next } },
           });
         } catch {
-          toast(t('imageMissing'));
+          toast(t('imageMissing'), 'err');
         }
       })();
     });
@@ -1836,7 +2018,7 @@ export class App {
         const { loadBitmap, cropImage, canvasBlob } = await import('./canvas/imgops');
         const bmp = await loadBitmap(c.blobRef);
         if (!bmp) {
-          toast(t('imageMissing'));
+          toast(t('imageMissing'), 'err');
           return;
         }
         const srcA = bmp.width / bmp.height;
@@ -1851,7 +2033,7 @@ export class App {
         delete next.strokes;
         content = { image: next };
       } catch {
-        toast(t('imageMissing'));
+        toast(t('imageMissing'), 'err');
         return;
       }
     }
@@ -1975,9 +2157,15 @@ export class App {
   private openHelp(anchor: HTMLElement) {
     openHelpMenu(anchor, {
       onShortcuts: () => openShortcutsPanel(),
+      canInstall: installAvailable,
+      onInstall: runInstall,
       onAbout: (a) =>
         openAboutPopup(a, {
-          storage: async () => ({ doc: this.adapter.docBytes(), blobs: await blobTotalSize() }),
+          storage: async () => ({
+            doc: this.adapter.docBytes(),
+            blobs: await blobTotalSize(),
+            persisted: (await navigator.storage?.persisted?.().catch(() => false)) ?? false,
+          }),
         }),
     });
   }
@@ -2131,7 +2319,7 @@ export class App {
       await this.adapter.clear();
       await clearBlobs();
     } catch {
-      toast(t('exFail'));
+      toast(t('exFail'), 'err');
       return;
     }
     location.reload();

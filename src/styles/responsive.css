@@ -1,0 +1,213 @@
+/* Phone chrome, canvas-first: the rail becomes a bottom bar where the
+   thumb lives (the same create/tools/edit modes flow into it), the
+   topbar's trailing controls collapse into one overflow button, the
+   zoombar hides (pinch covers zoom), and text fields hit 16px so iOS
+   does not zoom on focus. */
+@media (max-width: 720px) {
+  .topbar {
+    left: 0;
+    height: calc(40px + env(safe-area-inset-top, 0px));
+    gap: 6px;
+    padding: env(safe-area-inset-top, 0px) calc(8px + env(safe-area-inset-right, 0px)) 0
+      calc(4px + env(safe-area-inset-left, 0px));
+  }
+
+  .topbar .crumbs {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .crumb {
+    max-width: 30vw;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar .view-btn {
+    display: none;
+  }
+
+  .topbar .more-btn {
+    display: block;
+  }
+
+  .zoombar {
+    display: none;
+  }
+
+  .save-chip {
+    left: calc(14px + env(safe-area-inset-left, 0px));
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .toasts {
+    bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* The bottom bar: a solid strip, not the desktop's transparent
+     column, so dead space is chrome rather than canvas. Items scroll
+     sideways when a mode overflows. */
+  .rail {
+    left: 0;
+    right: 0;
+    top: auto;
+    width: auto;
+    flex-direction: row;
+    padding: 8px calc(8px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px))
+      calc(8px + env(safe-area-inset-left, 0px));
+    background: var(--chrome);
+    border-top: 1px solid var(--edge);
+    pointer-events: auto;
+    /* --vvh shrinks with the on-screen keyboard: the bar lifts to sit
+       right above it, which is where the edit-mode strip wants to be. */
+    bottom: max(0px, calc(100dvh - var(--vvh, 100dvh)));
+  }
+
+  /* Bar items are clicks, not drags (palette drags live in the sheet):
+     pan-x lets a horizontal swipe scroll an overflowing mode. */
+  .rail .rail-item {
+    touch-action: pan-x;
+  }
+
+  .rail-items {
+    flex: 1;
+    min-width: 0;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior: contain;
+    padding: 0 2px;
+  }
+
+  /* Overflow edges fade so a truncated item reads as scrollable, not
+     clipped. can-left/can-right come from Rail.updateFade(). */
+  .rail-items.can-left {
+    mask-image: linear-gradient(90deg, transparent 0, #000 14px);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px);
+  }
+
+  .rail-items.can-right {
+    mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent 100%);
+  }
+
+  .rail-items.can-left.can-right {
+    mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  }
+
+  /* One size for everything on and around the bar: items, the
+     floating trash can and the colour well all read as 52px squares. */
+  .rail-item {
+    width: 52px;
+    height: 52px;
+    flex: none;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .rail-well {
+    width: 52px;
+    height: 52px;
+  }
+
+  /* Board colour and trash dock inside the bar as trailing items
+     (Rail.sync reparents the can into .rail on this shell), so no
+     chrome floats over the cards. */
+  .rail-wellwrap,
+  .rail-trash {
+    position: static;
+    flex: none;
+  }
+
+  .rail-wellwrap > span {
+    display: none;
+  }
+
+  .side-panel {
+    left: calc(8px + env(safe-area-inset-left, 0px));
+    right: 8px;
+    top: calc(46px + env(safe-area-inset-top, 0px));
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+  }
+
+  .short-box {
+    width: min(400px, calc(100vw - 24px));
+  }
+
+  .toast {
+    max-width: calc(100vw - 24px);
+  }
+
+  .draw-tools {
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: calc(100vw - 12px);
+  }
+
+  .im-chips {
+    max-width: calc(100vw - 16px);
+    overflow-x: auto;
+  }
+
+  /* Left margin reserves a gutter for .ed-tools, the same convention
+     as the desktop rule's 56px margin-left: the strip never overlaps
+     the doc's text column. */
+  .ed-doc {
+    margin: calc(52px + env(safe-area-inset-top, 0px)) 8px calc(36px + env(safe-area-inset-bottom, 0px))
+      calc(56px + env(safe-area-inset-left, 0px));
+    padding: 18px 16px 48px;
+    min-height: 50vh;
+  }
+
+  .ed-tools {
+    left: calc(6px + env(safe-area-inset-left, 0px));
+    top: 88px;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+/* Touch: lift the smallest affordances to a 24px floor. Board-space
+   controls scale with zoom anyway; this keeps 100% zoom usable. */
+@media (pointer: coarse) {
+  .toast-x {
+    min-width: 24px;
+    min-height: 24px;
+  }
+
+  .todo-due {
+    min-height: 24px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  /* Row-hover reveals never fire on touch: keep the empty due button
+     discoverable at a whisper instead of hidden. */
+  .card.todo:not(.editing) .todo-item:not(:hover) .todo-due:not(.has-due) {
+    visibility: visible;
+    opacity: 0.45;
+  }
+
+  .bpl-caret {
+    width: 24px;
+    height: 24px;
+    margin-left: -10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

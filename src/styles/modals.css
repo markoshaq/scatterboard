@@ -1,0 +1,174 @@
+/* shortcuts modal */
+
+.short-scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.short-box {
+  background: var(--card);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px var(--shadow-3);
+  width: 400px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 14px 10px;
+}
+
+/* agent pairing confirm */
+
+.short-scrim.pair-scrim {
+  background: rgba(0, 0, 0, 0.78);
+}
+
+.pair-box {
+  width: 320px;
+}
+
+.pair-title {
+  font-weight: 650;
+}
+
+.pair-msg {
+  font-size: calc(12.5px * var(--ui));
+  color: var(--ink-4);
+  margin-top: 6px;
+}
+
+.pair-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.pair-btn {
+  font: inherit;
+  font-size: calc(12.5px * var(--ui));
+  color: var(--ink-1);
+  background: var(--hover);
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+
+.pair-btn.pair-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.short-head {
+  display: flex;
+  align-items: center;
+  font-weight: 650;
+  padding: 2px 4px 10px;
+}
+
+.short-head .sp-close {
+  margin-left: auto;
+}
+
+.short-list {
+  overflow-y: auto;
+}
+
+.short-group {
+  font-size: calc(10.5px * var(--ui));
+  font-weight: 650;
+  color: var(--ink-6);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 10px 4px 3px;
+}
+
+.short-row {
+  display: flex;
+  gap: 12px;
+  padding: 5px 4px;
+  font-size: calc(12.5px * var(--ui));
+}
+
+.short-keys {
+  flex: none;
+  width: 190px;
+  color: var(--ink-4);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+
+.short-keys kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(10.5px * var(--ui));
+  background: var(--pre);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--ink-1);
+}
+
+.short-desc {
+  color: var(--ink-1);
+}
+
+/* edit rail + board colour well */
+
+.rail-item:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.rail-item:disabled:hover {
+  background: var(--chrome);
+}
+
+.rail-wellwrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.rail-wellwrap > span {
+  font-size: calc(10px * var(--ui));
+  color: var(--ink-2);
+}
+
+.rail-well {
+  width: 66px;
+  height: 44px;
+  padding: 4px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--chrome);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.rail-well:hover {
+  background: var(--card);
+}
+
+.rail-well::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.rail-well::-webkit-color-swatch {
+  border: none;
+  border-radius: 6px;
+}
+
+.rail-well::-moz-color-swatch {
+  border: none;
+  border-radius: 6px;
+}
+

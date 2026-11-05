@@ -1,0 +1,215 @@
+/* chips overlay */
+
+.card-chips {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* width:max-content pins the row to its content: the hosts are 0x0
+   inside .doc, and a shrink-to-fit width against them collapses to the
+   widest chip, stacking every child on its own line. */
+.chip-row {
+  position: absolute;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  width: max-content;
+  max-width: 280px;
+}
+
+.chip-label {
+  font-size: 10px;
+  line-height: 1;
+  color: #fff;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.25);
+}
+
+.chip-react {
+  font-size: 12px;
+  line-height: 1.2;
+  background: var(--card);
+  border-radius: 999px;
+  padding: 1px 6px;
+  box-shadow: 0 1px 2px var(--shadow-1), 0 0 0 1px var(--edge);
+}
+
+/* Chips are the click target; the row and host stay click-through. */
+.chip-label,
+.chip-react {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.chip-label:hover {
+  filter: brightness(1.15);
+}
+
+.chip-react:hover {
+  background: var(--hover-solid);
+}
+
+body.presenting .chip-label,
+body.presenting .chip-react {
+  pointer-events: none;
+}
+
+/* comment pins */
+
+.comment-pins {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.comment-pin {
+  position: absolute;
+  width: calc(24px * var(--iz, 1));
+  height: calc(24px * var(--iz, 1));
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow: 0 1px 4px var(--shadow-2), 0 0 0 1px var(--edge);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  cursor: pointer;
+  color: var(--ink-2);
+}
+
+.comment-pin svg {
+  width: calc(12px * var(--iz, 1));
+  height: calc(12px * var(--iz, 1));
+  display: block;
+}
+
+.comment-pin.selected {
+  box-shadow: 0 0 0 2px var(--accent), 0 1px 4px var(--shadow-2);
+}
+
+.cp-count {
+  position: absolute;
+  right: calc(-5px * var(--iz, 1));
+  bottom: calc(-5px * var(--iz, 1));
+  font-size: calc(9px * var(--iz, 1));
+  line-height: 1;
+  background: var(--card);
+  color: var(--ink-1);
+  box-shadow: 0 0 0 1px var(--edge);
+  border-radius: 999px;
+  padding: calc(2px * var(--iz, 1)) calc(4px * var(--iz, 1));
+  min-width: calc(12px * var(--iz, 1));
+  text-align: center;
+}
+
+.cp-count:empty {
+  display: none;
+}
+
+/* comment card + thread */
+
+.card.comment {
+  background: var(--card);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 1px var(--card-edge);
+  padding: 10px 12px;
+}
+
+.cthread {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+}
+
+.tool-pop .cthread {
+  width: 250px;
+}
+
+.ct-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.ct-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ct-text {
+  font-size: calc(13px * var(--ui));
+  white-space: pre-wrap;
+  word-break: break-word;
+  outline: none;
+  border-radius: 4px;
+  padding: 1px 2px;
+}
+
+.ct-text.editing {
+  box-shadow: 0 0 0 1px var(--accent);
+  user-select: text;
+}
+
+.ct-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: calc(10.5px * var(--ui));
+  color: var(--ink-6);
+}
+
+.ct-edit {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: calc(10.5px * var(--ui));
+  color: var(--ink-4);
+  cursor: pointer;
+  padding: 0;
+}
+
+.ct-edit:hover {
+  color: var(--ink-1);
+}
+
+.ct-foot {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.ct-input {
+  flex: 1;
+  font: inherit;
+  font-size: calc(12.5px * var(--ui));
+  resize: none;
+  border: 1px solid var(--edge-strong);
+  border-radius: 7px;
+  padding: 6px 8px;
+  min-height: 30px;
+}
+
+.ct-send {
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  border-radius: 7px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.ct-send:disabled {
+  background: var(--accent-dim);
+  cursor: default;
+}
+

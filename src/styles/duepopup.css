@@ -1,0 +1,149 @@
+/* due-date popup */
+
+.due-pop {
+  position: fixed;
+  z-index: 60;
+  width: 248px;
+  background: var(--card);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px var(--shadow-2), 0 0 0 1px var(--edge);
+  padding: 10px;
+  font-size: calc(12px * var(--ui));
+  color: var(--ink-1);
+}
+
+.dp-nav {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.dp-nav button {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: calc(15px * var(--ui));
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--ink-4);
+  cursor: pointer;
+}
+
+.dp-nav button:hover {
+  background: var(--hover);
+}
+
+.dp-title {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+}
+
+.dp-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+
+.dp-dow {
+  text-align: center;
+  font-size: calc(10px * var(--ui));
+  color: var(--ink-6);
+  padding: 3px 0;
+}
+
+.dp-day {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  height: 28px;
+  border-radius: 6px;
+  color: var(--ink-1);
+  cursor: pointer;
+}
+
+.dp-day:hover:not(:disabled) {
+  background: var(--accent-soft2);
+}
+
+.dp-day:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+
+.dp-day.sel {
+  background: var(--accent);
+  color: #fff;
+}
+
+.dp-foot {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dp-add-time {
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  text-align: left;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+.dp-time {
+  display: flex;
+  gap: 6px;
+}
+
+.due-pop select {
+  font: inherit;
+  color: var(--ink-1);
+  border: 1px solid var(--edge-strong);
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: var(--card);
+  width: 100%;
+}
+
+.dp-time select {
+  flex: 1;
+}
+
+.dp-clear {
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink-4);
+  text-align: left;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+.dp-clear:hover {
+  color: var(--danger);
+}
+
+.card.todo:not(.editing) .todo-text:empty::before {
+  content: none;
+}
+
+/* Phones: same bottom-sheet docking as .tool-pop.sheet. */
+@media (max-width: 720px) {
+  .due-pop {
+    left: 0 !important;
+    right: 0;
+    top: auto !important;
+    bottom: max(0px, calc(100dvh - var(--vvh, 100dvh)));
+    width: auto;
+    max-height: calc(var(--vvh, 100dvh) * 0.6);
+    overflow: auto;
+    border-radius: 12px 12px 0 0;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+}
+

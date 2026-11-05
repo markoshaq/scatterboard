@@ -46,10 +46,13 @@ export interface Change {
   labels: Set<ID>;
   trash: Set<ID>;
   templates: Set<ID>;
+  // True when the change replays history (undo/redo): chrome uses it
+  // to keep replays silent (no exit animations).
+  replay: boolean;
 }
 
 export function emptyChange(): Change {
-  return { elements: new Set(), boards: new Set(), deleted: new Set(), labels: new Set(), trash: new Set(), templates: new Set() };
+  return { elements: new Set(), boards: new Set(), deleted: new Set(), labels: new Set(), trash: new Set(), templates: new Set(), replay: false };
 }
 
 export function applyAction(doc: Doc, a: Action, change: Change): Action {

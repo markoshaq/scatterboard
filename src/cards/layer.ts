@@ -37,6 +37,15 @@ export class CardsLayer {
   private editMark = new Map<ID, boolean>();
   private revOf: () => number;
   boardId: ID | null = null;
+  // Element ids already indexed on this layer: a view mounts with the
+  // .card-in birth pop only for ids new to the doc, so boot, board
+  // switches (tracked by knownBoard), undo and culled remounts stay
+  // silent while create/paste/duplicate/drop get the settle motion.
+  private knownEls = new Set<ID>();
+  private knownBoard: ID | null = null;
+  // Elements deleted by user action (never by undo/redo replay, culls
+  // or board switches): they get the .card-out exit before destroy.
+  private exits = new Set<ID>();
 
   constructor(doc: Doc, vp: Viewport, events: CardEvents, revOf: () => number) {
     this.doc = doc;
@@ -195,6 +204,10 @@ export class CardsLayer {
     return this.views.values();
   }
 
+  markExits(ids: Iterable<ID>) {
+    for (const id of ids) this.exits.add(id);
+  }
+
   private memberSig(id: ID): string {
     let s = '';
     for (const m of this.index.members(id)) s += `${m.id},`;
@@ -217,6 +230,10 @@ export class CardsLayer {
     }
     const visible = this.vp.viewRect(CULL_PAD);
     const els = this.elements();
+    // A board switch re-seeds the known set silently: every card on the
+    // freshly opened board counts as already seen.
+    const reseed = this.boardId !== this.knownBoard;
+    this.knownBoard = this.boardId;
     const wanted = new Set<ID>();
     for (const el of els) {
       if (el.type === 'line' || el.type === 'annotation') continue;
@@ -235,11 +252,19 @@ export class CardsLayer {
         this.flat.delete(id);
         this.memberSigs.delete(id);
         this.editMark.delete(id);
-        view.destroy();
         this.views.delete(id);
+        if (this.exits.delete(id)) {
+          view.node.classList.add('card-out');
+          const v = view;
+          window.setTimeout(() => v.destroy(), 140);
+        } else {
+          view.destroy();
+        }
       }
     }
     for (const el of els) {
+      const born = !reseed && !this.knownEls.has(el.id);
+      this.knownEls.add(el.id);
       if (!wanted.has(el.id)) continue;
       let view = this.views.get(el.id);
       const fresh = !view;
@@ -248,6 +273,7 @@ export class CardsLayer {
         this.views.set(el.id, view);
         this.flat.set(el.id, view);
         this.node.appendChild(view.node);
+        if (born) view.node.classList.add('card-in');
       }
       const ed = !!view.editing;
       let need = all || !!d!.has(el.id) || ed || this.editMark.get(el.id) !== ed;
