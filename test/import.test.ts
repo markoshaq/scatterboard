@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { importActions, parseBoardExport } from '../src/export/jsonio';
+import { importActions, parseBoardExport } from '../src/export/boardio';
 import { createBoard, createNote, emptyDoc, migrateDoc, type Doc } from '../src/state/schema';
 
 function doc(): Doc {

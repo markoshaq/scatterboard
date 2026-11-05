@@ -20,6 +20,17 @@ function flatten(a: Action): Action[] {
   return a.type === 'batch' ? a.actions.flatMap(flatten) : [a];
 }
 
+function anyChange(c: Change): boolean {
+  return (
+    c.elements.size > 0 ||
+    c.boards.size > 0 ||
+    c.deleted.size > 0 ||
+    c.labels.size > 0 ||
+    c.trash.size > 0 ||
+    c.templates.size > 0
+  );
+}
+
 export class Store {
   doc: Doc;
   // Bumped on every emit so caches keyed on doc contents can lazily
@@ -54,15 +65,22 @@ export class Store {
   dispatch(a: Action) {
     const { inverse, change } = this.run(a);
     if (this.group) {
-      this.absorbUndo(this.group, inverse);
-      this.absorbRedo(this.group, a);
-      this.future = [];
+      // A no-op apply (a delete whose target is already gone) joins
+      // neither the group's undo record nor its redo leaves, and the
+      // redo stack survives it.
+      if (inverse.length || anyChange(change)) {
+        this.absorbUndo(this.group, inverse);
+        this.absorbRedo(this.group, a);
+        this.future = [];
+      }
     } else if (inverse.length) {
       this.past.push({ undo: inverse, redo: flatten(a) });
       if (this.past.length > HISTORY_LIMIT) this.past.shift();
       this.future = [];
     }
-    this.emit(change);
+    // A no-op apply (patch on a missing element) produces an empty
+    // change: no rev bump, no save mark, no render.
+    if (anyChange(change)) this.emit(change);
   }
 
   private absorbUndo(g: Group, inverse: Action[]) {
@@ -103,17 +121,26 @@ export class Store {
     this.group ??= { undo: [], undoIdx: new Map(), redo: [], redoIdx: new Map() };
   }
 
-  endGroup(label?: string) {
+  // Returns whether the group landed a history entry: callers rolling
+  // a group back must not undo when nothing was pushed.
+  endGroup(label?: string): boolean {
     if (!this.group) {
       this.groupDepth = 0;
-      return;
+      return false;
     }
-    if (--this.groupDepth > 0) return;
+    if (--this.groupDepth > 0) return false;
     const g = this.group;
     this.group = null;
-    if (!g.redo.length) return;
+    if (!g.redo.length) return false;
     this.past.push({ undo: g.undo, redo: g.redo, ...(label !== undefined ? { label } : {}) });
     if (this.past.length > HISTORY_LIMIT) this.past.shift();
+    this.future = [];
+    return true;
+  }
+
+  // Drop the redo stack without dispatching: the agent abort path uses
+  // it so an undone partial batch can never replay.
+  clearFuture() {
     this.future = [];
   }
 

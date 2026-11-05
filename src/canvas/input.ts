@@ -5,17 +5,73 @@ import type { LineHit } from './lines';
 const DRAG_SLOP = 3;
 
 export function attachPointer(root: HTMLElement, app: App) {
-  // One active pointer at a time: a second finger down must not start a
-  // parallel gesture that fights the in-flight one.
+  // One active pointer at a time for mouse/pen: a second pointer must
+  // not start a parallel gesture that fights the in-flight one. Touch
+  // tracks all fingers in `touches` so a second finger can switch the
+  // session into a pinch (zoom + pan).
   let activePointer: number | null = null;
+  const touches = new Map<number, { x: number; y: number }>();
+  let pinching = false;
+  let pinchPrev: { d: number; cx: number; cy: number } | null = null;
+  const pinchGeom = () => {
+    const [a, b] = [...touches.values()];
+    return { d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+  };
   root.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch') {
+      if (pinching) {
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        pinchPrev = null;
+        return;
+      }
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size === 1) {
+        activePointer = e.pointerId;
+        onDown(e, app);
+        return;
+      }
+      // Second finger: cancel the first finger's gesture (the cancel
+      // paths undo any in-flight marquee/drag cleanly), then pinch. The
+      // synthetic cancel runs `release` too and drops finger 1 from
+      // `touches`, so re-add it to keep the tracked pair intact.
+      if (activePointer !== null) {
+        const firstId = activePointer;
+        const firstPos = touches.get(firstId)!;
+        window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: firstId, pointerType: 'touch' }));
+        touches.set(firstId, firstPos);
+      }
+      pinching = true;
+      pinchPrev = pinchGeom();
+      return;
+    }
     if (e.button !== 0 && e.button !== 1) return;
     if (activePointer !== null && e.pointerId !== activePointer) return;
     activePointer = e.pointerId;
     onDown(e, app);
   });
+  root.addEventListener('pointermove', (e) => {
+    const p = touches.get(e.pointerId);
+    if (p) {
+      p.x = e.clientX;
+      p.y = e.clientY;
+    }
+    if (!pinching || touches.size < 2) return;
+    const cur = pinchGeom();
+    if (pinchPrev) {
+      if (pinchPrev.d > 0) app.vp.zoomAt(cur.d / pinchPrev.d, cur.cx, cur.cy);
+      app.vp.panBy(cur.cx - pinchPrev.cx, cur.cy - pinchPrev.cy);
+    }
+    pinchPrev = cur;
+  });
   const release = (e: PointerEvent) => {
     if (e.pointerId === activePointer) activePointer = null;
+    if (e.pointerType !== 'touch') return;
+    touches.delete(e.pointerId);
+    // Reset the baseline whenever the tracked pair changes so the next
+    // move does not jump; a lone remaining finger keeps the pinch flag
+    // until it lifts, so picking a drag back up cannot jump the board.
+    pinchPrev = touches.size >= 2 ? pinchGeom() : null;
+    if (touches.size === 0) pinching = false;
   };
   window.addEventListener('pointerup', release);
   window.addEventListener('pointercancel', release);
@@ -32,7 +88,7 @@ export function attachPointer(root: HTMLElement, app: App) {
   });
   root.addEventListener('dblclick', (e) => onDblClick(e, app));
   root.addEventListener('wheel', (e) => onWheel(e, app), { passive: false });
-  root.addEventListener('contextmenu', (e) => onContextMenu(e));
+  root.addEventListener('contextmenu', (e) => onContextMenu(e, app));
   root.addEventListener('pointermove', (e) => {
     // Reused point object: no allocation per move.
     app.pointer ??= { x: 0, y: 0 };
@@ -195,6 +251,53 @@ function onBackgroundDown(e: PointerEvent, app: App, hit: LineHit | null) {
     }
     return;
   }
+  // One finger on empty canvas pans (a second finger upgrades to
+  // pinch). A held-still press past ~500ms switches the gesture to a
+  // marquee instead, the only multi-select gesture a phone offers. A
+  // tap still clears the selection, matching the marquee path's
+  // no-move outcome.
+  if (e.pointerType === 'touch') {
+    const pid = e.pointerId;
+    let panned = false;
+    let marquee = false;
+    const longPress = window.setTimeout(() => {
+      marquee = true;
+      app.setMarquee({ x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y });
+    }, 500);
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      if (marquee) {
+        const cur = app.boardPoint(ev);
+        app.setMarquee({ x1: pt.x, y1: pt.y, x2: cur.x, y2: cur.y });
+        return;
+      }
+      if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < DRAG_SLOP + 5) return;
+      window.clearTimeout(longPress);
+      panned = true;
+      cleanup();
+      app.startPan(ev);
+    };
+    const done = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      window.clearTimeout(longPress);
+      cleanup();
+      if (marquee) {
+        if (ev.type === 'pointerup') app.marqueeSelect(false);
+        app.setMarquee(null);
+        return;
+      }
+      if (!panned && ev.type === 'pointerup') app.clearSelection();
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', done);
+      window.removeEventListener('pointercancel', done);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', done);
+    window.addEventListener('pointercancel', done);
+    return;
+  }
   const pid = e.pointerId;
   const start = pt;
   let moved = false;
@@ -269,22 +372,29 @@ function onWheel(e: WheelEvent, app: App) {
   app.vp.panBy(-dx, -dy);
 }
 
-function onContextMenu(e: MouseEvent) {
-  // No context menus anywhere; just suppress the browser's.
+function onContextMenu(e: MouseEvent, app: App) {
+  // No browser context menu anywhere; right-click opens the element's
+  // own tool list instead.
   e.preventDefault();
+  app.tools.contextMenu(e);
 }
 
 // Safari sends gesture events for trackpad pinch instead of ctrl+wheel.
+// Bound on document, not root: an unsuppressed pinch over chrome
+// (topbar, panels, sheets) page-zooms the whole app on iOS Safari.
+// Only gestures that start on the canvas drive the board zoom.
 function attachGesture(root: HTMLElement, app: App) {
   let last = 1;
-  root.addEventListener('gesturestart', (e) => {
+  let onCanvas = false;
+  document.addEventListener('gesturestart', (e) => {
     e.preventDefault();
     last = (e as GestureEvent).scale;
+    onCanvas = e.target instanceof Node && root.contains(e.target);
   });
-  root.addEventListener('gesturechange', (e) => {
+  document.addEventListener('gesturechange', (e) => {
     e.preventDefault();
     const g = e as GestureEvent;
-    app.vp.zoomAt(g.scale / last, g.clientX, g.clientY);
+    if (onCanvas) app.vp.zoomAt(g.scale / last, g.clientX, g.clientY);
     last = g.scale;
   });
 }

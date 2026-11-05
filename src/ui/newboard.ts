@@ -1,7 +1,7 @@
 import type { Template } from '../state/schema';
 import { t } from '../strings';
 import { ICONS } from './icons';
-import { openToolPopup, type ToolPopup } from './popup';
+import { haspopup, openToolPopup, type ToolPopup } from './popup';
 
 interface NewBoardApi {
   builtins(): Template[];
@@ -14,6 +14,7 @@ interface NewBoardApi {
 // New-board picker: Empty board, preset templates, and the user's own
 // saved templates (rename inline, delete per row).
 export function openNewBoardPicker(anchor: HTMLElement | DOMRect, api: NewBoardApi): ToolPopup {
+  haspopup(anchor, 'dialog');
   const node = document.createElement('div');
   node.className = 'nbp-body';
 

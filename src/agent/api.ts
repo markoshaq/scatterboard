@@ -2,40 +2,19 @@ import type { Action, ElementPatch } from '../state/actions';
 import type { Store } from '../state/store';
 import { builtinTemplates, instantiateActions, snapshotTemplate } from '../state/templates';
 import {
-  createAnnotation,
-  createBoard,
-  createBoardCard,
-  createColumn,
-  createComment,
-  createDocument,
-  createEmbed,
   createFile,
-  createHeading,
   createImage,
   createLine,
-  createLink,
-  createNote,
-  createSketch,
-  createSwatch,
-  createTable,
-  createTodo,
   embedDoc,
   linkDoc,
-  saneContent,
-  strokesBBox,
+  nextZ,
+  survivingBoard,
   uid,
-  type CellType,
   type Doc,
   type Element,
   type ElementType,
-  type EmbedKind,
   type ID,
-  type LineMarker,
-  type LineWeight,
   type PresentOpts,
-  type TableCell,
-  type TodoItem,
-  type TypeContent,
 } from '../state/schema';
 import type { Viewport, Rect } from '../canvas/viewport';
 import { resolveLine } from '../canvas/lines';
@@ -44,28 +23,23 @@ import { autoTitled } from '../app/editing';
 import type { Prefs } from '../persist/storage';
 import {
   fail,
-  scrubHtml,
   vBoardId,
   vBool,
   vBoolOpt,
   vElId,
-  vHtml,
+  vElementPatch,
+  vEnum,
   vId,
-  vLabels,
-  vLineEnd,
   vNum,
   vNumOpt,
   vObj,
   vParentId,
   vStr,
-  vStrArray,
   vStrOpt,
-  vStrokes,
-  vUrl,
-  vUrlOpt,
-  vWidth,
   type Dict,
 } from './validate';
+import { buildElement, mergeContent } from './build';
+import { checkNoOverwrite, ELEMENT_TYPES, scrubMove, vAction } from './vaction';
 
 // The slice of App the command surface needs; tests stub it, App
 // satisfies it structurally.
@@ -115,7 +89,7 @@ export function parseCommand(raw: unknown): AgentCommand {
 
 // Commands that change the doc; reads, navigation and present are
 // exempt from the presenting lock.
-export const MUTATING = new Set([
+const MUTATING = new Set([
   'create',
   'patch',
   'remove',
@@ -152,18 +126,8 @@ export const URL_SAFE = new Set([
   'templates',
 ]);
 
-const EMBED_KINDS = new Set(['audio', 'map', 'video']);
-const LINE_MARKERS = new Set(['none', 'arrow', 'dot']);
-const LINE_WEIGHTS = new Set(['thin', 'medium', 'thick']);
-const CELL_TYPES = new Set(['auto', 'number', 'currency', 'percent', 'text', 'datetime', 'checkbox']);
 const EXPORT_FORMATS = new Set(['png', 'pdf', 'md', 'txt', 'doc', 'json', 'zip']);
 const PRESENT_KEYS = new Set(['on', 'focus', 'comments', 'edit']);
-const ALIGNS_H = new Set(['left', 'center', 'right']);
-const ALIGNS_V = new Set(['top', 'middle', 'bottom']);
-const ELEMENT_TYPES = new Set<ElementType>([
-  'note', 'column', 'board', 'todo', 'heading', 'swatch', 'line', 'comment',
-  'link', 'embed', 'image', 'file', 'document', 'sketch', 'annotation', 'table',
-]);
 
 // Per-type friendly content prop names accepted by create/patch.
 const TYPE_PROPS: Record<string, Set<string>> = {
@@ -190,84 +154,6 @@ const PATCH_TOP = new Set([
   'x', 'y', 'w', 'z', 'locked', 'color', 'anchorId', 'boardId', 'parentId', 'labels', 'reactions', 'syncGroup',
 ]);
 
-function vEnum<T extends string>(v: unknown, name: string, set: Set<string>): T {
-  const s = vStr(v, name, 32);
-  if (!set.has(s)) fail('bad_field', `${name} must be one of ${[...set].join(', ')}`);
-  return s as T;
-}
-
-function vPosition(v: unknown): { x: number; y: number; z: number } {
-  const o = vObj(v, 'position');
-  return { x: vNum(o.x, 'position.x'), y: vNum(o.y, 'position.y'), z: vNum(o.z, 'position.z') };
-}
-
-function vTodoItems(v: unknown): TodoItem[] {
-  if (!Array.isArray(v)) fail('bad_field', 'items must be an array');
-  return v.map((raw): TodoItem => {
-    const o = vObj(raw, 'items[]');
-    const it: TodoItem = {
-      id: uid(),
-      text: vStrOpt(o.text, 'items[].text', 8192) ?? '',
-      done: vBoolOpt(o.done, 'items[].done') ?? false,
-    };
-    if (o.dueAt !== undefined) it.dueAt = vNum(o.dueAt, 'items[].dueAt');
-    if (o.dueTime !== undefined) it.dueTime = vBool(o.dueTime, 'items[].dueTime');
-    if (o.assignee !== undefined) {
-      if (o.assignee !== 'self') fail('bad_field', 'assignee must be "self"');
-      it.assignee = 'self';
-    }
-    return it;
-  });
-}
-
-function vCommentItems(v: unknown) {
-  if (!Array.isArray(v)) fail('bad_field', 'items must be an array');
-  const now = Date.now();
-  return v.map((raw) => {
-    const o = vObj(raw, 'items[]');
-    return { id: uid(), text: vStr(o.text, 'items[].text', 8192), createdAt: vNumOpt(o.createdAt, 'items[].createdAt') ?? now };
-  });
-}
-
-function vCell(v: unknown): Partial<TableCell> {
-  const o = vObj(v, 'cell');
-  const out: Partial<TableCell> = {};
-  if (o.text !== undefined) out.text = vStr(o.text, 'cell.text', 8192);
-  if (o.html !== undefined) out.html = vHtml(o.html, 'cell.html');
-  if (o.type !== undefined) out.type = vEnum<CellType>(o.type, 'cell.type', CELL_TYPES);
-  if (o.alignH !== undefined) out.alignH = vEnum(o.alignH, 'cell.alignH', ALIGNS_H);
-  if (o.alignV !== undefined) out.alignV = vEnum(o.alignV, 'cell.alignV', ALIGNS_V);
-  if (o.color !== undefined) out.color = vStr(o.color, 'cell.color', 64);
-  return out;
-}
-
-const MAX_CELL_ROW = 200;
-const MAX_CELL_COL = 104;
-
-function cellRef(ref: string): { r: number; c: number } {
-  const m = /^([A-Za-z]{1,2})([1-9][0-9]{0,2})$/.exec(ref);
-  if (!m) fail('bad_field', `bad cell ref ${ref}`);
-  let c = 0;
-  for (const ch of m[1]!.toUpperCase()) c = c * 26 + ch.charCodeAt(0) - 64;
-  const out = { r: Number(m[2]) - 1, c: c - 1 };
-  if (out.r >= MAX_CELL_ROW || out.c >= MAX_CELL_COL) fail('too_large', `cell ref ${ref} out of range`);
-  return out;
-}
-
-// Sparse {B2: {text}} merge into a copy of the grid; the grid grows to
-// fit out-of-range refs.
-function mergeCells(cur: TableCell[][], v: unknown): TableCell[][] {
-  const cells = cur.map((row) => row.map((c) => ({ ...c })));
-  if (!cells.length) cells.push([{ text: '' }]);
-  for (const [ref, raw] of Object.entries(vObj(v, 'cells'))) {
-    const { r, c } = cellRef(ref);
-    while (cells.length <= r) cells.push(Array.from({ length: cells[0]!.length }, () => ({ text: '' })));
-    for (const row of cells) while (row.length <= c) row.push({ text: '' });
-    cells[r]![c] = { ...cells[r]![c]!, ...vCell(raw) };
-  }
-  return cells;
-}
-
 // Upload payloads arrive as raw base64 or a base64 data URL. Anything
 // else fails loudly rather than producing a corrupt blob.
 function b64ToBlob(s: string, mime?: string): Blob {
@@ -293,9 +179,7 @@ type Runner = () => unknown | Promise<unknown>;
 export function createAgentApi(app: AgentHost) {
   const doc = () => app.doc;
 
-  let dispatchCount = 0;
   const dispatch = (a: Action) => {
-    dispatchCount++;
     app.store.dispatch(a);
   };
 
@@ -315,139 +199,6 @@ export function createAgentApi(app: AgentHost) {
     return v;
   };
 
-  // Applies the friendly content props to a copy of the element's
-  // content. Also validates them: unknown keys already failed upstream,
-  // bad values fail here. `top` carries element-field side effects
-  // (annotation strokes re-origin the element).
-  function mergeContent(el: Element, p: Dict): { content: TypeContent; top?: ElementPatch } {
-    const c = el.content;
-    if ('note' in c) {
-      const note = { ...c.note };
-      if (p.text !== undefined) note.text = vStr(p.text, 'text');
-      if (p.html !== undefined) note.html = vHtml(p.html, 'html');
-      return { content: { note } };
-    }
-    if ('heading' in c) {
-      const heading = { ...c.heading };
-      if (p.text !== undefined) heading.text = vStr(p.text, 'text');
-      if (p.html !== undefined) heading.html = vHtml(p.html, 'html');
-      if (p.level !== undefined) heading.level = vNum(p.level, 'level') === 2 ? 2 : 1;
-      return { content: { heading } };
-    }
-    if ('column' in c) {
-      const column = { ...c.column };
-      if (p.title !== undefined) column.title = vStr(p.title, 'title');
-      return { content: { column } };
-    }
-    if ('todo' in c) {
-      const todo = { ...c.todo };
-      if (p.title !== undefined) todo.title = vStr(p.title, 'title');
-      if (p.showTitle !== undefined) todo.showTitle = vBool(p.showTitle, 'showTitle');
-      if (p.items !== undefined) todo.items = vTodoItems(p.items);
-      return { content: { todo } };
-    }
-    if ('boardRef' in c) {
-      if (p.ref !== undefined) return { content: { boardRef: vBoardId(doc(), p.ref) } };
-      return { content: c };
-    }
-    if ('swatch' in c) {
-      const swatch = { ...c.swatch };
-      if (p.value !== undefined) swatch.color = vStr(p.value, 'value', 64);
-      if (p.caption !== undefined) swatch.caption = vStr(p.caption, 'caption');
-      if (p.showValue !== undefined) swatch.showValue = vBool(p.showValue, 'showValue');
-      return { content: { swatch } };
-    }
-    if ('line' in c) {
-      const line = { ...c.line };
-      if (p.from !== undefined) line.from = vLineEnd(doc(), p.from, 'from');
-      if (p.to !== undefined) line.to = vLineEnd(doc(), p.to, 'to');
-      if (p.label !== undefined) line.label = vStr(p.label, 'label', 4096);
-      if (p.dashed !== undefined) line.dashed = vBool(p.dashed, 'dashed');
-      if (p.weight !== undefined) line.weight = vEnum<LineWeight>(p.weight, 'weight', LINE_WEIGHTS);
-      if (p.fromMarker !== undefined) line.fromMarker = vEnum<LineMarker>(p.fromMarker, 'fromMarker', LINE_MARKERS);
-      if (p.toMarker !== undefined) line.toMarker = vEnum<LineMarker>(p.toMarker, 'toMarker', LINE_MARKERS);
-      return { content: { line } };
-    }
-    if ('comment' in c) {
-      let items = c.comment.items;
-      if (p.items !== undefined) items = vCommentItems(p.items);
-      if (p.add !== undefined) {
-        items = [...items, { id: uid(), text: vStr(p.add, 'add', 8192), createdAt: Date.now() }];
-      }
-      return { content: { comment: { items } } };
-    }
-    if ('link' in c) {
-      const link = { ...c.link };
-      if (p.url !== undefined) link.url = vUrl(p.url, 'url');
-      if (p.title !== undefined) link.title = vStr(p.title, 'title');
-      if (p.caption !== undefined) link.caption = vStr(p.caption, 'caption');
-      if (p.showPreview !== undefined) link.showPreview = vBool(p.showPreview, 'showPreview');
-      if (p.desc !== undefined) {
-        if (p.desc === null) delete link.desc;
-        else link.desc = vStr(p.desc, 'desc', 8192);
-      }
-      if (p.image !== undefined) {
-        if (p.image === null) delete link.image;
-        else link.image = vStr(p.image, 'image', 8192);
-      }
-      return { content: { link } };
-    }
-    if ('embed' in c) {
-      const embed = { ...c.embed };
-      if (p.kind !== undefined) embed.kind = vEnum<EmbedKind>(p.kind, 'kind', EMBED_KINDS);
-      if (p.url !== undefined) embed.url = vUrl(p.url, 'url');
-      if (p.title !== undefined) embed.title = vStr(p.title, 'title');
-      if (p.caption !== undefined) embed.caption = vStr(p.caption, 'caption');
-      if (p.showPreview !== undefined) embed.showPreview = vBool(p.showPreview, 'showPreview');
-      return { content: { embed } };
-    }
-    if ('image' in c) {
-      const image = { ...c.image };
-      if (p.caption !== undefined) image.caption = vStr(p.caption, 'caption');
-      if (p.strokes !== undefined) image.strokes = vStrokes(p.strokes);
-      return { content: { image } };
-    }
-    if ('file' in c) return { content: c };
-    if ('document' in c) {
-      const document = { ...c.document };
-      if (p.title !== undefined) document.title = vStr(p.title, 'title');
-      if (p.text !== undefined) document.text = vStr(p.text, 'text');
-      if (p.html !== undefined) document.html = vHtml(p.html, 'html');
-      if (p.caption !== undefined) document.caption = vStr(p.caption, 'caption');
-      if (p.displayMode !== undefined) {
-        document.displayMode = vEnum(p.displayMode, 'displayMode', new Set(['icon', 'detail']));
-      }
-      return { content: { document } };
-    }
-    if ('sketch' in c) {
-      if (p.strokes === undefined) return { content: c };
-      return { content: { sketch: { strokes: vStrokes(p.strokes) } } };
-    }
-    if ('annotation' in c) {
-      if (p.strokes === undefined) return { content: c };
-      const strokes = vStrokes(p.strokes);
-      // Board-space strokes re-origin the element exactly like
-      // createAnnotation does.
-      const box = strokesBBox(strokes);
-      const rel = strokes.map((s) => ({
-        ...s,
-        pts: s.pts.map(([px, py]): [number, number] => [px - box.x, py - box.y]),
-      }));
-      return {
-        content: { annotation: { strokes: rel } },
-        top: { x: Math.round(box.x), y: Math.round(box.y), w: Math.max(1, Math.round(box.w)) },
-      };
-    }
-    if ('table' in c) {
-      const table = { ...c.table };
-      if (p.title !== undefined) table.title = vStr(p.title, 'title');
-      if (p.caption !== undefined) table.caption = vStr(p.caption, 'caption');
-      if (p.cells !== undefined) table.cells = mergeCells(c.table.cells, p.cells);
-      return { content: { table } };
-    }
-    return { content: c };
-  }
-
   function checkKeys(o: Dict, allowed: Set<string>) {
     for (const k of Object.keys(o)) {
       if (!allowed.has(k)) fail('bad_field', `unknown field ${k}`);
@@ -458,353 +209,44 @@ export function createAgentApi(app: AgentHost) {
     checkKeys(p, new Set([...extra, ...(TYPE_PROPS[type] ?? [])]));
   }
 
-  function buildElement(type: ElementType, p: Dict): { id: ID; action: Action } {
-    const d = doc();
-    const boardId = p.boardId === undefined ? requireBoard() : vBoardId(d, p.boardId);
-    const center = app.vp.toBoard(app.vp.vw / 2, app.vp.vh / 2);
-    const x = Math.round(vNumOpt(p.x, 'x') ?? center.x);
-    const y = Math.round(vNumOpt(p.y, 'y') ?? center.y);
-    const parentId = p.parentId === undefined ? null : vParentId(d, p.parentId, boardId);
-    let el: Element;
-    const actions: Action[] = [];
-    switch (type) {
-      case 'note': {
-        el = createNote(d, boardId, x, y, vStrOpt(p.text, 'text') ?? '');
-        if (p.html !== undefined) el.content = mergeContent(el, p).content;
-        break;
-      }
-      case 'heading': {
-        const level = p.level === undefined ? 1 : vNum(p.level, 'level') === 2 ? 2 : 1;
-        el = createHeading(d, boardId, x, y, level);
-        el.content = mergeContent(el, p).content;
-        break;
-      }
-      case 'column':
-        el = createColumn(d, boardId, x, y, vStrOpt(p.title, 'title') ?? '');
-        break;
-      case 'board': {
-        if (p.ref !== undefined) {
-          el = createBoardCard(d, boardId, vBoardId(d, p.ref), x, y);
-        } else {
-          const board = createBoard({ parentId: boardId, title: vStrOpt(p.title, 'title') ?? 'Untitled board' });
-          actions.push({ type: 'board.create', board });
-          el = createBoardCard(d, boardId, board.id, x, y);
-        }
-        break;
-      }
-      case 'todo': {
-        el = createTodo(d, boardId, x, y);
-        el.content = mergeContent(el, p).content;
-        if (p.title !== undefined && p.showTitle === undefined && 'todo' in el.content) {
-          el.content.todo.showTitle = true;
-        }
-        break;
-      }
-      case 'swatch': {
-        el = createSwatch(d, boardId, x, y, vStrOpt(p.value ?? p.color, 'value', 64) ?? '#3d84e0');
-        el.content = mergeContent(el, p).content;
-        break;
-      }
-      case 'line': {
-        if (p.from === undefined || p.to === undefined) fail('bad_params', 'line needs from and to');
-        el = createLine(d, boardId, vLineEnd(d, p.from, 'from'), vLineEnd(d, p.to, 'to'));
-        el.content = mergeContent(el, p).content;
-        break;
-      }
-      case 'comment': {
-        const anchor = p.anchorId ?? p.anchor;
-        el = createComment(d, boardId, x, y, anchor === undefined ? undefined : vElId(d, anchor, 'anchorId'));
-        if (p.text !== undefined && p.items === undefined) {
-          p = { ...p, items: [{ text: p.text }] };
-        }
-        el.content = mergeContent(el, p).content;
-        break;
-      }
-      case 'link':
-        el = createLink(d, boardId, x, y, vUrlOpt(p.url, 'url') ?? '');
-        el.content = mergeContent(el, p).content;
-        break;
-      case 'embed': {
-        const kind = p.kind === undefined ? 'video' : vEnum<EmbedKind>(p.kind, 'kind', EMBED_KINDS);
-        el = createEmbed(d, boardId, kind, x, y);
-        el.content = mergeContent(el, p).content;
-        break;
-      }
-      case 'document':
-        el = createDocument(d, boardId, x, y);
-        el.content = mergeContent(el, p).content;
-        break;
-      case 'sketch':
-        el = createSketch(d, boardId, x, y);
-        el.content = mergeContent(el, p).content;
-        break;
-      case 'annotation': {
-        const strokes = vStrokes(p.strokes ?? fail('bad_params', 'annotation needs strokes'));
-        if (!strokes.length) fail('bad_field', 'annotation needs at least one stroke');
-        el = createAnnotation(d, boardId, strokes);
-        break;
-      }
-      case 'table': {
-        el = createTable(d, boardId, x, y);
-        el.content = mergeContent(el, p).content;
-        break;
-      }
-      case 'image':
-      case 'file':
-        fail('unsupported', `${type} cards carry a blob; create them with the upload command`);
-        break;
-      default:
-        fail('bad_type', `unknown card type ${type}`);
-    }
-    app.stampBoardColor(el);
-    if (p.w !== undefined) el.w = vWidth(p.w);
-    if (p.color !== undefined && type !== 'swatch') el.color = vStr(p.color, 'color', 64);
-    el.parentId = parentId;
-    if (p.labels !== undefined) el.labels = vLabels(d, p.labels, boardId);
-    if (p.reactions !== undefined) el.reactions = vStrArray(p.reactions, 'reactions', 32);
-    actions.push({ type: 'element.create', el });
-    return { id: el.id, action: actions.length > 1 ? { type: 'batch', actions } : actions[0]! };
-  }
-
-  function vAction(raw: unknown, depth: number): Action {
-    const o = vObj(raw, 'action');
-    const type = vStr(o.type, 'action.type', 64);
-    const d = doc();
-    switch (type) {
-      case 'element.create': {
-        const e = vObj(o.el, 'el');
-        const etype = vStr(e.type, 'el.type', 32) as ElementType;
-        if (!ELEMENT_TYPES.has(etype)) fail('bad_type', `unknown element type ${etype}`);
-        const boardId = vBoardId(d, e.boardId);
-        const content = vObj(e.content, 'el.content');
-        if (!saneContent(content, etype)) fail('bad_field', 'el.content is malformed for this type');
-        if ('boardRef' in content && !d.boards[content.boardRef]) {
-          fail('not_found', `no board ${content.boardRef}`);
-        }
-        scrubHtml(content);
-        const now = Date.now();
-        let z = vNumOpt(e.z, 'el.z');
-        if (z === undefined) z = ++d.seq;
-        else if (z > d.seq) d.seq = z;
-        const id = e.id === undefined ? uid() : vId(e.id, 'el.id');
-        if (d.elements[id]) fail('bad_field', `element ${id} already exists`);
-        const el: Element = {
-          id,
-          boardId,
-          type: etype,
-          parentId: e.parentId === undefined ? null : vParentId(d, e.parentId, boardId),
-          x: vNumOpt(e.x, 'el.x') ?? 0,
-          y: vNumOpt(e.y, 'el.y') ?? 0,
-          z,
-          locked: vBoolOpt(e.locked, 'el.locked') ?? false,
-          content: content as unknown as TypeContent,
-          labels: e.labels === undefined ? [] : vLabels(d, e.labels, boardId),
-          createdAt: vNumOpt(e.createdAt, 'el.createdAt') ?? now,
-          modifiedAt: vNumOpt(e.modifiedAt, 'el.modifiedAt') ?? now,
-        };
-        if (e.w !== undefined) el.w = vWidth(e.w);
-        if (e.color !== undefined) el.color = vStr(e.color, 'el.color', 64);
-        if (e.anchorId !== undefined) el.anchorId = vElId(d, e.anchorId, 'el.anchorId');
-        if (e.syncGroup !== undefined) el.syncGroup = vId(e.syncGroup, 'el.syncGroup');
-        if (e.reactions !== undefined) el.reactions = vStrArray(e.reactions, 'el.reactions', 32);
-        return { type: 'element.create', el };
-      }
-      case 'element.delete': {
-        const el = d.elements[vId(vObj(o.el, 'el').id, 'el.id')];
-        if (!el) fail('not_found', 'no such element');
-        return { type: 'element.delete', el };
-      }
-      case 'element.patch': {
-        const id = vId(o.id, 'id');
-        const el = d.elements[id];
-        if (!el) fail('not_found', `no element ${id}`);
-        const patch: ElementPatch = {};
-        const rawPatch = vObj(o.patch, 'patch');
-        // parentId and labels must resolve against the board the
-        // element ends up on, which a same-patch boardId can move.
-        const targetBoard = rawPatch.boardId === undefined ? el.boardId : vBoardId(d, rawPatch.boardId);
-        for (const [k, v] of Object.entries(rawPatch)) {
-          switch (k) {
-            case 'x':
-            case 'y':
-            case 'z':
-              patch[k] = vNum(v, `patch.${k}`);
-              break;
-            case 'w':
-              patch.w = vWidth(v);
-              break;
-            case 'locked':
-              patch.locked = vBool(v, 'patch.locked');
-              break;
-            case 'color':
-              patch.color = v === null ? undefined : vStr(v, 'patch.color', 64);
-              break;
-            case 'anchorId':
-              if (v !== null && el.type !== 'comment') fail('bad_field', 'anchorId applies to comment elements');
-              patch.anchorId = v === null ? undefined : vElId(d, v, 'patch.anchorId');
-              break;
-            case 'boardId':
-              patch.boardId = vBoardId(d, v);
-              break;
-            case 'parentId':
-              patch.parentId = vParentId(d, v, targetBoard);
-              break;
-            case 'content': {
-              const c = vObj(v, 'patch.content');
-              if (!saneContent(c, el.type)) fail('bad_field', 'patch.content is malformed for this element type');
-              scrubHtml(c);
-              patch.content = c as unknown as TypeContent;
-              break;
-            }
-            case 'labels':
-              patch.labels = vLabels(d, v, targetBoard);
-              break;
-            case 'reactions':
-              patch.reactions = v === null ? undefined : vStrArray(v, 'patch.reactions', 32);
-              break;
-            case 'syncGroup':
-              patch.syncGroup = v === null ? undefined : vId(v, 'patch.syncGroup');
-              break;
-            default:
-              fail('bad_field', `unknown patch field ${k}`);
-          }
-        }
-        return { type: 'element.patch', id, patch };
-      }
-      case 'board.create': {
-        const b = vObj(o.board, 'board');
-        const board = createBoard({
-          ...(b.id !== undefined ? { id: vId(b.id, 'board.id') } : {}),
-          ...(b.title !== undefined ? { title: vStr(b.title, 'board.title') } : {}),
-          parentId: b.parentId === undefined || b.parentId === null ? null : vBoardId(d, b.parentId),
-          ...(b.grid !== undefined ? { grid: vBool(b.grid, 'board.grid') } : {}),
-          ...(b.icon !== undefined ? { icon: vStr(b.icon, 'board.icon', 256) } : {}),
-          ...(b.color !== undefined ? { color: vStr(b.color, 'board.color', 64) } : {}),
-          ...(b.position !== undefined ? { position: vPosition(b.position) } : {}),
-        });
-        if (d.boards[board.id]) fail('bad_field', `board ${board.id} already exists`);
-        return { type: 'board.create', board };
-      }
-      case 'board.delete': {
-        const board = d.boards[vId(vObj(o.board, 'board').id, 'board.id')];
-        if (!board) fail('not_found', 'no such board');
-        return { type: 'board.delete', board };
-      }
-      case 'board.patch': {
-        const id = vId(o.id, 'id');
-        if (!d.boards[id]) fail('not_found', `no board ${id}`);
-        const patch: { title?: string; icon?: string | undefined; color?: string | undefined; grid?: boolean; position?: { x: number; y: number; z: number } } = {};
-        for (const [k, v] of Object.entries(vObj(o.patch, 'patch'))) {
-          if (k === 'title') patch.title = vStr(v, 'patch.title');
-          else if (k === 'icon') patch.icon = v === null ? undefined : vStr(v, 'patch.icon', 256);
-          else if (k === 'color') patch.color = v === null ? undefined : vStr(v, 'patch.color', 64);
-          else if (k === 'grid') patch.grid = vBool(v, 'patch.grid');
-          else if (k === 'position') {
-            const pos = vObj(v, 'patch.position');
-            patch.position = { x: vNum(pos.x, 'position.x'), y: vNum(pos.y, 'position.y'), z: vNum(pos.z, 'position.z') };
-          } else fail('bad_field', `unknown board patch field ${k}`);
-        }
-        return { type: 'board.patch', id, patch };
-      }
-      case 'label.create': {
-        const l = vObj(o.label, 'label');
-        const id = l.id === undefined ? uid() : vId(l.id, 'label.id');
-        if (d.labels[id]) fail('bad_field', `label ${id} already exists`);
-        return {
-          type: 'label.create',
-          label: {
-            id,
-            boardId: vBoardId(d, l.boardId),
-            name: vStr(l.name, 'label.name', 256),
-            color: vStr(l.color, 'label.color', 64),
-          },
-        };
-      }
-      case 'label.delete': {
-        const label = d.labels[vId(vObj(o.label, 'label').id, 'label.id')];
-        if (!label) fail('not_found', 'no such label');
-        return { type: 'label.delete', label };
-      }
-      case 'label.patch': {
-        const id = vId(o.id, 'id');
-        if (!d.labels[id]) fail('not_found', `no label ${id}`);
-        const patch: { name?: string; color?: string } = {};
-        for (const [k, v] of Object.entries(vObj(o.patch, 'patch'))) {
-          if (k === 'name') patch.name = vStr(v, 'patch.name', 256);
-          else if (k === 'color') patch.color = vStr(v, 'patch.color', 64);
-          else fail('bad_field', `unknown label patch field ${k}`);
-        }
-        return { type: 'label.patch', id, patch };
-      }
-      case 'template.delete': {
-        const tpl = d.templates[vId(vObj(o.tpl, 'tpl').id, 'tpl.id')];
-        if (!tpl) fail('not_found', 'no such template');
-        return { type: 'template.delete', tpl };
-      }
-      case 'template.patch': {
-        const id = vId(o.id, 'id');
-        if (!d.templates[id]) fail('not_found', `no template ${id}`);
-        const patch: { name?: string } = {};
-        for (const [k, v] of Object.entries(vObj(o.patch, 'patch'))) {
-          if (k === 'name') patch.name = vStr(v, 'patch.name', 256);
-          else fail('bad_field', `unknown template patch field ${k}`);
-        }
-        return { type: 'template.patch', id, patch };
-      }
-      case 'batch': {
-        if (depth > 4) fail('too_large', 'batch nesting too deep');
-        if (!Array.isArray(o.actions)) fail('bad_params', 'batch needs an actions array');
-        return { type: 'batch', actions: o.actions.map((a) => vAction(a, depth + 1)) };
-      }
-      default:
-        fail('forbidden', `action ${type} is not allowed`);
-    }
-  }
-
-  // Re-checked at run time too: two creates in one batch could carry
-  // the same id, and a plain assignment would overwrite the loser.
-  function checkNoOverwrite(a: Action): void {
-    if (a.type === 'batch') {
-      for (const x of a.actions) checkNoOverwrite(x);
-      return;
-    }
-    const d = doc();
-    if (a.type === 'element.create' && d.elements[a.el.id]) {
-      fail('bad_field', `element ${a.el.id} already exists`);
-    }
-    if (a.type === 'board.create' && d.boards[a.board.id]) fail('bad_field', `board ${a.board.id} already exists`);
-    if (a.type === 'label.create' && d.labels[a.label.id]) fail('bad_field', `label ${a.label.id} already exists`);
-  }
+  // >0 while a planned batch's own store group is open: nested batches
+  // join it by running flat. A group opened by anyone else (a user
+  // drag or edit session) is never joined.
+  let agentDepth = 0;
 
   async function runPlanned(planned: Runner[]): Promise<unknown[]> {
-    // Inside an outer group (a nested batch) the parent owns rollback.
-    if (app.store.inGroup) {
+    // Inside an outer agent batch the parent owns rollback.
+    if (agentDepth > 0) {
       const flat: unknown[] = [];
       for (const r of planned) flat.push(await r());
       return flat;
     }
     guard();
     // An open edit session holds a store group; closing it first keeps
-    // this batch a single undo entry and the abort undo-able.
+    // this batch a single undo entry and the abort undo-able. A group
+    // that still survives (an in-flight user gesture) is refused
+    // rather than joined: commands would merge into the user's undo
+    // entry and an abort would undo their half-finished work.
     app.editing.endEdit();
-    const before = dispatchCount;
+    if (app.store.inGroup) fail('busy', 'a board gesture is in progress');
     app.store.beginGroup();
+    agentDepth++;
     try {
       const out: unknown[] = [];
       for (const r of planned) out.push(await r());
       app.store.endGroup('agent');
       return out;
     } catch (e) {
-      app.store.endGroup();
-      if (dispatchCount > before) {
+      // Only roll back when the group actually landed a history entry:
+      // undoing a leaf-free group would pop the user's previous action.
+      if (app.store.endGroup()) {
         app.store.undo();
-        // The abort undo queues the partial batch as a redo entry; an
-        // empty grouped dispatch clears future so it cannot replay.
-        app.store.beginGroup();
-        app.store.dispatch({ type: 'batch', actions: [] });
-        app.store.endGroup();
+        // The undo queues the partial batch as redo; it must not replay.
+        app.store.clearFuture();
       }
       throw e;
+    } finally {
+      agentDepth--;
     }
   }
 
@@ -886,7 +328,7 @@ export function createAgentApi(app: AgentHost) {
         const p: Dict = o.props === undefined ? { ...o } : { ...vObj(o.props, 'props') };
         delete p.type;
         checkProps(type, p, COMMON_PROPS);
-        const built = buildElement(type, p);
+        const built = buildElement({ app, requireBoard }, type, p);
         return () => {
           guard();
           dispatch(built.action);
@@ -902,46 +344,30 @@ export function createAgentApi(app: AgentHost) {
         const raw = o.patch === undefined ? { ...o } : { ...vObj(o.patch, 'patch') };
         delete raw.id;
         const contentKeys = TYPE_PROPS[el.type] ?? new Set<string>();
-        const top: ElementPatch = {};
+        const topRaw: Dict = {};
         const contentProps: Dict = {};
         const d = doc();
         // parentId and labels must resolve against the board the
         // element ends up on, which a same-patch boardId can move.
         const targetBoard = raw.boardId === undefined ? el.boardId : vBoardId(d, raw.boardId);
         for (const [k, v] of Object.entries(raw)) {
-          if (PATCH_TOP.has(k)) {
-            if (k === 'x' || k === 'y' || k === 'z') top[k] = vNum(v, k);
-            else if (k === 'w') top.w = vWidth(v);
-            else if (k === 'locked') top.locked = vBool(v, 'locked');
-            else if (k === 'color') top.color = v === null ? undefined : vStr(v, 'color', 64);
-            else if (k === 'anchorId') {
-              if (v !== null && el.type !== 'comment') fail('bad_field', 'anchorId applies to comment elements');
-              top.anchorId = v === null ? undefined : vElId(d, v, 'anchorId');
-            } else if (k === 'boardId') top.boardId = vBoardId(d, v);
-            else if (k === 'parentId') {
-              const pid = vParentId(d, v, targetBoard);
-              if (pid === id) fail('bad_field', 'parentId cannot be the element itself');
-              top.parentId = pid;
-            } else if (k === 'labels') top.labels = vLabels(d, v, targetBoard);
-            else if (k === 'reactions') top.reactions = v === null ? undefined : vStrArray(v, 'reactions', 32);
-            else if (k === 'syncGroup') top.syncGroup = v === null ? undefined : vId(v, 'syncGroup');
-          } else if (contentKeys.has(k)) {
-            contentProps[k] = v;
-          } else {
-            fail('bad_field', `unknown field ${k}`);
-          }
+          if (PATCH_TOP.has(k)) topRaw[k] = v;
+          else if (contentKeys.has(k)) contentProps[k] = v;
+          else fail('bad_field', `unknown field ${k}`);
         }
-        if (Object.keys(contentProps).length) mergeContent(el, contentProps);
+        const top = vElementPatch(d, el, topRaw, targetBoard, id);
+        if (Object.keys(contentProps).length) mergeContent(d, el, contentProps);
         return () => {
           guard();
           const cur = doc().elements[id];
           if (!cur) fail('not_found', `no element ${id}`);
           const patch: ElementPatch = { ...top };
           if (Object.keys(contentProps).length) {
-            const m = mergeContent(cur, contentProps);
+            const m = mergeContent(doc(), cur, contentProps);
             patch.content = m.content;
             if (m.top) Object.assign(patch, m.top);
           }
+          scrubMove(cur, patch, doc());
           dispatch({ type: 'element.patch', id, patch });
           return { ok: true };
         };
@@ -953,7 +379,6 @@ export function createAgentApi(app: AgentHost) {
         return () => {
           guard();
           if (!doc().elements[id]) fail('not_found', `no element ${id}`);
-          dispatchCount++;
           app.setSelection([id]);
           app.deleteSelection();
           return { ok: true };
@@ -966,6 +391,7 @@ export function createAgentApi(app: AgentHost) {
         const to = vElId(doc(), o.to, 'to');
         const fa = doc().elements[from]!;
         const ta = doc().elements[to]!;
+        if (from === to) fail('bad_field', 'line endpoints must differ');
         if (fa.boardId !== ta.boardId) fail('bad_field', 'endpoints are on different boards');
         const opts: Dict = {};
         for (const k of Object.keys(o)) {
@@ -985,7 +411,7 @@ export function createAgentApi(app: AgentHost) {
             { el: from, x: Math.round(ra.x + ra.w), y: Math.round(ra.y + ra.h / 2) },
             { el: to, x: Math.round(rb.x), y: Math.round(rb.y + rb.h / 2) },
           );
-          el.content = mergeContent(el, opts).content;
+          el.content = mergeContent(doc(), el, opts).content;
           dispatch({ type: 'element.create', el });
           return { id: el.id };
         };
@@ -1017,7 +443,7 @@ export function createAgentApi(app: AgentHost) {
             parentId: null,
             x: Math.round(x ?? entry.el.x),
             y: Math.round(y ?? entry.el.y),
-            z: ++doc().seq,
+            z: nextZ(doc()),
           };
           if (el.anchorId !== undefined && doc().elements[el.anchorId]?.boardId !== boardId) {
             delete el.anchorId;
@@ -1215,7 +641,7 @@ export function createAgentApi(app: AgentHost) {
           let el: Element | null = null;
           if (blob.type.startsWith('image/')) {
             try {
-              const { prepareImage } = await import('../ui/files');
+              const { prepareImage } = await import('../ingest/files');
               const { blob: baked, aspect, natW, natH } = await prepareImage(blob);
               const ref = uid();
               await app.blobStore.put(ref, baked);
@@ -1233,9 +659,13 @@ export function createAgentApi(app: AgentHost) {
             }
             el = createFile(doc(), boardId, x, y, ref, name ?? 'file', blob.size, blob.type);
           }
-          el.parentId = parentId;
+          // The async blob work may have outlasted the target: the
+          // board could be gone and the parent may have left it.
+          if (!doc().boards[boardId]) fail('not_found', `no board ${boardId}`);
+          el.parentId =
+            parentId !== null && doc().elements[parentId]?.boardId === boardId ? parentId : null;
           app.stampBoardColor(el);
-          if (caption !== undefined) el.content = mergeContent(el, { caption }).content;
+          if (caption !== undefined) el.content = mergeContent(doc(), el, { caption }).content;
           dispatch({ type: 'element.create', el });
           app.setSelection([el.id]);
           return { id: el.id, type: el.type };
@@ -1278,7 +708,7 @@ export function createAgentApi(app: AgentHost) {
             return { name: `${base}.${ext}`, mime, text };
           }
           if (format === 'json') {
-            const { exportBoard } = await import('../export/jsonio');
+            const { exportBoard } = await import('../export/boardio');
             const text = exportBoard(doc(), bid);
             if (!text) fail('export', 'json export failed');
             return { name: `${base}.json`, mime: 'application/json', text };
@@ -1296,13 +726,9 @@ export function createAgentApi(app: AgentHost) {
         const hostId = o.boardId === undefined ? null : vBoardId(doc(), o.boardId);
         return async () => {
           guard();
-          const { parseBoardExport, importActions } = await import('../export/jsonio');
+          const { parseBoardExport, importActions } = await import('../export/boardio');
           const parsed = parseBoardExport(data);
-          const host =
-            hostId ??
-            doc().boards.home?.id ??
-            Object.values(doc().boards).find((b) => b.parentId === null)?.id ??
-            app.boardId;
+          const host = hostId ?? survivingBoard(doc(), undefined, app.boardId);
           const res = parsed && host ? importActions(doc(), parsed, host) : null;
           if (!res) fail('bad_payload', 'data is not a board export, or no host board exists');
           dispatch({ type: 'batch', actions: res.actions });
@@ -1364,10 +790,10 @@ export function createAgentApi(app: AgentHost) {
       case 'dispatch': {
         guard();
         const o = vObj(params, 'params');
-        const action = vAction('type' in o ? o : o.action, 0);
+        const action = vAction(doc(), 'type' in o ? o : o.action, 0);
         return () => {
           guard();
-          checkNoOverwrite(action);
+          checkNoOverwrite(doc(), action);
           dispatch(action);
           return { ok: true };
         };
@@ -1379,7 +805,13 @@ export function createAgentApi(app: AgentHost) {
 
   return {
     async run(method: string, params?: unknown): Promise<unknown> {
-      if (MUTATING.has(method)) guard();
+      if (MUTATING.has(method)) {
+        guard();
+        app.editing.endEdit();
+        // See runPlanned: mutating work never joins a group it did not
+        // open (a user gesture in progress).
+        if (app.store.inGroup) fail('busy', 'a board gesture is in progress');
+      }
       return plan(method, params)();
     },
     // Plan every command first, then run them inside one store group:

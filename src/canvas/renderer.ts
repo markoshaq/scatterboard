@@ -163,8 +163,12 @@ export class Renderer {
     // fractional zooms.
     pat.setTransform(new DOMMatrix().scale(1 / this.gridTile.scale));
     ctx.fillStyle = pat;
+    // Deep zoom-out keeps the doubled dots but calms their alpha, so a
+    // zoomed-out board reads as a surface first and a grid second.
+    ctx.globalAlpha = Math.min(1, vp.z / 0.45);
     const vr = vp.viewRect(0);
     ctx.fillRect(vr.x, vr.y, vr.w, vr.h);
+    ctx.globalAlpha = 1;
   }
 
   private drawLine(l: SceneLine) {

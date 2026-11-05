@@ -169,14 +169,18 @@ export class Overlays {
     const pill = id ? this.labelPills.get(id) : undefined;
     const el = id ? this.a.doc.elements[id] : undefined;
     this.editingLabelId = null;
-    if (!id || !pill || !el || this.a.lockedView()) return;
+    if (!id || !pill || !el) return;
     const c = lineDoc(el);
     const text = (pill.dataset.text ?? '').replace(/\n/g, ' ').trim();
     if (c && c.label !== text) {
       const content = { line: { ...c, label: text } };
       // Blur and pill unmount reach this from inside the overlay sync
-      // pass: defer the patch so dispatch never re-enters render.
-      queueMicrotask(() => this.a.store.dispatch({ type: 'element.patch', id, patch: { content } }));
+      // pass: defer the patch so dispatch never re-enters render. The
+      // lock re-check lives inside the task: present mode may have
+      // engaged between blur and dispatch.
+      queueMicrotask(() => {
+        if (!this.a.lockedView()) this.a.store.dispatch({ type: 'element.patch', id, patch: { content } });
+      });
     }
     this.a.requestRender();
   }
@@ -305,7 +309,7 @@ export class Overlays {
   private onPinClick(id: ID, pinEl: HTMLElement) {
     this.a.editing.endEdit();
     this.a.selectOnly(id);
-    this.a.openCommentThread(id, pinEl);
+    this.a.comments.openThread(id, pinEl);
   }
 
 

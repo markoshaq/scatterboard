@@ -20,7 +20,7 @@ type RectOf = (el: Element) => Rect;
 
 // Attached ends snap to the card edge midpoint nearest the other endpoint.
 // Falls back to the stored free point when the element is gone or unusable.
-export function resolveEnd(end: LineEnd, other: Pt, doc: Doc, rectOf: RectOf): Pt {
+function resolveEnd(end: LineEnd, other: Pt, doc: Doc, rectOf: RectOf): Pt {
   if (end.el !== undefined) {
     const target = doc.elements[end.el];
     if (target && target.type !== 'line') {
@@ -75,7 +75,7 @@ export function lineRect(l: ResolvedLine): Rect {
   };
 }
 
-export function segDist(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+function segDist(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
   const dx = x2 - x1;
   const dy = y2 - y1;
   const len2 = dx * dx + dy * dy;

@@ -5,6 +5,7 @@ import {
   createColumn,
   createComment,
   createNote,
+  createSwatch,
   createTable,
   emptyDoc,
   type Doc,
@@ -244,5 +245,17 @@ describe('CardsLayer ordering', () => {
     layer.sync(new Set(), null, false);
     const cards = [...layer.node.querySelectorAll('.card')].map((n) => (n as HTMLElement).dataset.id);
     expect(cards).toEqual([b.id, a.id]);
+  });
+});
+
+describe('card resize handles', () => {
+  it('mounts a .resize-handle on resizable card types', () => {
+    const d = doc();
+    const sw = createSwatch(d, 'home', 0, 0);
+    d.elements[sw.id] = sw;
+    const { layer, bump } = harness(d);
+    bump();
+    layer.sync(new Set(), null, false);
+    expect(layer.view(sw.id)?.node.querySelector('.resize-handle')).toBeTruthy();
   });
 });

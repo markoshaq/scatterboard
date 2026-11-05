@@ -19,8 +19,12 @@ export function openSketchEditor(el: Element, ctx: SketchEditorCtx): EditorHandl
   card.className = 'ed-sk-card';
   const stage = document.createElement('div');
   stage.className = 'sk-pad';
-  stage.style.width = `${SKETCH_PAD_W}px`;
-  stage.style.height = `${SKETCH_PAD_H}px`;
+  // Strokes stay in 600x450 pad space; on small screens the stage just
+  // renders that space smaller (svg viewBox + scaled projection, same
+  // as the image editor's draw-on mode).
+  const fit = Math.min(1, (innerWidth - 48) / SKETCH_PAD_W, (innerHeight - 180) / SKETCH_PAD_H);
+  stage.style.width = `${SKETCH_PAD_W * fit}px`;
+  stage.style.height = `${SKETCH_PAD_H * fit}px`;
   card.appendChild(stage);
   scrim.node.appendChild(card);
 
@@ -38,9 +42,10 @@ export function openSketchEditor(el: Element, ctx: SketchEditorCtx): EditorHandl
     svgParent: stage,
     project: (e) => {
       const r = stage.getBoundingClientRect();
-      return { x: e.clientX - r.left, y: e.clientY - r.top };
+      return { x: (e.clientX - r.left) / fit, y: (e.clientY - r.top) / fit };
     },
-    tol: 6,
+    tol: 6 / fit,
+    viewBox: `0 0 ${SKETCH_PAD_W} ${SKETCH_PAD_H}`,
   });
   // Floating toolbar centered above the pad.
   scrim.node.appendChild(pad.tools);

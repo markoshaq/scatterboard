@@ -1,7 +1,7 @@
 import type { App } from '../app';
-import { boardRefOf, createBoard, createBoardCard, uid, UNSORTED, type Board, type Element, type ID } from '../state/schema';
+import { boardRefOf, createBoard, createBoardCard, nextZ, survivingBoard, uid, UNSORTED, type Board, type Element, type ID } from '../state/schema';
 import { putBlob } from '../persist/blobs';
-import { prepareImage } from '../ui/files';
+import { prepareImage } from '../ingest/files';
 import type { Rect } from '../canvas/viewport';
 import { toast } from '../ui/toast';
 import { relTime, t } from '../strings';
@@ -139,6 +139,7 @@ export class Panels {
           if (this.collapsedBoards.has(id)) this.collapsedBoards.delete(id);
           else this.collapsedBoards.add(id);
         },
+        onIcon: (id, anchor) => this.iconPickerFor(id, anchor),
       }),
     );
   }
@@ -206,16 +207,8 @@ export class Panels {
     }
     // The app always needs a board to land on.
     if (deadBoards.size >= Object.keys(this.a.doc.boards).length) return;
-    for (const el of Object.values(this.a.doc.elements)) {
-      if (deleting.has(el.id)) continue;
-      const ref = boardRefOf(el);
-      if (ref && deadBoards.has(ref)) {
-        deleting.add(el.id);
-        actions.push({ type: 'element.delete', el });
-      }
-    }
-    actions.unshift(...this.a.detachCommentActions(deleting));
-    actions.unshift(...this.a.detachLineActions(deleting));
+    this.a.deletion.sweepDeadRefs(actions, deleting, deadBoards);
+    this.a.deletion.prependDetach(actions, deleting);
     let target: ID | null = null;
     if (this.a.boardId && deadBoards.has(this.a.boardId)) {
       let p = board.parentId;
@@ -240,17 +233,14 @@ export class Panels {
   }
 
 
-  // First surviving root board in createdAt order; where deletes and
-  // imports land when 'home' (or the intended parent) is gone.
+  // Where deletes and imports land when 'home' (or the intended
+  // parent) is gone: shared policy in survivingBoard.
   fallbackBoard(dead: Set<ID>): ID {
-    const roots = Object.values(this.a.doc.boards)
-      .filter((b) => b.parentId === null && !dead.has(b.id))
-      .sort((a, b) => a.createdAt - b.createdAt);
-    return roots[0]?.id ?? 'home';
+    return survivingBoard(this.a.doc, dead) ?? 'home';
   }
 
 
-  newProject(anchor: HTMLElement) {
+  newProject(anchor: HTMLElement | DOMRect) {
     if (this.a.lockedView()) return;
     openNewBoardPicker(anchor, {
       builtins: builtinTemplates,
@@ -366,7 +356,7 @@ export class Panels {
       parentId: this.a.columnAt(pt),
       x: Math.round(pt.x),
       y: Math.round(pt.y),
-      z: ++this.a.doc.seq,
+      z: nextZ(this.a.doc),
     };
     // Dead or foreign-board anchors would leave the restored card
     // permanently invisible: it skips the layer, the pins overlay
@@ -532,7 +522,7 @@ export class Panels {
       if (cardId) this.a.setSelection([cardId]);
       return;
     }
-    const board = createBoard({ parentId: hostId });
+    const board = createBoard({ parentId: hostId, title: t('untitled') });
     const el = createBoardCard(this.a.doc, hostId, board.id, Math.round(pt.x), Math.round(pt.y));
     el.parentId = parentId;
     this.a.stampBoardColor(el);
@@ -552,7 +542,7 @@ export class Panels {
     const tpl = snapshotTemplate(this.a.doc, ref, this.a.doc.boards[ref]?.title ?? '');
     if (!tpl) return;
     this.a.store.dispatch({ type: 'template.create', tpl });
-    toast(t('tplSaved'));
+    toast(t('tplSaved'), 'ok');
   }
 
 
@@ -603,7 +593,7 @@ export class Panels {
           await putBlob(ref, blob);
           this.setBoardIcon(boardId, `b:${ref}`);
         } catch {
-          toast(t('imageMissing'));
+          toast(t('imageMissing'), 'err');
         }
       })();
     });

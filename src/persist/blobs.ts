@@ -191,9 +191,11 @@ function blobRefsInDoc(doc: Doc): Set<ID> {
 
 export async function purgeOrphanBlobs(doc: Doc): Promise<void> {
   try {
-    const keep = blobRefsInDoc(doc);
+    // Boot does not await this: the doc keeps mutating while it runs,
+    // so liveness is re-derived right before each delete rather than
+    // once up front (a blob written mid-purge must survive).
     for (const id of await listBlobIds()) {
-      if (!keep.has(id)) await deleteBlob(id);
+      if (!blobRefsInDoc(doc).has(id)) await deleteBlob(id);
     }
   } catch {
     /* best-effort */

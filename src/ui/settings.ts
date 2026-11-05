@@ -1,6 +1,6 @@
 import type { Currency, Lang } from '../persist/storage';
 import { LANGS, t } from '../strings';
-import { fmtSize } from './files';
+import { fmtSize } from '../ingest/files';
 import { ICONS } from './icons';
 import { haspopup, openToolPopup, type ToolPopup } from './popup';
 import { isIos, inStandalone } from './install';

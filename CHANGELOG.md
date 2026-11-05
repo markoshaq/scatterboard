@@ -4,6 +4,60 @@ Notable changes per release, newest first. Sections: Added, Changed, Fixed, Remo
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-05
+
+A phone layout, keyboard navigation, app install and sharing, a
+right-click menu, and a broad accessibility and polish pass.
+
+### Added
+
+- Phones get their own layout: the tool rail becomes a bottom bar,
+  popups dock as sheets, and the topbar tucks into a '...' menu.
+- Touch: pinch to zoom, two-finger pan, hold for marquee select.
+- Right-click a card, line or comment pin for its tools.
+- Keyboard navigation: Tab and Shift+Tab step through cards, Enter
+  starts editing, and an arrow key with nothing selected jumps to the
+  nearest card.
+- Installable as an app: Help > Install app where offered, Share > Add
+  to Home Screen on iOS, home-screen shortcuts for quick capture and a
+  new board, and sharing text or links to Scatterboard files them into
+  Unsorted.
+- After one visit the whole app is stored for offline use, so even a
+  fresh install launches with no connection.
+- Empty boards show a hint with an Add a note button.
+- Colour swatches can be resized.
+- Map embeds get an Open map button; embed placeholders tint by
+  provider.
+- Exports and imports show progress and confirm when done.
+- Board icons can be changed from the boards panel, and clicking a
+  card's label or reaction chip opens that popup.
+- The shortcut panel groups keys under Cards, Editing, View and
+  Presentation.
+
+### Changed
+
+- "Projects" are called "Boards" everywhere.
+- Zoom buttons and shortcuts glide to the new level instead of jumping.
+- New cards pop in, deleted cards fade out, and every popup and panel
+  shares one closing fade.
+- If something goes wrong the app saves first, then offers a reload.
+- Saved data that can no longer be read is kept aside and offered as a
+  backup download instead of being overwritten.
+- Icon buttons have tooltips, and menus, pickers and editors work with
+  keyboards and screen readers.
+- Sketch and image editors fit small windows.
+
+### Fixed
+
+- Pasted markup could smuggle active content into card text; edits are
+  now scrubbed on save.
+- Typing in a synced note copy could leak into copies on other boards.
+- Deleting a board with sub-boards could delete cards it should have
+  kept; column members now unfile and loose ends detach instead.
+- An aborted AI-agent run could eat your last undo, and malformed agent
+  commands could half-apply; both are now refused cleanly.
+- The due-date picker could open off-screen on small windows.
+
 ## [0.2.1] - 2026-11-04
 
 Drag and drop fixes, an agent menu in the topbar, and a clearer

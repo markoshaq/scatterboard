@@ -1,8 +1,8 @@
 import type { Action } from '../state/actions';
 import type { Board, Doc, Element, ID, Label, LineEnd } from '../state/schema';
-import { createBoardCard, uid, UNSORTED } from '../state/schema';
+import { createBoardCard, nextZ, uid, UNSORTED } from '../state/schema';
 import { sanitizeHtml } from '../ui/sanitize';
-import { CONTENT_KEY, isSafeUrl, saneContent } from '../state/schema';
+import { CONTENT_KEY, isSafeUrl, NOTE_MAX_W, NOTE_MIN_W, saneContent } from '../state/schema';
 
 // Full-board JSON export/import. The format carries the board subtree
 // (board records, their elements and labels) under version 1.
@@ -123,6 +123,14 @@ export function importActions(
     created.add(e.id);
   }
 
+  // syncGroups are doc-global: an imported group id that collides with
+  // an existing one would silently join it, so it is cleared instead.
+  const docGroups = new Set(
+    Object.values(doc.elements)
+      .map((e) => e.syncGroup)
+      .filter((g): g is ID => g !== undefined),
+  );
+
   const els: Element[] = [];
   for (const e of data.elements) {
     const bid = bmap.get(e.boardId);
@@ -143,11 +151,23 @@ export function importActions(
     if ('table' in clone.content) for (const row of clone.content.table.cells) for (const cell of row) scrub(cell);
     clone.id = emap.get(e.id)!;
     clone.boardId = bid;
-    clone.z = ++doc.seq;
+    clone.z = nextZ(doc);
     // Scalar fields aren't shape-checked at parse: coerce non-finite
     // positions rather than land a card with NaN geometry.
     if (!Number.isFinite(clone.x)) clone.x = 0;
     if (!Number.isFinite(clone.y)) clone.y = 0;
+    // w clamps to the card width limits; a non-finite or non-positive
+    // value falls back to the type's default width.
+    if (clone.w !== undefined) {
+      if (Number.isFinite(clone.w) && clone.w > 0) {
+        clone.w = Math.min(NOTE_MAX_W, Math.max(NOTE_MIN_W, Math.round(clone.w)));
+      } else {
+        delete clone.w;
+      }
+    }
+    if (clone.syncGroup !== undefined && (typeof clone.syncGroup !== 'string' || docGroups.has(clone.syncGroup))) {
+      delete clone.syncGroup;
+    }
     if (e.parentId === UNSORTED) {
       clone.parentId = UNSORTED;
     } else {

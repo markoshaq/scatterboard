@@ -1,6 +1,6 @@
 import { t } from '../strings';
 import { ICONS } from '../ui/icons';
-import { openToolPopup, type ToolPopup } from '../ui/popup';
+import { haspopup, openToolPopup, type ToolPopup } from '../ui/popup';
 
 interface ExportMenuApi {
   hasMedia(): boolean;
@@ -17,13 +17,16 @@ interface ExportMenuApi {
 // Topbar Export menu: sectioned popup matching the View menu's shape.
 // The sub-boards toggle stays open; action rows close it.
 export function openExportMenu(anchor: HTMLElement, api: ExportMenuApi): ToolPopup {
+  haspopup(anchor, 'menu');
   const node = document.createElement('div');
   node.className = 'menu-body';
+  node.setAttribute('role', 'menu');
   const pop = openToolPopup(anchor, node, true);
 
   const head = (text: string) => {
     const h = document.createElement('div');
     h.className = 'ts-head';
+    h.setAttribute('role', 'presentation');
     h.textContent = text;
     node.appendChild(h);
   };
@@ -31,6 +34,7 @@ export function openExportMenu(anchor: HTMLElement, api: ExportMenuApi): ToolPop
     const r = document.createElement('button');
     r.type = 'button';
     r.className = 'pop-row';
+    r.setAttribute('role', 'menuitem');
     r.disabled = disabled;
     const ic = document.createElement('span');
     ic.className = 'pop-icon';
@@ -58,6 +62,7 @@ export function openExportMenu(anchor: HTMLElement, api: ExportMenuApi): ToolPop
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'pop-row';
+  toggle.setAttribute('role', 'menuitemcheckbox');
   const tic = document.createElement('span');
   tic.className = 'pop-icon';
   tic.innerHTML = ICONS.board;
@@ -68,7 +73,9 @@ export function openExportMenu(anchor: HTMLElement, api: ExportMenuApi): ToolPop
   ck.className = 'pop-check';
   ck.innerHTML = ICONS.check;
   const sync = () => {
-    ck.style.visibility = api.subs() ? 'visible' : 'hidden';
+    const on = api.subs();
+    ck.style.visibility = on ? 'visible' : 'hidden';
+    toggle.setAttribute('aria-checked', String(on));
   };
   sync();
   toggle.append(tic, tl, ck);

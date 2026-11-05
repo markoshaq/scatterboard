@@ -8,10 +8,12 @@ import {
   type LineEnd,
   type Stroke,
 } from '../state/schema';
-import { sanitizeHtml, scrubHtml } from '../ui/sanitize';
+import { sanitizeHtml, scrubContent } from '../ui/sanitize';
+import type { ElementPatch } from '../state/actions';
+import { saneContent, type Element, type TypeContent } from '../state/schema';
 
 // One agent command payload may not exceed this per string.
-export const MAX_STR = 100 * 1024;
+const MAX_STR = 100 * 1024;
 
 export type Dict = Record<string, unknown>;
 
@@ -103,6 +105,19 @@ export function vElId(doc: Doc, v: unknown, name: string): ID {
   return id;
 }
 
+// A comment anchor must be a card on the same board; lines and
+// annotations have no rect for a pin to seat on.
+export function vAnchorId(doc: Doc, v: unknown, boardId: ID): ID {
+  const id = vId(v, 'anchorId');
+  const a = doc.elements[id];
+  if (!a) fail('not_found', `no element ${id}`);
+  if (a.boardId !== boardId) fail('bad_field', `anchorId ${id} is on another board`);
+  if (a.type === 'line' || a.type === 'annotation') {
+    fail('bad_field', `anchorId ${id} cannot anchor a comment`);
+  }
+  return id;
+}
+
 // Canvas = null, 'unsorted' = inbox, otherwise an existing column id.
 // boardId pins the column to the element's board: a cross-board parent
 // desyncs the member index and hides the card.
@@ -129,10 +144,22 @@ export function vLabels(doc: Doc, v: unknown, boardId: ID): ID[] {
   });
 }
 
-export function vLineEnd(doc: Doc, v: unknown, name: string): LineEnd {
+export function vLineEnd(doc: Doc, v: unknown, name: string, boardId?: ID): LineEnd {
   const o = vObj(v, name);
   const end: LineEnd = { x: vNum(o.x, `${name}.x`), y: vNum(o.y, `${name}.y`) };
-  if (o.el !== undefined) end.el = vElId(doc, o.el, `${name}.el`);
+  if (o.el !== undefined) {
+    const id = vElId(doc, o.el, `${name}.el`);
+    const target = doc.elements[id]!;
+    // Anchored ends must be cards on the line's own board; lines,
+    // annotations and comments can never be endpoints.
+    if (boardId !== undefined && target.boardId !== boardId) {
+      fail('bad_field', `${name}.el is on another board`);
+    }
+    if (target.type === 'line' || target.type === 'annotation' || target.type === 'comment') {
+      fail('bad_field', `${name}.el cannot anchor a line end`);
+    }
+    end.el = id;
+  }
   return end;
 }
 
@@ -164,4 +191,73 @@ export function vStrokes(v: unknown): Stroke[] {
   });
 }
 
-export { scrubHtml };
+export { scrubContent };
+
+export function vEnum<T extends string>(v: unknown, name: string, set: Set<string>): T {
+  const s = vStr(v, name, 32);
+  if (!set.has(s)) fail('bad_field', `${name} must be one of ${[...set].join(', ')}`);
+  return s as T;
+}
+
+export function vPosition(v: unknown): { x: number; y: number; z: number } {
+  const o = vObj(v, 'position');
+  return { x: vNum(o.x, 'position.x'), y: vNum(o.y, 'position.y'), z: vNum(o.z, 'position.z') };
+}
+
+// Shared field-by-field check for element.patch payloads; the dispatch
+// action validator and the friendly patch command both route through
+// here so the two surfaces cannot drift. `selfParent` rejects a
+// parentId that points at the patched element itself.
+export function vElementPatch(doc: Doc, el: Element, raw: Dict, targetBoard: ID, selfParent?: ID): ElementPatch {
+  const patch: ElementPatch = {};
+  for (const [k, v] of Object.entries(raw)) {
+    switch (k) {
+      case 'x':
+      case 'y':
+      case 'z':
+        patch[k] = vNum(v, `patch.${k}`);
+        break;
+      case 'w':
+        patch.w = vWidth(v);
+        break;
+      case 'locked':
+        patch.locked = vBool(v, 'patch.locked');
+        break;
+      case 'color':
+        patch.color = v === null ? undefined : vStr(v, 'patch.color', 64);
+        break;
+      case 'anchorId':
+        if (v !== null && el.type !== 'comment') fail('bad_field', 'anchorId applies to comment elements');
+        patch.anchorId = v === null ? undefined : vAnchorId(doc, v, targetBoard);
+        break;
+      case 'boardId':
+        patch.boardId = vBoardId(doc, v);
+        break;
+      case 'parentId': {
+        const pid = vParentId(doc, v, targetBoard);
+        if (selfParent !== undefined && pid === selfParent) fail('bad_field', 'parentId cannot be the element itself');
+        patch.parentId = pid;
+        break;
+      }
+      case 'content': {
+        const c = vObj(v, 'patch.content');
+        if (!saneContent(c, el.type)) fail('bad_field', 'patch.content is malformed for this element type');
+        scrubContent(c);
+        patch.content = c as unknown as TypeContent;
+        break;
+      }
+      case 'labels':
+        patch.labels = vLabels(doc, v, targetBoard);
+        break;
+      case 'reactions':
+        patch.reactions = v === null ? undefined : vStrArray(v, 'patch.reactions', 32);
+        break;
+      case 'syncGroup':
+        patch.syncGroup = v === null ? undefined : vId(v, 'patch.syncGroup');
+        break;
+      default:
+        fail('bad_field', `unknown patch field ${k}`);
+    }
+  }
+  return patch;
+}

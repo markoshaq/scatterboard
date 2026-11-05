@@ -1,5 +1,5 @@
 import type { Doc, Element, ID, LineEnd } from './schema';
-import { uid } from './schema';
+import { nextZ, uid } from './schema';
 
 interface RemapOpts {
   // Resolved canvas point for a line end whose card was not cloned.
@@ -26,7 +26,7 @@ export function remapElements(
   // New z values follow the sources' stacking order, not input order
   // (selection order is click order; doc order is insertion order).
   const zs = new Array<number>(els.length);
-  for (const i of els.map((_, i) => i).sort((a, b) => els[a]!.z - els[b]!.z)) zs[i] = ++doc.seq;
+  for (const i of els.map((_, i) => i).sort((a, b) => els[a]!.z - els[b]!.z)) zs[i] = nextZ(doc);
   const now = Date.now();
   const labelId = opts.labelId ?? ((lid: ID, bid: ID) => (doc.labels[lid]?.boardId === bid ? lid : null));
   const clones = els.map((e, i) => {

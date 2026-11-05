@@ -184,6 +184,7 @@ export class DrawPad {
     b.type = 'button';
     b.className = 'dt-btn';
     b.title = label;
+    b.setAttribute('aria-label', label);
     b.innerHTML = icon;
     b.addEventListener('pointerdown', (e) => e.preventDefault());
     b.addEventListener('click', onClick);
@@ -213,6 +214,7 @@ export class DrawPad {
     color.type = 'button';
     color.className = 'dt-btn dt-color';
     color.title = t('drawColor');
+    color.setAttribute('aria-label', t('drawColor'));
     this.swatchEl = document.createElement('span');
     this.swatchEl.className = 'dt-swatch';
     color.appendChild(this.swatchEl);
@@ -227,6 +229,7 @@ export class DrawPad {
       b.type = 'button';
       b.className = 'dt-wbtn';
       b.title = `${t('drawWeight')} ${i + 1}`;
+      b.setAttribute('aria-label', `${t('drawWeight')} ${i + 1}`);
       b.innerHTML = `<svg viewBox="0 0 20 20"><path d="M3 10h14" stroke="currentColor" stroke-width="${Math.min(5, 0.8 + sz * 0.4)}" stroke-linecap="round"/></svg>`;
       b.addEventListener('pointerdown', (e) => e.preventDefault());
       b.addEventListener('click', () => this.setSize(i));
@@ -263,6 +266,7 @@ export class DrawPad {
       b.className = 'cp-swatch';
       b.style.background = c;
       b.title = c;
+      b.setAttribute('aria-label', c);
       b.addEventListener('click', () => this.setColor(c));
       grid.appendChild(b);
     }
@@ -272,6 +276,7 @@ export class DrawPad {
     const well = document.createElement('input');
     well.type = 'color';
     well.name = 'pen-color';
+    well.setAttribute('aria-label', t('colorCustom'));
     well.value = this.color;
     well.addEventListener('input', () => this.setColor(well.value));
     custom.appendChild(well);
@@ -303,9 +308,15 @@ export class DrawPad {
   }
 
   private syncToolState() {
-    for (const [tool, b] of this.toolBtns) b.classList.toggle('on', tool === this.tool);
+    for (const [tool, b] of this.toolBtns) {
+      const on = tool === this.tool;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
     this.sizeBtns.forEach((b, i) => {
-      b.classList.toggle('on', i === this.sizeIdx);
+      const on = i === this.sizeIdx;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
     });
     if (this.swatchEl) this.swatchEl.style.background = this.color;
     if (this.surface) this.surface.dataset.tool = this.tool;

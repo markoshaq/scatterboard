@@ -1,7 +1,7 @@
 import type { Doc, Element, ID, TableCell } from '../state/schema';
 import { boardElements, columnMembers } from '../state/schema';
 import { evalFormula, isFormula } from '../cards/formula';
-import { fmtCurrency, fmtDate, fmtNumber } from '../ui/locale';
+import { fmtCurrency, fmtDate, fmtNumber } from '../locale';
 
 // Board -> linear document. Top-level cards sort into rough reading
 // rows by (y, x); each type emits plain-text items rendered to

@@ -1,5 +1,5 @@
 import { t } from '../strings';
-import { openToolPopup, type ToolPopup } from './popup';
+import { haspopup, openToolPopup, type ToolPopup } from './popup';
 import { letterIcons, recommendedIcons, searchIcons } from './boardicons';
 
 interface IconPickerApi {
@@ -57,6 +57,8 @@ export function openIconPicker(anchor: HTMLElement | DOMRect, api: IconPickerApi
     b.className = 'bip-ic';
     b.innerHTML = svg;
     b.title = iconId;    b.setAttribute('aria-label', iconId);
+    b.setAttribute('role', 'option');
+    b.setAttribute('aria-selected', 'false');
     b.addEventListener('click', () => api.onPick(`g:${iconId}`));
     return b;
   }
@@ -66,6 +68,8 @@ export function openIconPicker(anchor: HTMLElement | DOMRect, api: IconPickerApi
     b.type = 'button';
     b.className = 'bip-ic bip-mono';
     b.textContent = text;
+    b.setAttribute('role', 'option');
+    b.setAttribute('aria-selected', 'false');
     b.addEventListener('click', () => api.onPick(`c:${text}`));
     return b;
   }
@@ -74,8 +78,11 @@ export function openIconPicker(anchor: HTMLElement | DOMRect, api: IconPickerApi
     const head = document.createElement('div');
     head.className = 'bip-group';
     head.textContent = label;
+    head.id = `bip-g-${label.replace(/\W+/g, '-')}`;
     const grid = document.createElement('div');
     grid.className = 'bip-grid';
+    grid.setAttribute('role', 'listbox');
+    grid.setAttribute('aria-labelledby', head.id);
     list.append(head, grid);
     return { head, grid };
   }
@@ -103,6 +110,7 @@ export function openIconPicker(anchor: HTMLElement | DOMRect, api: IconPickerApi
   input.addEventListener('input', render);
   input.addEventListener('keydown', (e) => e.stopPropagation());
   render();
+  haspopup(anchor, 'dialog');
   const pop = openToolPopup(anchor, node);
   input.focus();
   return pop;

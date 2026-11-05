@@ -34,7 +34,7 @@ export function memberChipPad(el: El): number {
   return el.labels.length || el.reactions?.length ? COL_CHIPS : 0;
 }
 
-export function colHeadH(el: El, w = el.w ?? defaultWidth(el)): number {
+function colHeadH(el: El, w = el.w ?? defaultWidth(el)): number {
   const title = columnTitle(el);
   const cpl = Math.max(8, Math.floor((w - COL_PAD * 2) / 7.4));
   const lines = title.split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / cpl)), 0);

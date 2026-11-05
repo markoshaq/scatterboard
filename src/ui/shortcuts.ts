@@ -165,6 +165,23 @@ export function attachShortcuts(app: App) {
       return;
     }
 
+    // Card-level keyboard nav (no edit session owns the keys): Tab
+    // walks the cards in reading order, Enter opens the card for
+    // editing, arrows select the nearest card via app.nudge.
+    const cardEl = e.target instanceof HTMLElement ? e.target.closest('.card') : null;
+    if (!app.editingId && cardEl) {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        app.stepCard(e.shiftKey ? -1 : 1);
+        return;
+      }
+      if (e.key === 'Enter' && e.target === cardEl && cardEl instanceof HTMLElement && cardEl.dataset.id) {
+        e.preventDefault();
+        app.beginEdit(cardEl.dataset.id);
+        return;
+      }
+    }
+
     switch (e.key) {
       case 'Delete':
       case 'Backspace':

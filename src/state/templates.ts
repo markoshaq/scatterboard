@@ -130,7 +130,7 @@ export function instantiateActions(
   hostId: ID | null,
   at: { x: number; y: number },
 ): { actions: Action[]; cardId?: ID; boardId: ID } {
-  const partial: Partial<Board> = {
+  const partial: Partial<Board> & { title: string } = {
     title: template.board.title || template.name,
     grid: template.board.grid,
     parentId: hostId,

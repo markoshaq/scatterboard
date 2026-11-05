@@ -2,7 +2,7 @@ import type { Action } from '../state/actions';
 import { createFile, createImage, uid, type Doc, type Element, type ID } from '../state/schema';
 import { putBlob } from '../persist/blobs';
 import { t } from '../strings';
-import { toast } from './toast';
+import { toast } from '../ui/toast';
 
 export interface IngestApi {
   doc: Doc;
@@ -111,7 +111,7 @@ export async function ingestFiles(files: Iterable<File>, at: { x: number; y: num
       await putBlob(ref, file);
     } catch {
       // Skip the file rather than land a card with a dead blobRef.
-      toast(t('imageMissing'));
+      toast(t('imageMissing'), 'err');
       return null;
     }
     const el = createFile(api.doc, api.boardId, pt.x, pt.y, ref, file.name || 'file', file.size, file.type);

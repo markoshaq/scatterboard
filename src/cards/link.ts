@@ -1,9 +1,9 @@
 import type { Element, EmbedKind, TypeContent } from '../state/schema';
 import { embedDoc, isSafeUrl } from '../state/schema';
 import { t } from '../strings';
-import { EMBED_ALLOW, embedSrc, hostOf, providerOf, urlTitle } from '../ui/embeds';
+import { EMBED_ALLOW, embedSrc, hostOf, providerOf, urlTitle } from '../net/embeds';
 import { ICONS } from '../ui/icons';
-import { parseUrlText } from '../ui/files';
+import { parseUrlText } from '../ingest/files';
 import type { CardCtx } from './factory';
 import type { CardView } from './note';
 import { cardBg } from '../ui/theme';

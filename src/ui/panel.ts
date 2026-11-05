@@ -1,5 +1,5 @@
 import { ICONS } from './icons';
-import { popDismiss, pushDismiss } from './popup';
+import { cycleKeys, focusBack, focusInto, outro, popDismiss, pushDismiss } from './popup';
 import { t } from '../strings';
 
 export interface PanelHandle {
@@ -20,6 +20,8 @@ interface PanelOpts {
 export function openPanel(opts: PanelOpts): PanelHandle {
   const node = document.createElement('div');
   node.className = 'side-panel';
+  node.setAttribute('role', 'dialog');
+  node.setAttribute('aria-label', opts.title);
   const head = document.createElement('div');
   head.className = 'sp-head';
   const title = document.createElement('span');
@@ -38,6 +40,7 @@ export function openPanel(opts: PanelOpts): PanelHandle {
   closeBtn.type = 'button';
   closeBtn.className = 'sp-close';
   closeBtn.innerHTML = ICONS.close;
+  closeBtn.setAttribute('aria-label', t('close'));
   head.appendChild(closeBtn);
   node.appendChild(head);
   if (opts.helper) {
@@ -51,6 +54,9 @@ export function openPanel(opts: PanelOpts): PanelHandle {
   node.appendChild(body);
 
   let closed = false;
+  const opener = document.activeElement as HTMLElement | null;
+  const expands = opener?.hasAttribute('aria-haspopup') ? opener : null;
+  expands?.setAttribute('aria-expanded', 'true');
   const handle: PanelHandle = {
     node,
     body,
@@ -58,14 +64,21 @@ export function openPanel(opts: PanelOpts): PanelHandle {
       if (closed) return;
       closed = true;
       popDismiss(handle);
-      node.remove();
+      expands?.setAttribute('aria-expanded', 'false');
+      focusBack(node, opener);
+      outro(node);
       handle.onClose?.();
     },
   };
   closeBtn.addEventListener('click', () => handle.close());
   node.addEventListener('pointerdown', (e) => e.stopPropagation());
+  node.addEventListener('keydown', (e) => cycleKeys(e, node));
   document.body.appendChild(node);
   pushDismiss(handle);
+  // Callers fill `body` after openPanel returns.
+  queueMicrotask(() => {
+    if (node.isConnected) focusInto(node);
+  });
   return handle;
 }
 

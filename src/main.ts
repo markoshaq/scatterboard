@@ -1,7 +1,10 @@
 import './style.css';
 import { bootLang, loadLang } from './strings';
+import { initInstallCapture } from './ui/install';
 
 async function main() {
+  // Capture early: beforeinstallprompt can fire before boot finishes.
+  initInstallCapture();
   // The active locale table must land before the app modules evaluate:
   // several modules capture t() output in module-level label tables.
   await loadLang(bootLang());

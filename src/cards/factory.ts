@@ -1,4 +1,6 @@
 import type { Doc, Element, ID } from '../state/schema';
+import { embedDoc } from '../state/schema';
+import { t, type StringKey } from '../strings';
 import { NoteCard, type CardEvents, type CardView } from './note';
 import { ColumnCard } from './column';
 import { BoardCard } from './board';
@@ -26,9 +28,50 @@ export interface CardCtx {
   // Viewport zoom, for counter-scale buckets that would otherwise need
   // a layout read inside update().
   zoom?: () => number;
+  // Member views are built through the ctx (never a direct factory
+  // import): keeps column -> factory from closing a module cycle.
+  createCard(el: Element, ctx: CardCtx): CardView;
+}
+
+const CARD_TYPE_LABELS: Record<string, StringKey> = {
+  note: 'railNote',
+  todo: 'railTodo',
+  heading: 'railHeading',
+  table: 'railTable',
+  column: 'railColumn',
+  document: 'railDocument',
+  sketch: 'railSketch',
+  swatch: 'railColor',
+  comment: 'railComment',
+  board: 'railBoard',
+  link: 'railLink',
+  image: 'railImage',
+  file: 'railFile',
+};
+
+// Screen-reader name for a card view: the localized card type, with
+// embeds naming their provider kind. Exported for the keyboard-nav
+// live announcement in App.stepCard.
+export function cardAriaLabel(el: Element): string {
+  if (el.type === 'embed') {
+    const kind = embedDoc(el)?.kind;
+    return t(kind === 'audio' ? 'railAudio' : kind === 'map' ? 'railMap' : 'railVideo');
+  }
+  const key = CARD_TYPE_LABELS[el.type];
+  return key ? t(key) : el.type;
 }
 
 export function createCard(el: Element, ctx: CardCtx): CardView {
+  const view = buildCard(el, ctx);
+  // Tabbable by keyboard nav only (stepCard focuses it); pointer clicks
+  // keep their own selection path and never show a focus ring.
+  view.node.tabIndex = -1;
+  view.node.setAttribute('role', 'group');
+  view.node.setAttribute('aria-label', cardAriaLabel(el));
+  return view;
+}
+
+function buildCard(el: Element, ctx: CardCtx): CardView {
   switch (el.type) {
     case 'note':
       return new NoteCard(el, ctx.events);

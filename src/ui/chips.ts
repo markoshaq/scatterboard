@@ -1,14 +1,19 @@
 import type { Doc, Element, ID } from '../state/schema';
 import type { Rect } from '../canvas/viewport';
 
-// Read-only label + reaction chips rendered under each card in a single
-// overlay host. Pointer-events stay off so chips never block input.
+export interface ChipsEvents {
+  onChip(id: ID, kind: 'label' | 'reaction', chip: HTMLElement): void;
+}
+
+// Label + reaction chips rendered under each card in a single overlay
+// host. Only the chips themselves take pointer events, so the row and
+// host never block input.
 export class ChipsLayer {
   node: HTMLElement;
   private doc: Doc;
   private rows = new Map<ID, HTMLElement>();
 
-  constructor(doc: Doc) {
+  constructor(doc: Doc, private events: ChipsEvents) {
     this.doc = doc;
     this.node = document.createElement('div');
     this.node.className = 'card-chips';
@@ -28,6 +33,14 @@ export class ChipsLayer {
       if (!row) {
         row = document.createElement('div');
         row.className = 'chip-row';
+        // Chips sit in .cards next to the card node: swallow the
+        // pointerdown so a chip click never starts a board gesture.
+        row.addEventListener('pointerdown', (e) => e.stopPropagation());
+        row.addEventListener('click', (e) => {
+          const chip = e.target as HTMLElement;
+          const kind = chip.closest('.chip-label') ? 'label' : chip.closest('.chip-react') ? 'reaction' : null;
+          if (kind && row!.dataset.id) this.events.onChip(row!.dataset.id, kind, chip);
+        });
         this.rows.set(el.id, row);
       }
       row.dataset.id = el.id;

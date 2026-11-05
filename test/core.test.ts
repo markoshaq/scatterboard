@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyAction, emptyChange, type Action } from '../src/state/actions';
 import {
   createBoard, createColumn, createComment, createLabel, createNote,
-  emptyDoc, migrateDoc, UNSORTED, type Doc, type Element,
+  emptyDoc, migrateDoc, noteText, UNSORTED, type Doc, type Element,
 } from '../src/state/schema';
 import { remapElements } from '../src/state/clone';
 import { Store } from '../src/state/store';
@@ -10,7 +10,7 @@ import { getClipboard, setClipboard } from '../src/state/clipboard';
 import { instantiateActions, snapshotTemplate } from '../src/state/templates';
 import { searchBoard } from '../src/ui/search';
 import { evalFormula, isFormula, remapCells } from '../src/cards/formula';
-import { exportBoard, importActions, parseBoardExport } from '../src/export/jsonio';
+import { exportBoard, importActions, parseBoardExport } from '../src/export/boardio';
 import type { TableCell } from '../src/state/schema';
 
 function doc(): Doc {
@@ -111,7 +111,6 @@ describe('migrateDoc', () => {
     delete (el as Partial<Element>).labels;
     raw.elements[el.id] = el;
     const m = migrateDoc(raw);
-    expect(m.comments).toEqual({});
     expect(m.labels).toEqual({});
     expect(m.trash).toEqual({});
     expect(m.templates).toEqual({});
@@ -184,6 +183,52 @@ describe('jsonio round trip', () => {
     expect(newLabel.name).toBe('L1');
     expect(newLabel.boardId).toBe(res!.boardId);
   });
+
+  it('clears colliding syncGroups and clamps imported widths', () => {
+    const d = doc();
+    const existing = createNote(d, 'home', 0, 0, 'x');
+    existing.syncGroup = 'sg1';
+    d.elements[existing.id] = existing;
+    const el = (id: string, text: string, extra: Record<string, unknown>) => ({
+      id,
+      boardId: 'b1',
+      type: 'note',
+      parentId: null,
+      x: 0,
+      y: 0,
+      z: 1,
+      locked: false,
+      content: { note: { text } },
+      labels: [],
+      createdAt: 0,
+      modifiedAt: 0,
+      ...extra,
+    });
+    const data = JSON.parse(
+      JSON.stringify({
+        version: 1,
+        board: 'b1',
+        boards: [{ id: 'b1', title: 'I', parentId: null, grid: true, createdAt: 0, modifiedAt: 0 }],
+        elements: [
+          el('e1', 'a', { syncGroup: 'sg1', w: 9000 }),
+          el('e2', 'b', { w: -5 }),
+          el('e3', 'c', { syncGroup: 'sg1' }),
+        ],
+        labels: [],
+      }),
+    );
+    const res = importActions(d, data, 'home')!;
+    const change = emptyChange();
+    for (const a of res.actions) applyAction(d, a, change);
+    const imported = Object.values(d.elements).filter((e) => e.boardId === res.boardId);
+    const wide = imported.find((e) => noteText(e) === 'a')!;
+    expect(wide.syncGroup).toBeUndefined();
+    expect(wide.w).toBe(800);
+    const bad = imported.find((e) => noteText(e) === 'b')!;
+    expect(bad.w).toBeUndefined();
+    expect(imported.find((e) => noteText(e) === 'c')!.syncGroup).toBeUndefined();
+    expect(existing.syncGroup).toBe('sg1');
+  });
 });
 
 describe('Store groups', () => {
@@ -232,6 +277,43 @@ describe('Store groups', () => {
     expect(a.x).toBe(99); // unflushed group edit survives
     store.endGroup();
     expect(store.doc.elements[b.id]).toBeUndefined();
+  });
+
+  it('a missing-target delete pushes no history entry', () => {
+    const store = new Store(doc());
+    const el = createNote(store.doc, 'home', 0, 0, 'x');
+    store.dispatch({ type: 'element.delete', el }); // no-op: el is not in the doc
+    expect(store.canUndo).toBe(false);
+    expect(store.doc.elements[el.id]).toBeUndefined();
+  });
+
+  it('no-op dispatches inside a group land nothing and keep the redo stack', () => {
+    const store = new Store(doc());
+    const el = createNote(store.doc, 'home', 0, 0, 'x');
+    store.dispatch({ type: 'element.create', el });
+    store.undo();
+    expect(store.canRedo).toBe(true);
+    store.beginGroup();
+    store.dispatch({ type: 'element.delete', el }); // gone: apply is a no-op
+    store.dispatch({ type: 'element.patch', id: el.id, patch: { x: 1 } });
+    expect(store.endGroup()).toBe(false);
+    expect(store.canUndo).toBe(false);
+    expect(store.canRedo).toBe(true);
+    store.redo();
+    expect(store.doc.elements[el.id]).toBeTruthy();
+  });
+
+  it('a group mixing no-ops and real work lands only the real leaves', () => {
+    const store = new Store(doc());
+    const el = createNote(store.doc, 'home', 0, 0, 'x');
+    store.dispatch({ type: 'element.create', el });
+    store.beginGroup();
+    store.dispatch({ type: 'element.delete', el: { ...el, id: 'ghost' } });
+    store.dispatch({ type: 'element.patch', id: el.id, patch: { x: 50 } });
+    expect(store.endGroup('edit')).toBe(true);
+    store.undo();
+    expect(el.x).toBe(0);
+    expect(store.doc.elements['ghost']).toBeUndefined();
   });
 });
 
@@ -326,5 +408,11 @@ describe('remapCells', () => {
     const out = remapCells(src, (r, c) => ({ r, c: c + 1 }));
     expect(out[0]?.[0]?.text).toBe('=IF(B1="B2","yes","no")');
     expect(out[0]?.[1]?.text).toBe('plain B2');
+  });
+  it('does not rewrite names in call position', () => {
+    const src: TableCell[][] = [[{ text: '=LOG10(2)' }]];
+    expect(remapCells(src, (r, c) => ({ r, c: c + 1 }))[0]?.[0]?.text).toBe('=LOG10(2)');
+    const nested: TableCell[][] = [[{ text: '=IF(LOG10(A1)>0,A1,0)' }]];
+    expect(remapCells(nested, (r, c) => ({ r, c: c + 1 }))[0]?.[0]?.text).toBe('=IF(LOG10(B1)>0,B1,0)');
   });
 });

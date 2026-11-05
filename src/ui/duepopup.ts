@@ -1,5 +1,5 @@
 import { dayNames, monthName, t } from '../strings';
-import { claimToolPopup, closeToolPopup, popDismiss, pushDismiss, releaseToolPopup } from './popup';
+import { claimToolPopup, closeToolPopup, cycleKeys, focusBack, focusInto, haspopup, outro, popDismiss, pushDismiss, releaseToolPopup } from './popup';
 
 export interface DueValue {
   dueAt?: number;
@@ -30,6 +30,8 @@ export function openDuePopup(opts: {
   onCommit: (v: DueValue) => void;
 }): DuePopupHandle {
   closeToolPopup();
+  haspopup(opts.anchor, 'dialog');
+  opts.anchor.setAttribute('aria-expanded', 'true');
   const st: PopupState = {
     day: null,
     hasTime: false,
@@ -54,12 +56,15 @@ export function openDuePopup(opts: {
 
   const node = document.createElement('div');
   node.className = 'due-pop';
+  node.setAttribute('role', 'dialog');
   node.addEventListener('keydown', (e) => {
     e.stopPropagation();
     if (e.key === 'Escape') {
       e.preventDefault();
       close();
+      return;
     }
+    cycleKeys(e, node);
   });
   node.addEventListener('pointerdown', (e) => e.stopPropagation());
 
@@ -97,6 +102,8 @@ export function openDuePopup(opts: {
     const prev = document.createElement('button');
     prev.type = 'button';
     prev.textContent = '‹';
+    prev.title = t('prevMonth');
+    prev.setAttribute('aria-label', t('prevMonth'));
     prev.addEventListener('click', () => {
       st.viewM -= 1;
       if (st.viewM < 0) {
@@ -111,6 +118,8 @@ export function openDuePopup(opts: {
     const next = document.createElement('button');
     next.type = 'button';
     next.textContent = '›';
+    next.title = t('nextMonth');
+    next.setAttribute('aria-label', t('nextMonth'));
     next.addEventListener('click', () => {
       st.viewM += 1;
       if (st.viewM > 11) {
@@ -229,27 +238,38 @@ export function openDuePopup(opts: {
   }
 
   function close() {
+    closePop(true);
+  }
+
+  function closePop(restoreFocus: boolean) {
     releaseToolPopup(handle);
     popDismiss(handle);
     window.removeEventListener('pointerdown', onDocDown, true);
-    node.remove();
+    opts.anchor.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) focusBack(node, opts.anchor);
+    outro(node);
   }
 
   function onDocDown(e: PointerEvent) {
-    if (!node.contains(e.target as Node)) close();
+    if (!node.contains(e.target as Node)) closePop(false);
   }
 
   renderCal();
   renderFoot();
 
   const r = opts.anchor.getBoundingClientRect();
-  node.style.left = `${Math.max(8, Math.min(r.left, innerWidth - 260))}px`;
-  node.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - 340))}px`;
+  const vw = window.visualViewport?.width ?? innerWidth;
+  const vh = window.visualViewport?.height ?? innerHeight;
+  node.style.left = `${Math.max(8, Math.min(r.left, vw - 260))}px`;
+  node.style.top = `${Math.max(8, Math.min(r.bottom + 6, vh - 340))}px`;
   document.body.appendChild(node);
   window.addEventListener('pointerdown', onDocDown, true);
 
   const handle: DuePopupHandle = { node, close };
   pushDismiss(handle);
+  queueMicrotask(() => {
+    if (node.isConnected) focusInto(node);
+  });
   // Same lifecycle as tool popups: closeToolPopup must reach it on board
   // switches and editor mounts, and a card-anchored picker closes on pan.
   claimToolPopup(handle, !!opts.anchor.closest('.doc'));

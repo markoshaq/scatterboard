@@ -66,6 +66,7 @@ export class CardsLayer {
       members: (id) => this.members(id),
       cardCount: (bid) => this.boardCardCount(bid),
       zoom: () => this.vp.z,
+      createCard: (el, c) => createCard(el, c),
     };
     this.node = document.createElement('div');
     this.node.className = 'cards';
@@ -82,6 +83,7 @@ export class CardsLayer {
       if (h !== this.heights.get(v.id)) {
         this.heights.set(v.id, h);
         this.rects.clear();
+        this.rectVersion++;
         this.ctx.events.onMeasure(v.id, h);
       }
       if (v instanceof ColumnCard) v.noteBodyTop();
@@ -98,8 +100,20 @@ export class CardsLayer {
     this.nodeView.delete(v.node);
   }
 
+  // Bumped whenever the rect cache clears: App's resolved-lines cache
+  // keys on it (a measured height change alters endpoint rects without
+  // a doc rev bump).
+  private rectVersion = 0;
+
+  get rectRev(): number {
+    return this.rectVersion;
+  }
+
   private ensureIndex() {
-    if (this.index.ensure(this.doc, this.boardId, this.revOf())) this.rects.clear();
+    if (this.index.ensure(this.doc, this.boardId, this.revOf())) {
+      this.rects.clear();
+      this.rectVersion++;
+    }
   }
 
   elements(): El[] {
@@ -120,13 +134,6 @@ export class CardsLayer {
   boardCardCount(boardId: ID): number {
     this.ensureIndex();
     return this.index.cardCount(boardId);
-  }
-
-  // Per-board element counts across the whole doc, for sig-style
-  // consumers like the boards panel.
-  boardCounts(): Map<ID, number> {
-    this.ensureIndex();
-    return this.index.boardCounts;
   }
 
   canvasCounts(): Map<ID, number> {
@@ -261,6 +268,18 @@ export class CardsLayer {
           view.destroy();
         }
       }
+    }
+    // Bookkeeping is keyed by element id: drop entries for ids that
+    // left the doc so culled cards and deleted members cannot leak.
+    // knownEls additionally keeps trashed ids: an undo or panel
+    // restore re-mounts silently rather than replaying the birth pop.
+    const gone = (id: ID) => this.doc.elements[id] === undefined;
+    for (const id of this.exits) if (gone(id)) this.exits.delete(id);
+    for (const id of this.heights.keys()) if (gone(id)) this.heights.delete(id);
+    for (const id of this.memberSigs.keys()) if (gone(id)) this.memberSigs.delete(id);
+    for (const id of this.editMark.keys()) if (gone(id)) this.editMark.delete(id);
+    for (const id of this.knownEls) {
+      if (gone(id) && this.doc.trash[id] === undefined) this.knownEls.delete(id);
     }
     for (const el of els) {
       const born = !reseed && !this.knownEls.has(el.id);

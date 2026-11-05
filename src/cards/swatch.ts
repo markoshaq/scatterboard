@@ -114,7 +114,13 @@ export class SwatchCard implements CardView {
     this.captionEl.className = 'sw-caption';
     this.captionEl.dataset.ph = t('captionPlaceholder');
     meta.append(this.valueEl, this.captionEl);
-    this.node.append(this.block, meta);
+    const handle = document.createElement('div');
+    handle.className = 'resize-handle';
+    handle.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.ctx.events.onResizeHandle(this.id, e);
+    });
+    this.node.append(this.block, meta, handle);
 
     this.block.addEventListener('pointerdown', () => {
       this.downSelected = this.selected;

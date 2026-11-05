@@ -17,8 +17,9 @@ export type ElementPatch = PatchOf<
   | 'labels'
   | 'reactions'
   | 'syncGroup'
+  | 'modifiedAt'
 >;
-type BoardPatch = PatchOf<Board, 'title' | 'icon' | 'color' | 'grid' | 'position'>;
+type BoardPatch = PatchOf<Board, 'title' | 'icon' | 'color' | 'grid' | 'position' | 'modifiedAt'>;
 type LabelPatch = PatchOf<Label, 'name' | 'color'>;
 type TemplatePatch = PatchOf<Template, 'name'>;
 
@@ -62,6 +63,7 @@ export function applyAction(doc: Doc, a: Action, change: Change): Action {
       change.elements.add(a.el.id);
       return { type: 'element.delete', el: a.el };
     case 'element.delete':
+      if (!doc.elements[a.el.id]) return { type: 'batch', actions: [] };
       delete doc.elements[a.el.id];
       change.elements.add(a.el.id);
       change.deleted.add(a.el.id);
@@ -71,11 +73,14 @@ export function applyAction(doc: Doc, a: Action, change: Change): Action {
       if (!el) return { type: 'batch', actions: [] };
       const before: ElementPatch = {};
       const rec = el as unknown as Record<string, unknown>;
+      // modifiedAt rides the patch record so an undo restores the
+      // timestamp it replaced instead of stamping a fresh one.
+      (before as Record<string, unknown>).modifiedAt = rec.modifiedAt;
       for (const k of Object.keys(a.patch) as (keyof ElementPatch)[]) {
         (before as Record<string, unknown>)[k] = rec[k];
         rec[k] = a.patch[k];
       }
-      el.modifiedAt = Date.now();
+      rec.modifiedAt = a.patch.modifiedAt ?? Date.now();
       change.elements.add(a.id);
       return { type: 'element.patch', id: a.id, patch: before };
     }
@@ -84,6 +89,7 @@ export function applyAction(doc: Doc, a: Action, change: Change): Action {
       change.boards.add(a.board.id);
       return { type: 'board.delete', board: a.board };
     case 'board.delete':
+      if (!doc.boards[a.board.id]) return { type: 'batch', actions: [] };
       delete doc.boards[a.board.id];
       change.boards.add(a.board.id);
       return { type: 'board.create', board: a.board };
@@ -92,11 +98,12 @@ export function applyAction(doc: Doc, a: Action, change: Change): Action {
       if (!b) return { type: 'batch', actions: [] };
       const before: BoardPatch = {};
       const rec = b as unknown as Record<string, unknown>;
+      (before as Record<string, unknown>).modifiedAt = rec.modifiedAt;
       for (const k of Object.keys(a.patch) as (keyof BoardPatch)[]) {
         (before as Record<string, unknown>)[k] = rec[k];
         rec[k] = a.patch[k];
       }
-      b.modifiedAt = Date.now();
+      rec.modifiedAt = a.patch.modifiedAt ?? Date.now();
       change.boards.add(a.id);
       return { type: 'board.patch', id: a.id, patch: before };
     }
@@ -105,6 +112,7 @@ export function applyAction(doc: Doc, a: Action, change: Change): Action {
       change.labels.add(a.label.id);
       return { type: 'label.delete', label: a.label };
     case 'label.delete':
+      if (!doc.labels[a.label.id]) return { type: 'batch', actions: [] };
       delete doc.labels[a.label.id];
       change.labels.add(a.label.id);
       return { type: 'label.create', label: a.label };
@@ -136,6 +144,7 @@ export function applyAction(doc: Doc, a: Action, change: Change): Action {
       change.templates.add(a.tpl.id);
       return { type: 'template.delete', tpl: a.tpl };
     case 'template.delete':
+      if (!doc.templates[a.tpl.id]) return { type: 'batch', actions: [] };
       delete doc.templates[a.tpl.id];
       change.templates.add(a.tpl.id);
       return { type: 'template.create', tpl: a.tpl };

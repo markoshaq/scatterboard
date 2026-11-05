@@ -1,4 +1,4 @@
-import type { Currency } from '../persist/storage';
+import type { Currency } from './persist/storage';
 
 // Number/currency/date formatting prefs, set once from Prefs on boot
 // and on every settings change. browserLang on (default) follows the
@@ -15,7 +15,7 @@ const EUR_REGIONS = new Set([
   'AT', 'BE', 'CY', 'DE', 'EE', 'ES', 'FI', 'FR', 'GR', 'HR', 'IE', 'IT',
   'LT', 'LU', 'LV', 'MT', 'NL', 'PT', 'SI', 'SK',
 ]);
-export function autoCurrency(): Currency {
+function autoCurrency(): Currency {
   try {
     const region = new Intl.Locale(navigator.language).region;
     if (region === 'GB') return 'GBP';

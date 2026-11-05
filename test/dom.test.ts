@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { sanitizeHtml } from '../src/ui/sanitize';
-import { embedSrc, hostOf } from '../src/ui/embeds';
+import { embedSrc, hostOf } from '../src/net/embeds';
 
 describe('sanitizeHtml', () => {
   it('keeps editor-produced markup intact', () => {
@@ -13,11 +13,14 @@ describe('sanitizeHtml', () => {
   });
 
   it('drops scriptable elements and handlers', () => {
+    // happy-dom writes refused iframe loads straight to stderr.
+    const quiet = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
     const html = sanitizeHtml(
       '<p onclick="x()">hi</p><script>alert(1)</script>' +
         '<img src=x onerror="x()"><iframe src="javascript:x"></iframe>' +
         '<a href="javascript:alert(1)">bad</a><a href="#/b/home">ok</a>',
     );
+    quiet.mockRestore();
     expect(html).not.toContain('script');
     expect(html).not.toContain('onerror');
     expect(html).not.toContain('onclick');
@@ -61,5 +64,35 @@ describe('embedSrc', () => {
     expect(embedSrc('audio', 'not a url')).toBeNull();
     expect(embedSrc('map', 'https://evil.com/maps/@1,2')).toBeNull();
     expect(hostOf('')).toBe('');
+  });
+});
+
+describe('tool popup focus', () => {
+  it('focuses the first control, cycles with arrows and Tab, returns focus on close', async () => {
+    const anchor = document.createElement('button');
+    document.body.appendChild(anchor);
+    anchor.focus();
+    const content = document.createElement('div');
+    const { openToolPopup } = await import('../src/ui/popup');
+    const pop = openToolPopup(anchor, content);
+    const a = document.createElement('button');
+    const b = document.createElement('button');
+    a.textContent = 'a';
+    b.textContent = 'b';
+    content.append(a, b);
+    await new Promise((r) => setTimeout(r));
+    expect(document.activeElement).toBe(a);
+
+    a.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(b);
+    b.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(a);
+    a.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    expect(document.activeElement).toBe(b);
+    b.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, shiftKey: true }));
+    expect(document.activeElement).toBe(a);
+
+    pop.close();
+    expect(document.activeElement).toBe(anchor);
   });
 });

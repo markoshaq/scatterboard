@@ -23,7 +23,7 @@ import {
   UNSORTED,
   type Doc,
   type Element,
-} from './schema';
+} from '../state/schema';
 import { putBlob } from '../persist/blobs';
 import { t } from '../strings';
 

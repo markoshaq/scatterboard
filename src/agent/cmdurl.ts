@@ -41,7 +41,7 @@ export async function runCommandUrl(app: AgentHost, api: AgentApi, raw: string) 
   try {
     commands = parseCommandUrl(raw);
   } catch {
-    toast(t('agentCmdFailed'));
+    toast(t('agentCmdFailed'), 'err');
     return;
   }
   const run = async () => {
@@ -49,7 +49,7 @@ export async function runCommandUrl(app: AgentHost, api: AgentApi, raw: string) 
       await api.runCommands(commands);
       void app.flush();
     } catch {
-      toast(t('agentCmdFailed'));
+      toast(t('agentCmdFailed'), 'err');
     }
   };
   if (commands.some((c) => !URL_SAFE.has(c.method))) {

@@ -24,6 +24,7 @@ interface BoardsApi {
   onDelete(id: ID): void;
   onNew(anchor: HTMLElement): void;
   onToggleCollapse(id: ID): void;
+  onIcon(id: ID, anchor: HTMLElement): void;
 }
 
 export interface BoardsPanel extends PanelHandle {
@@ -131,7 +132,7 @@ export function openBoardsPanel(api: BoardsApi): BoardsPanel {
     if (r.current) row.classList.add('bpl-cur');
     const indent = document.createElement('span');
     indent.className = 'bpl-indent';
-    indent.style.width = `${r.depth * 14}px`;
+    indent.style.width = `${r.depth * 12}px`;
     const caret = document.createElement(r.boards ? 'button' : 'span');
     caret.className = 'bpl-caret';
     if (r.boards) {
@@ -146,8 +147,18 @@ export function openBoardsPanel(api: BoardsApi): BoardsPanel {
         render();
       });
     }
-    const ic = document.createElement('span');
+    // Editable rows get a real button: clicking the icon opens the same
+    // picker as the board card's Icon tool. Locked rows stay inert.
+    const ic = document.createElement(r.editable ? 'button' : 'span');
     ic.className = 'sp-ricon';
+    if (r.editable) {
+      (ic as HTMLButtonElement).type = 'button';
+      ic.title = t('toolIcon');      ic.setAttribute('aria-label', t('toolIcon'));
+      ic.addEventListener('click', (e) => {
+        e.stopPropagation();
+        api.onIcon(r.id, ic as HTMLButtonElement);
+      });
+    }
     if (r.icon !== undefined) mountBoardIcon(ic, r.icon, r.title);
     else ic.innerHTML = ICONS.board;
     const title = document.createElement('span');

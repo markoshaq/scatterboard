@@ -7,7 +7,8 @@ import { ICONS } from '../ui/icons';
 import { t } from '../strings';
 import { getBlob, putBlob } from '../persist/blobs';
 import { toast } from '../ui/toast';
-import { canvasBlob, cropImage, oriented, removeBackground, type CropRect } from '../canvas/imgops';
+import { mobileShell } from '../ui/util';
+import { canvasBlob, cropImage, oriented, removeBackground, type CropRect } from './imgops';
 
 import type { ImgMode } from './imgmode';
 
@@ -31,6 +32,7 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
   const scrim = openScrim('ed-imwrap');
   const chips = document.createElement('div');
   chips.className = 'im-chips';
+  chips.setAttribute('role', 'tablist');
   const chipBtns = new Map<ImgMode, HTMLButtonElement>();
   for (const [m, label] of [
     ['draw', t('imModeDraw')],
@@ -40,6 +42,7 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'im-chip';
+    b.setAttribute('role', 'tab');
     b.textContent = label;
     b.addEventListener('click', () => {
       if (m === cur) return;
@@ -105,18 +108,31 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
     toolsEl?.remove();
     toolsEl = null;
     card.textContent = '';
-    for (const [m, b] of chipBtns) b.classList.toggle('on', m === cur);
+    for (const [m, b] of chipBtns) {
+      b.classList.toggle('on', m === cur);
+      b.setAttribute('aria-selected', String(m === cur));
+    }
     if (!bmp || !url) return;
     if (cur === 'draw') unmount = mountDraw();
     else if (cur === 'edit') unmount = mountEdit();
     else unmount = mountBg();
   }
 
+  // Stage bounds: narrow screens drop the wide desktop margins the
+  // toolbar no longer needs (it docks to the top at any width). Shared
+  // by fitScale and the Edit mode's per-frame render scale.
+  function stageMax(): { w: number; h: number } {
+    const narrow = mobileShell();
+    return {
+      w: Math.max(1, Math.min(880, innerWidth - (narrow ? 32 : 240))),
+      h: Math.max(1, innerHeight - (narrow ? 150 : 220)),
+    };
+  }
+
   // Display scale: fit the natural-size stage into the editor area.
   function fitScale(): number {
-    const maxW = Math.max(1, Math.min(880, innerWidth - 240));
-    const maxH = Math.max(1, innerHeight - 220);
-    return Math.min(2, Math.min(maxW / natW, maxH / natH));
+    const m = stageMax();
+    return Math.min(2, Math.min(m.w / natW, m.h / natH));
   }
 
   function mkBar(): HTMLElement {
@@ -132,6 +148,7 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
     b.type = 'button';
     b.className = 'dt-btn';
     b.title = label;
+    b.setAttribute('aria-label', label);
     b.innerHTML = icon;
     b.addEventListener('pointerdown', (e) => e.preventDefault());
     b.addEventListener('click', onClick);
@@ -172,7 +189,7 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
     try {
       await putBlob(ref, blob);
     } catch {
-      toast(t('imageMissing'));
+      toast(t('imageMissing'), 'err');
       return;
     }
     if (closed) return;
@@ -257,10 +274,8 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
     card.appendChild(wrap);
 
     function render() {
-      const s = Math.min(
-        2,
-        Math.min(Math.max(1, Math.min(880, innerWidth - 240)) / stage.width, Math.max(1, innerHeight - 220) / stage.height),
-      );
+      const m = stageMax();
+      const s = Math.min(2, Math.min(m.w / stage.width, m.h / stage.height));
       cv.width = stage.width;
       cv.height = stage.height;
       cv.style.width = `${stage.width * s}px`;
@@ -314,6 +329,7 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
       cropping = !cropping;
       wrap.classList.toggle('cropping', cropping);
       cropBtn.classList.toggle('on', cropping);
+      cropBtn.setAttribute('aria-pressed', String(cropping));
     });
     mkSep(bar);
     mkBtn(bar, ICONS.rotLeft, t('imRotLeft'), () => {
@@ -386,6 +402,7 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
       }
       on = !on;
       sw.classList.toggle('on', on);
+      sw.setAttribute('aria-pressed', String(on));
       img.style.display = on ? 'none' : '';
       outCv.style.display = on ? '' : 'none';
     });
@@ -412,7 +429,10 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
     ctx.exit();
   };
   window.addEventListener('keydown', onKey, true);
-  for (const [m, b] of chipBtns) b.classList.toggle('on', m === cur);
+  for (const [m, b] of chipBtns) {
+    b.classList.toggle('on', m === cur);
+    b.setAttribute('aria-selected', String(m === cur));
+  }
 
   return {
     setMode(m: ImgMode) {

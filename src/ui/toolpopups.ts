@@ -657,25 +657,6 @@ export function openViewMenu(anchor: HTMLElement, api: ViewMenuApi): ToolPopup {
   return pop;
 }
 
-interface ZoomMenuApi {
-  zoom(): number;
-  onZoom(z: number): void;
-  onFit(): void;
-}
-
-// Zoombar percent button: preset levels plus Fit board, current level
-// checked. Replaces the bare reset-on-click affordance.
-export function openZoomMenu(anchor: HTMLElement, api: ZoomMenuApi): ToolPopup {
-  const cur = Math.round(api.zoom() * 100);
-  const items: MenuItem[] = [50, 100, 200].map((z) => ({
-    label: `${z}%`,
-    checked: cur === z,
-    onPick: () => api.onZoom(z / 100),
-  }));
-  items.push({ label: t('fitBoard'), icon: ICONS.fit, onPick: () => api.onFit() });
-  return openMenuPopup(anchor, items, false, true);
-}
-
 interface MobileMenuApi {
   onFit(): void;
   onView(anchor: HTMLElement): void;

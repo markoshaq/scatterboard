@@ -248,16 +248,6 @@ export interface Element {
   modifiedAt: number;
 }
 
-export interface Comment {
-  id: ID;
-  cardId?: ID;
-  boardId?: ID;
-  threadId?: ID;
-  text: string;
-  createdAt: number;
-  editedAt?: number;
-}
-
 export interface Label {
   id: ID;
   boardId: ID;
@@ -285,7 +275,6 @@ export interface Template {
 export interface Doc {
   boards: Record<ID, Board>;
   elements: Record<ID, Element>;
-  comments: Record<ID, Comment>;
   labels: Record<ID, Label>;
   trash: Record<ID, TrashEntry>;
   templates: Record<ID, Template>;
@@ -314,14 +303,15 @@ export function uid(): ID {
 }
 
 export function emptyDoc(): Doc {
-  return { boards: {}, elements: {}, comments: {}, labels: {}, trash: {}, templates: {}, seq: 0 };
+  return { boards: {}, elements: {}, labels: {}, trash: {}, templates: {}, seq: 0 };
 }
 
 // Defaults for fields added after persisted version 1 was written.
 export function migrateDoc(doc: Doc): Doc {
   doc.boards ??= {};
   doc.elements ??= {};
-  doc.comments ??= {};
+  // Persisted v1 docs may still carry the removed comments record.
+  delete (doc as { comments?: unknown }).comments;
   doc.labels ??= {};
   doc.trash ??= {};
   doc.templates ??= {};
@@ -348,11 +338,34 @@ export function migrateDoc(doc: Doc): Doc {
   return doc;
 }
 
-export function createBoard(partial: Partial<Board> = {}): Board {
+// Every take on "new top z" goes through here: the doc-level counter
+// is a sanctioned direct mutation (like board.position), never undone.
+export function nextZ(doc: Doc): number {
+  return ++doc.seq;
+}
+
+// Where a delete, import or boot lands when the intended board is gone:
+// 'home' when it survives, else the first surviving root board in
+// createdAt order, else `fallback`, else any board still alive.
+export function survivingBoard(doc: Doc, dead: Set<ID> = new Set(), fallback?: ID | null): ID | null {
+  const alive = (id: ID | null | undefined): id is ID =>
+    id !== null && id !== undefined && !dead.has(id) && doc.boards[id] !== undefined;
+  if (alive('home')) return 'home';
+  const root = Object.values(doc.boards)
+    .filter((b) => b.parentId === null && !dead.has(b.id))
+    .sort((a, b) => a.createdAt - b.createdAt)[0];
+  if (root) return root.id;
+  if (alive(fallback)) return fallback;
+  return Object.values(doc.boards).find((b) => !dead.has(b.id))?.id ?? null;
+}
+
+// Element types that own a dedicated full-screen editor route (#/e/<id>).
+export const EDITOR_TYPES: ReadonlySet<ElementType> = new Set(['document', 'sketch', 'image']);
+
+export function createBoard(partial: Partial<Board> & { title: string }): Board {
   const now = Date.now();
   return {
     id: uid(),
-    title: 'Untitled board',
     parentId: null,
     grid: true,
     createdAt: now,
@@ -370,7 +383,7 @@ function baseElement(doc: Doc, boardId: ID, type: ElementType, x: number, y: num
     parentId: null,
     x,
     y,
-    z: ++doc.seq,
+    z: nextZ(doc),
     locked: false,
     content,
     labels: [],

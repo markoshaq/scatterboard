@@ -8,7 +8,7 @@ import { tip } from './tip';
 interface TopbarEvents {
   onZoomIn: () => void;
   onZoomOut: () => void;
-  onZoomMenu: (anchor: HTMLElement) => void;
+  onZoomReset: () => void;
   onFit: () => void;
   onNavigate: (id: ID) => void;
   onUnsorted: () => void;
@@ -131,9 +131,8 @@ export class Topbar {
     this.zoomEl = document.createElement('button');
     this.zoomEl.type = 'button';
     this.zoomEl.className = 'zoom-pct';
-    tip(this.zoomEl, t('zoomMenu'));
-    haspopup(this.zoomEl, 'menu');
-    this.zoomEl.addEventListener('click', () => events.onZoomMenu(this.zoomEl));
+    tip(this.zoomEl, t('zoomReset'));
+    this.zoomEl.addEventListener('click', () => events.onZoomReset());
     const inBtn = document.createElement('button');
     inBtn.type = 'button';
     inBtn.textContent = '+';

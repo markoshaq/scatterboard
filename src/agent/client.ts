@@ -7,7 +7,7 @@ const DEFAULT_PORT = 7341;
 
 // Mirrors the literal in settings.ts; kept as a DOM event so the lazy
 // chunk never enters the main bundle's import graph.
-export const AGENT_STATUS_EVENT = 'sb-agent-status';
+const AGENT_STATUS_EVENT = 'sb-agent-status';
 
 export interface AgentClient {
   stop(): void;
@@ -77,19 +77,24 @@ export function startClient(
     setStatus(true);
     if (typeof msg.bridgeId === 'string' && typeof msg.key === 'string') {
       const cur = app.prefs.agentBridge;
-      if (!cur || cur.id !== msg.bridgeId || cur.key !== msg.key) {
-        app.prefs.agentBridge = { id: msg.bridgeId, key: msg.key };
+      // Persist credentials only for a session we authenticated: the
+      // hello carried a pairing token, or the bridge echoes the stored
+      // identity. An unsolicited tokenless welcome grants nothing.
+      if (opts.token || cur?.id === msg.bridgeId) {
+        if (!cur || cur.id !== msg.bridgeId || cur.key !== msg.key) {
+          app.prefs.agentBridge = { id: msg.bridgeId, key: msg.key };
+        }
+        app.prefs.agent = true;
+        app.scheduleSave();
       }
-      app.prefs.agent = true;
-      app.scheduleSave();
     }
-    if (first) toast(t('agentConnected'));
+    if (first) toast(t('agentConnected'), 'ok');
   };
 
   const onDeny = (msg: Dict) => {
     if (!deniedToast) {
       deniedToast = true;
-      toast(t('agentDenied'));
+      toast(t('agentDenied'), 'err');
     }
     if (msg.reason === 'busy') return; // another tab holds the session; keep retrying
     // Auth failure: a stored key the bridge no longer honours is stale.

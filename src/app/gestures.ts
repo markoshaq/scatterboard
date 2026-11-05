@@ -1,9 +1,10 @@
 import type { App } from '../app';
-import { defaultWidth, type Element, type ID } from '../state/schema';
+import { createLine, defaultWidth, lineDoc, nextZ, type Element, type ID, type LineEnd } from '../state/schema';
 import type { Action } from '../state/actions';
 import { pointInRect, unionRect } from '../canvas/hit';
 import type { Rect } from '../canvas/viewport';
 import { snapDelta } from '../canvas/snap';
+import { resolveLine } from '../canvas/lines';
 import { ColumnCard } from '../cards/column';
 import { NOTE_MAX_W, NOTE_MIN_W } from '../state/schema';
 export class Gestures {
@@ -18,6 +19,11 @@ export class Gestures {
   // True between the first dragMove and end/abort: overlays hide
   // affordances (connect handle) that should not ride the drag.
   dragging = false;
+
+  // Canvas drags wear .drag-lift (the same shadow a column reorder
+  // shows); the set survives view remounts so endDrag/abort can strip
+  // the class wherever the card currently lives.
+  private lifted = new Set<ID>();
 
   // The lifted member's identity for overlays: sibling member chrome
   // hides while a card mid-reorder occludes it.
@@ -77,6 +83,15 @@ export class Gestures {
     // The pointer left the column: drop the lift affordance, the card
     // refiles to the canvas and drags like any other.
     if (this.memberReorder) this.clearMemberReorder();
+
+    // Lift the dragged cards: re-stamped every move because a refile
+    // remounts the view (as a canvas card) mid-gesture.
+    for (const id of ids) {
+      const node = this.a.layer.view(id)?.node;
+      if (!node) continue;
+      node.classList.add('drag-lift');
+      this.lifted.add(id);
+    }
 
     const refile = ids.filter((id) => this.a.doc.elements[id]?.parentId !== null);
     if (refile.length) {
@@ -258,6 +273,12 @@ export class Gestures {
     }
   }
 
+  private clearLifted() {
+    if (!this.lifted.size) return;
+    for (const id of this.lifted) this.a.layer.view(id)?.node.classList.remove('drag-lift');
+    this.lifted.clear();
+  }
+
 
   clearDropHint() {
     if (this.dropColId) {
@@ -274,6 +295,7 @@ export class Gestures {
     this.dragging = false;
     this.trashRect = undefined;
     this.setTrashHint(false);
+    this.clearLifted();
     // Present mode locks mutations: settle the gesture chrome, then
     // bail before the delete/file dispatches below.
     if (this.a.lockedView()) {
@@ -339,7 +361,7 @@ export class Gestures {
           } else {
             // Appends take a fresh z off the doc sequence; a slot drop
             // spreads between its neighbours and leaves seq alone.
-            z = ++this.a.doc.seq;
+            z = nextZ(this.a.doc);
           }
           return { type: 'element.patch', id: e.id, patch: { parentId: colId, z } };
         });
@@ -359,6 +381,7 @@ export class Gestures {
     this.dragging = false;
     this.trashRect = undefined;
     this.clearMemberReorder();
+    this.clearLifted();
     this.clearDropHint();
     this.setTrashHint(false);
     this.a.guides = [];
@@ -470,4 +493,239 @@ export class Gestures {
     window.addEventListener('pointercancel', up);
   }
 
+
+
+  // --- line endpoint gestures ---
+
+  private static readonly DRAG_SLOP = 3;
+
+  // Accent outline on the card a connect/endpoint drag would attach to.
+  private connectHint: ID | null = null;
+
+  private setConnectHint(id: ID | null) {
+    if (id === this.connectHint) return;
+    if (this.connectHint) this.a.layer.view(this.connectHint)?.node.classList.remove('connect-target');
+    if (id) this.a.layer.view(id)?.node.classList.add('connect-target');
+    this.connectHint = id;
+  }
+
+  // Drop hit-test that sees through interactive overlays (pins, label
+  // pills, connect handle, anno paths) to the card underneath.
+  private cardAtPoint(clientX: number, clientY: number): ID | null {
+    for (const n of document.elementsFromPoint(clientX, clientY)) {
+      const c = (n as HTMLElement).closest?.('.card');
+      if (c instanceof HTMLElement && c.dataset.id) return c.dataset.id;
+    }
+    return null;
+  }
+
+  // Drag a line by its body: both ends translate together, detaching to
+  // free points while it moves; on drop each end re-anchors to whatever
+  // card it landed on.
+  startLineDrag(id: ID, e: PointerEvent) {
+    if (this.a.lockedView()) return;
+    const el = this.a.doc.elements[id];
+    const c = el ? lineDoc(el) : null;
+    if (!el || !c || el.locked) return;
+    const rl = resolveLine(el, this.a.doc, (x) => this.a.layer.rectOf(x));
+    if (!rl) return;
+    const pid = e.pointerId;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const p0 = this.a.boardPoint(e);
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < Gestures.DRAG_SLOP) return;
+      if (!moved) {
+        moved = true;
+        this.a.store.beginGroup();
+      }
+      const p = this.a.boardPoint(ev);
+      const dx = Math.round(p.x - p0.x);
+      const dy = Math.round(p.y - p0.y);
+      this.a.store.dispatch({
+        type: 'element.patch',
+        id,
+        patch: {
+          content: {
+            line: { ...c, from: { x: rl.x1 + dx, y: rl.y1 + dy }, to: { x: rl.x2 + dx, y: rl.y2 + dy } },
+          },
+        },
+      });
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+    };
+    const cancel = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      cleanup();
+      if (moved) {
+        // Restore the captured endpoints: a cancelled drag keeps the
+        // original anchors instead of stranding the line on free points.
+        const curEl = this.a.doc.elements[id];
+        if (curEl && lineDoc(curEl)) {
+          this.a.store.dispatch({ type: 'element.patch', id, patch: { content: { line: c } } });
+        }
+        this.a.store.endGroup('line-move');
+        this.a.requestRender();
+      }
+    };
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      cleanup();
+      if (moved) {
+        const curEl = this.a.doc.elements[id];
+        const cur = curEl ? lineDoc(curEl) : null;
+        if (cur) {
+          const snap = (pt: { x: number; y: number }): LineEnd => {
+            const s = this.a.vp.toScreen(pt.x, pt.y);
+            const tid = this.cardAtPoint(s.x, s.y);
+            const end: LineEnd = { x: Math.round(pt.x), y: Math.round(pt.y) };
+            if (tid && tid !== id) end.el = tid;
+            return end;
+          };
+          this.a.store.dispatch({
+            type: 'element.patch',
+            id,
+            patch: { content: { line: { ...cur, from: snap(cur.from), to: snap(cur.to) } } },
+          });
+        }
+        this.a.store.endGroup('line-move');
+        this.a.requestRender();
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+  }
+
+  startEndpointGesture(id: ID, which: 'from' | 'to', e: PointerEvent) {
+    if (this.a.lockedView()) return;
+    const el = this.a.doc.elements[id];
+    const c = el ? lineDoc(el) : null;
+    if (!el || !c) return;
+    const pid = e.pointerId;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < Gestures.DRAG_SLOP) return;
+      if (!moved) {
+        moved = true;
+        this.a.store.beginGroup();
+      }
+      const p = this.a.boardPoint(ev);
+      this.a.endDraft = { id, which, x: p.x, y: p.y };
+      this.setConnectHint(this.cardAtPoint(ev.clientX, ev.clientY));
+      this.a.requestRender();
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+    };
+    const cancel = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      cleanup();
+      this.a.endDraft = null;
+      this.setConnectHint(null);
+      if (moved) this.a.store.endGroup('line-end');
+      this.a.requestRender();
+    };
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      cleanup();
+      this.a.endDraft = null;
+      this.setConnectHint(null);
+      if (moved) {
+        const targetId = this.cardAtPoint(ev.clientX, ev.clientY);
+        const p = this.a.boardPoint(ev);
+        const end: LineEnd = { x: Math.round(p.x), y: Math.round(p.y) };
+        // Dropping on the card that already anchors the other end
+        // leaves this end free: a both-ends-same-card anchor is never
+        // stored.
+        const other = which === 'from' ? c.to : c.from;
+        if (targetId && targetId !== id && other.el !== targetId) end.el = targetId;
+        this.a.store.dispatch({
+          type: 'element.patch',
+          id,
+          patch: { content: { line: which === 'from' ? { ...c, from: end } : { ...c, to: end } } },
+        });
+        this.a.store.endGroup('line-end');
+      } else if (ev.detail <= 1) {
+        // detail>1 means this up belongs to a dblclick; the label edit
+        // owns that gesture, so only the first click cycles the marker
+        // (pen/touch ups report detail 0 and must still cycle).
+        const cur = which === 'from' ? c.fromMarker : c.toMarker;
+        const next = cur === 'none' ? 'arrow' : cur === 'arrow' ? ('dot' as const) : ('none' as const);
+        this.a.store.dispatch({
+          type: 'element.patch',
+          id,
+          patch: {
+            content: {
+              line:
+                which === 'from' ? { ...c, fromMarker: next } : { ...c, toMarker: next },
+            },
+          },
+        });
+      }
+      this.a.requestRender();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+  }
+
+  startConnect(sourceId: ID, e: PointerEvent) {
+    if (this.a.lockedView()) return;
+    const src = this.a.doc.elements[sourceId];
+    if (!src) return;
+    const r = this.a.layer.rectOf(src);
+    const from = { x: r.x + r.w, y: r.y + r.h / 2 };
+    const pid = e.pointerId;
+    const p0 = this.a.boardPoint(e);
+    this.a.draft = { x1: from.x, y1: from.y, x2: p0.x, y2: p0.y };
+    this.a.requestRender();
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      const p = this.a.boardPoint(ev);
+      this.a.draft = { x1: from.x, y1: from.y, x2: p.x, y2: p.y };
+      const t = this.cardAtPoint(ev.clientX, ev.clientY);
+      this.setConnectHint(t !== sourceId ? t : null);
+      this.a.requestRender();
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+    };
+    const cancel = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      cleanup();
+      this.a.draft = null;
+      this.setConnectHint(null);
+      this.a.requestRender();
+    };
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      cleanup();
+      this.a.draft = null;
+      this.setConnectHint(null);
+      const targetId = this.cardAtPoint(ev.clientX, ev.clientY);
+      if (targetId && targetId !== sourceId && this.a.boardId) {
+        const p = this.a.boardPoint(ev);
+        const el = createLine(this.a.doc, this.a.boardId, { el: sourceId, x: from.x, y: from.y }, { el: targetId, x: Math.round(p.x), y: Math.round(p.y) });
+        this.a.store.dispatch({ type: 'element.create', el });
+        this.a.setSelection([el.id]);
+      }
+      this.a.requestRender();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+  }
 }

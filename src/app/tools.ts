@@ -1,10 +1,11 @@
 import type { App } from '../app';
-import { annotationDoc, boardRefOf, columnTitle, createBoard, createBoardCard, createComment, createDocument, createLabel, createLine, createNote, createSketch, documentDoc, embedDoc, headingDoc, lineDoc, linkDoc, strokesBBox, swatchDoc, todoDoc, SKETCH_PAD_H, SKETCH_PAD_W, type Element, type CellType, type ID, type Label, type LineMarker, type LineWeight, type Stroke } from '../state/schema';
-import type { Action } from '../state/actions';
+import { annotationDoc, boardRefOf, columnTitle, createBoard, createBoardCard, createComment, createDocument, createLabel, createLine, createNote, createSketch, documentDoc, embedDoc, headingDoc, lineDoc, linkDoc, nextZ, strokesBBox, swatchDoc, todoDoc, SKETCH_PAD_H, SKETCH_PAD_W, type Element, type CellType, type ID, type Label, type LineMarker, type LineWeight, type Stroke } from '../state/schema';
+import type { Action, ElementPatch } from '../state/actions';
 import { blobUrl, copyTextToClipboard, downloadBlobRef } from '../persist/blobs';
 import { TodoCard } from '../cards/todo';
 import { TableCard } from '../cards/table';
-import type { ToolId } from '../ui/rail';
+import { toolMenuItems, type ToolId } from '../ui/rail';
+import { ICONS } from '../ui/icons';
 import { unionRect } from '../canvas/hit';
 import { t } from '../strings';
 import { imgModeParam, type ImgMode } from '../editor/imgmode';
@@ -17,7 +18,7 @@ export class RailTools {
 
   // --- rail tools ---
 
-  onTool(id: ToolId, anchor: HTMLElement) {
+  onTool(id: ToolId, anchor: HTMLElement | DOMRect) {
     if (this.a.lockedView()) return;
     const sel = this.a.selectedEls();
     if (!sel.length) return;
@@ -268,6 +269,48 @@ export class RailTools {
   }
 
 
+  // Right-click an element: select it (or keep it inside the current
+  // selection) and offer its rail tools plus the More items as one flat
+  // icon list anchored at the pointer. Cards, comment pins, annotation
+  // ink and lines count; bare canvas just keeps the browser menu off.
+  contextMenu(e: MouseEvent) {
+    if (this.a.lockedView()) return;
+    // Touch long-press reports pointerType 'touch': opening the sheet
+    // mid-gesture would also trigger beginEdit on the pointer's release,
+    // so touch keeps long-press meaning nothing (marquee lives on the
+    // background path instead).
+    if ('pointerType' in e && e.pointerType === 'touch') return;
+    const target = e.target as HTMLElement;
+    let id = this.a.cardIdAt(e);
+    if (!id) {
+      const hitEl = target.closest?.('.comment-pin, svg.anno');
+      if (hitEl instanceof HTMLElement || hitEl instanceof SVGElement) {
+        id = (hitEl as HTMLElement).dataset.id ?? null;
+      }
+    }
+    if (!id) {
+      const hit = this.a.lineHit(this.a.boardPoint(e));
+      if (hit) id = hit.id;
+    }
+    if (!id) return;
+    if (!this.a.sel.has(id)) this.a.selectOnly(id);
+    const sel = this.a.selectedEls();
+    if (!sel.length) return;
+    // Nested popups (colour, labels, submenus) re-anchor to the pointer
+    // spot: the DOMRect stays valid after the menu itself closes.
+    const rect = new DOMRect(e.clientX, e.clientY, 0, 0);
+    const items: MenuItem[] = [
+      ...toolMenuItems(sel).map((tool) => ({
+        label: tool.label,
+        icon: tool.icon,
+        onPick: () => this.onTool(tool.id, rect),
+      })),
+      ...this.moreItems(sel),
+    ];
+    if (items.length) openMenuPopup(rect, items);
+  }
+
+
   // The TableCard for the element being edited, when a cell is focused.
   tableView(): TableCard | null {
     const el = this.a.editing.editingEl();
@@ -280,21 +323,25 @@ export class RailTools {
     const f = v.focusedCell();
     if (!f) return [];
     return [
-      { label: t('addRowAbove'), hint: 'Opt+Up', onPick: () => v.insertRow(f.r) },
-      { label: t('addColLeft'), hint: 'Opt+Left', onPick: () => v.insertColumn(f.c) },
-      { label: t('addRowBelow'), hint: 'Opt+Down', onPick: () => v.insertRow(f.r + 1) },
-      { label: t('addColRight'), hint: 'Opt+Right', onPick: () => v.insertColumn(f.c + 1) },
-      { label: t('clearCell'), onPick: () => v.clearFocusedCell() },
-      { label: t('deleteRow'), onPick: () => v.deleteFocusedRow() },
-      { label: t('deleteCol'), onPick: () => v.deleteFocusedColumn() },
+      { label: t('addRowAbove'), icon: ICONS.addRow, hint: 'Opt+Up', onPick: () => v.insertRow(f.r) },
+      { label: t('addColLeft'), icon: ICONS.addCol, hint: 'Opt+Left', onPick: () => v.insertColumn(f.c) },
+      { label: t('addRowBelow'), icon: ICONS.addRow, hint: 'Opt+Down', onPick: () => v.insertRow(f.r + 1) },
+      { label: t('addColRight'), icon: ICONS.addCol, hint: 'Opt+Right', onPick: () => v.insertColumn(f.c + 1) },
+      { label: t('clearCell'), icon: ICONS.eraser, onPick: () => v.clearFocusedCell() },
+      { label: t('deleteRow'), icon: ICONS.trash, onPick: () => v.deleteFocusedRow() },
+      { label: t('deleteCol'), icon: ICONS.trash, onPick: () => v.deleteFocusedColumn() },
     ];
   }
 
+  // Native color wells fire 'input' continuously; a short-lived undo
+  // group collapses a whole scrub into one history entry.
+  private colorTimer = 0;
+
   colorBurst(fn: () => void) {
-    if (!this.a.colorTimer) this.a.store.beginGroup();
-    clearTimeout(this.a.colorTimer);
-    this.a.colorTimer = window.setTimeout(() => {
-      this.a.colorTimer = 0;
+    if (!this.colorTimer) this.a.store.beginGroup();
+    clearTimeout(this.colorTimer);
+    this.colorTimer = window.setTimeout(() => {
+      this.colorTimer = 0;
       this.a.store.endGroup('color');
     }, 400);
     fn();
@@ -402,7 +449,7 @@ export class RailTools {
     this.a.store.dispatch({ type: 'element.create', el });
     this.a.selectOnly(el.id);
     const s = this.a.vp.toScreen(r.x + r.w, r.y);
-    this.a.openCommentThread(el.id, anchorOverride ?? new DOMRect(s.x - 12, s.y - 12, 24, 24));
+    this.a.comments.openThread(el.id, anchorOverride ?? new DOMRect(s.x - 12, s.y - 12, 24, 24));
   }
 
 
@@ -446,6 +493,7 @@ export class RailTools {
       return [
         {
           label: t('detachComment'),
+          icon: ICONS.comment,
           onPick: () => {
             const r = this.a.layer.rectOf(el);
             this.a.store.dispatch({
@@ -457,26 +505,27 @@ export class RailTools {
         },
       ];
     }
-    if (sel.length > 1) items.push({ label: t('connectLines'), onPick: () => this.connectSel() });
+    if (sel.length > 1) items.push({ label: t('connectLines'), icon: ICONS.line, onPick: () => this.connectSel() });
     if (sel.length === 1) {
       const el = sel[0]!;
       const c = el.content;
       if (('link' in c && c.link.url) || ('embed' in c && c.embed.url)) {
         const url = 'link' in c ? c.link.url : 'embed' in c ? c.embed.url : '';
-        items.push({ label: t('copyLink'), onPick: () => void copyTextToClipboard(url) });
+        items.push({ label: t('copyLink'), icon: ICONS.copy, onPick: () => void copyTextToClipboard(url) });
       }
       if ('image' in c) {
         items.push(
-          { label: t('downloadOriginal'), onPick: () => void downloadBlobRef(c.image.blobRef, c.image.name || 'image') },
-          { label: t('replaceImage'), onPick: () => this.a.replaceImage(el) },
-          { label: t('cropToGrid'), onPick: () => void this.a.cropImageToGrid(el) },
+          { label: t('downloadOriginal'), icon: ICONS.download, onPick: () => void downloadBlobRef(c.image.blobRef, c.image.name || 'image') },
+          { label: t('replaceImage'), icon: ICONS.image, onPick: () => this.a.replaceImage(el) },
+          { label: t('cropToGrid'), icon: ICONS.crop, onPick: () => void this.a.cropImageToGrid(el) },
         );
       }
       if ('file' in c) {
         items.push(
-          { label: t('downloadFile'), onPick: () => void downloadBlobRef(c.file.blobRef, c.file.name) },
+          { label: t('downloadFile'), icon: ICONS.download, onPick: () => void downloadBlobRef(c.file.blobRef, c.file.name) },
           {
             label: t('openFile'),
+            icon: ICONS.ext,
             // window.open inside .then is popup-blocked: open the blank
             // window inside the gesture, then navigate it to the blob
             // URL ('noopener' would return a null handle here).
@@ -491,42 +540,43 @@ export class RailTools {
         );
       }
       if ('note' in c) {
-        items.push({ label: t('convertToDocument'), onPick: () => this.convertToDocument(el) });
+        items.push({ label: t('convertToDocument'), icon: ICONS.document, onPick: () => this.convertToDocument(el) });
       }
       if (el.syncGroup) {
         items.push({
           label: t('unlinkCopy'),
+          icon: ICONS.unlink,
           onPick: () => this.a.store.dispatch({ type: 'element.patch', id: el.id, patch: { syncGroup: undefined } }),
         });
       }
       if ('document' in c) {
-        items.push({ label: t('convertToNote'), onPick: () => this.convertToNote(el) });
+        items.push({ label: t('convertToNote'), icon: ICONS.note, onPick: () => this.convertToNote(el) });
       }
       if ('annotation' in c) {
         items.push(
-          { label: t('downloadSvg'), onPick: () => this.downloadAnnotation(el) },
-          { label: t('convertToSketch'), onPick: () => this.convertToSketch(el) },
+          { label: t('downloadSvg'), icon: ICONS.download, onPick: () => this.downloadAnnotation(el) },
+          { label: t('convertToSketch'), icon: ICONS.sketch, onPick: () => this.convertToSketch(el) },
         );
       }
       if ('boardRef' in c) {
         const ref = c.boardRef;
         items.push(
-          { label: t('openNewTab'), onPick: () => window.open(this.a.boardUrl(ref), '_blank', 'noopener') },
-          { label: t('copyLinkBoard'), onPick: () => void copyTextToClipboard(this.a.boardUrl(ref)) },
-          { label: t('createShortcut'), onPick: () => this.a.panels.createShortcut(el) },
-          { label: t('convertToTemplate'), onPick: () => this.a.panels.saveAsTemplate(ref) },
+          { label: t('openNewTab'), icon: ICONS.ext, onPick: () => window.open(this.a.boardUrl(ref), '_blank', 'noopener') },
+          { label: t('copyLinkBoard'), icon: ICONS.copy, onPick: () => void copyTextToClipboard(this.a.boardUrl(ref)) },
+          { label: t('createShortcut'), icon: ICONS.board, onPick: () => this.a.panels.createShortcut(el) },
+          { label: t('convertToTemplate'), icon: ICONS.template, onPick: () => this.a.panels.saveAsTemplate(ref) },
         );
       }
     }
     const allLocked = sel.every((e) => e.locked);
     items.push(
-      { label: t('lockPosition'), checked: allLocked, onPick: () => this.toggleLock(!allLocked) },
-      { label: t('bringToFront'), onPick: () => this.zOrder('front') },
-      { label: t('sendToBack'), onPick: () => this.zOrder('back') },
+      { label: t('lockPosition'), icon: ICONS.lock, checked: allLocked, onPick: () => this.toggleLock(!allLocked) },
+      { label: t('bringToFront'), icon: ICONS.bringFront, onPick: () => this.zOrder('front') },
+      { label: t('sendToBack'), icon: ICONS.sendBack, onPick: () => this.zOrder('back') },
     );
     // Keyboard/discoverability parity for the Opt+` filing shortcut.
     if (this.a.movableCards().length) {
-      items.push({ label: t('sendToUnsorted'), onPick: () => this.a.panels.fileToUnsorted() });
+      items.push({ label: t('sendToUnsorted'), icon: ICONS.inbox, onPick: () => this.a.panels.fileToUnsorted() });
     }
     return items;
   }
@@ -548,7 +598,7 @@ export class RailTools {
     if (!els.length) return;
     let actions: Action[];
     if (dir === 'front') {
-      actions = els.map((e) => ({ type: 'element.patch' as const, id: e.id, patch: { z: ++this.a.doc.seq } }));
+      actions = els.map((e) => ({ type: 'element.patch' as const, id: e.id, patch: { z: nextZ(this.a.doc) } }));
     } else {
       const min = Math.min(...this.a.layer.elements().map((e) => e.z));
       actions = els.map((e, i) => ({
@@ -736,28 +786,59 @@ export class RailTools {
     );
     const board = createBoard({ parentId: this.a.boardId, title: columnTitle(el) || t('untitled') });
     const card = createBoardCard(this.a.doc, this.a.boardId, board.id, el.x, el.y);
+    // The child board starts with no labels and owns no syncGroups:
+    // clear refs that would dangle there, and drop a comment's
+    // anchorId when its anchor is not moving with it.
+    const movePatch = (m: Element): ElementPatch => {
+      const p: ElementPatch = { boardId: board.id, labels: [] };
+      if (m.syncGroup !== undefined) p.syncGroup = undefined;
+      if (m.anchorId !== undefined && !memberIds.has(m.anchorId)) p.anchorId = undefined;
+      return p;
+    };
     const actions: Action[] = [
       { type: 'board.create', board },
       { type: 'element.create', el: card },
       ...this.a.retargetAttachActions(el.id, card.id),
       ...this.a.detachLineActions(memberIds),
       ...memberPins.map(
-        (c): Action => ({ type: 'element.patch', id: c.id, patch: { boardId: board.id } }),
+        (c): Action => ({ type: 'element.patch', id: c.id, patch: movePatch(c) }),
       ),
       ...members.map(
         (m, i): Action => ({
           type: 'element.patch',
           id: m.id,
-          patch: { boardId: board.id, parentId: null, x: 80 + (i % 4) * 280, y: 80 + Math.floor(i / 4) * 200 },
+          patch: { ...movePatch(m), parentId: null, x: 80 + (i % 4) * 280, y: 80 + Math.floor(i / 4) * 200 },
         }),
       ),
-      ...nested.map((m): Action => ({ type: 'element.patch', id: m.id, patch: { boardId: board.id } })),
+      ...nested.map((m): Action => ({ type: 'element.patch', id: m.id, patch: movePatch(m) })),
       { type: 'element.delete', el },
     ];
     this.a.store.dispatch({ type: 'batch', actions });
     this.a.sel.delete(el.id);
     this.a.sel.add(card.id);
     this.a.requestRender();
+  }
+
+
+  // Converts carry the card's frame fields onto the replacement:
+  // position, lock, colour, labels and reactions survive the type swap.
+  private carryCardFields(src: Element, dst: Element) {
+    dst.z = src.z;
+    dst.parentId = src.parentId;
+    dst.locked = src.locked;
+    if (src.color !== undefined) dst.color = src.color;
+    dst.labels = [...src.labels];
+    if (src.reactions) dst.reactions = [...src.reactions];
+  }
+
+  // The convert batch: create the replacement, retarget lines and
+  // comment anchors onto it, delete the original. One undo entry.
+  private replaceElementActions(src: Element, dst: Element): Action[] {
+    return [
+      { type: 'element.create', el: dst },
+      ...this.a.retargetAttachActions(src.id, dst.id),
+      { type: 'element.delete', el: src },
+    ];
   }
 
 
@@ -768,12 +849,7 @@ export class RailTools {
     const n = el.content.note;
     const doc = createDocument(this.a.doc, this.a.boardId, el.x, el.y);
     if (el.w !== undefined) doc.w = el.w;
-    doc.z = el.z;
-    doc.parentId = el.parentId;
-    doc.locked = el.locked;
-    if (el.color !== undefined) doc.color = el.color;
-    doc.labels = [...el.labels];
-    if (el.reactions) doc.reactions = [...el.reactions];
+    this.carryCardFields(el, doc);
     doc.content = {
       document: {
         title: '',
@@ -783,14 +859,7 @@ export class RailTools {
         caption: '',
       },
     };
-    this.a.store.dispatch({
-      type: 'batch',
-      actions: [
-        { type: 'element.create', el: doc },
-        ...this.a.retargetAttachActions(el.id, doc.id),
-        { type: 'element.delete', el },
-      ],
-    });
+    this.a.store.dispatch({ type: 'batch', actions: this.replaceElementActions(el, doc) });
     this.a.setSelection([doc.id]);
   }
 
@@ -806,21 +875,9 @@ export class RailTools {
     const html = c.title && c.html !== undefined ? `<h1>${esc(c.title)}</h1>${c.html}` : c.html;
     const note = createNote(this.a.doc, this.a.boardId, el.x, el.y, text);
     if (el.w !== undefined) note.w = el.w;
-    note.z = el.z;
-    note.parentId = el.parentId;
-    note.locked = el.locked;
-    if (el.color !== undefined) note.color = el.color;
-    note.labels = [...el.labels];
-    if (el.reactions) note.reactions = [...el.reactions];
+    this.carryCardFields(el, note);
     note.content = { note: html !== undefined ? { text, html } : { text } };
-    this.a.store.dispatch({
-      type: 'batch',
-      actions: [
-        { type: 'element.create', el: note },
-        ...this.a.retargetAttachActions(el.id, note.id),
-        { type: 'element.delete', el },
-      ],
-    });
+    this.a.store.dispatch({ type: 'batch', actions: this.replaceElementActions(el, note) });
     this.a.setSelection([note.id]);
   }
 
@@ -852,21 +909,9 @@ export class RailTools {
     }));
     const sk = createSketch(this.a.doc, this.a.boardId, el.x, el.y);
     sk.w = Math.max(el.w ?? 0, 220);
-    sk.z = el.z;
-    sk.parentId = el.parentId;
-    sk.locked = el.locked;
-    if (el.color !== undefined) sk.color = el.color;
-    sk.labels = [...el.labels];
-    if (el.reactions) sk.reactions = [...el.reactions];
+    this.carryCardFields(el, sk);
     sk.content = { sketch: { strokes } };
-    this.a.store.dispatch({
-      type: 'batch',
-      actions: [
-        { type: 'element.create', el: sk },
-        ...this.a.retargetAttachActions(el.id, sk.id),
-        { type: 'element.delete', el },
-      ],
-    });
+    this.a.store.dispatch({ type: 'batch', actions: this.replaceElementActions(el, sk) });
     this.a.setSelection([sk.id]);
   }
 

@@ -1,10 +1,10 @@
 import type { App } from '../app';
-import { blobRefOf, UNSORTED, type Element, type ID } from '../state/schema';
+import { blobRefOf, survivingBoard, UNSORTED, type Element, type ID } from '../state/schema';
 import { getBlob } from '../persist/blobs';
 import { Viewport, type Rect } from '../canvas/viewport';
 import { CardsLayer } from '../cards/layer';
 import type { CardEvents } from '../cards/note';
-import { toast } from '../ui/toast';
+import { busy, toast } from '../ui/toast';
 import { unionRect } from '../canvas/hit';
 import { t } from '../strings';
 import { ChipsLayer } from '../ui/chips';
@@ -117,7 +117,7 @@ export class BoardExport {
       // every card instead. Seated pins/anno svgs live inside .cards:
       // park them in their hosts so the clone sees them, then re-seat
       // after the snapshot.
-      const chips = new ChipsLayer(this.a.doc);
+      const chips = new ChipsLayer(this.a.doc, { onChip: () => {} });
       chips.sync(this.a.overlays.chipTargets(true, off));
       this.a.overlays.anno.sync(this.a.overlays.annoItems(true));
       this.a.overlays.pins.sync(this.a.overlays.pinItems(off, true).map((p) => ({ ...p, seat: null })));
@@ -174,29 +174,41 @@ export class BoardExport {
 
 
   async exportPng() {
-    const blob = await this.snapshotPng();
-    if (!blob) {
-      toast(t('exFail'));
-      return;
+    const done = busy(t('exBusy'));
+    try {
+      const blob = await this.snapshotPng();
+      if (!blob) {
+        toast(t('exFail'), 'err');
+        return;
+      }
+      downloadBlob(`${this.exportFileBase()}.png`, blob);
+      toast(t('exDone'), 'ok');
+    } finally {
+      done();
     }
-    downloadBlob(`${this.exportFileBase()}.png`, blob);
   }
 
 
   async exportPdf(hi: boolean) {
-    const scale = hi ? 2 : 1;
-    const cv = await this.boardRaster(scale);
-    const { toBlob } = await import('../export/boardpng');
-    const blob = cv && (await toBlob(cv, 'image/jpeg', hi ? 0.95 : 0.8));
-    if (!cv || !blob) {
-      toast(t('exFail'));
-      return;
+    const done = busy(t('exBusy'));
+    try {
+      const scale = hi ? 2 : 1;
+      const cv = await this.boardRaster(scale);
+      const { toBlob } = await import('../export/boardpng');
+      const blob = cv && (await toBlob(cv, 'image/jpeg', hi ? 0.95 : 0.8));
+      if (!cv || !blob) {
+        toast(t('exFail'), 'err');
+        return;
+      }
+      const jpeg = new Uint8Array(await blob.arrayBuffer());
+      const { jpegToPdf } = await import('../export/pdf');
+      // Page sized to the raster's aspect: board units at 96dpi -> pt.
+      const pdf = jpegToPdf(jpeg, cv.width, cv.height, (cv.width / scale) * 0.75, (cv.height / scale) * 0.75);
+      downloadBlob(`${this.exportFileBase()}.pdf`, pdf);
+      toast(t('exDone'), 'ok');
+    } finally {
+      done();
     }
-    const jpeg = new Uint8Array(await blob.arrayBuffer());
-    const { jpegToPdf } = await import('../export/pdf');
-    // Page sized to the raster's aspect: board units at 96dpi -> pt.
-    const pdf = jpegToPdf(jpeg, cv.width, cv.height, (cv.width / scale) * 0.75, (cv.height / scale) * 0.75);
-    downloadBlob(`${this.exportFileBase()}.pdf`, pdf);
   }
 
 
@@ -210,6 +222,7 @@ export class BoardExport {
     if (kind === 'md') downloadTextFile(`${base}.md`, toMarkdown(title, items), 'text/markdown');
     else if (kind === 'txt') downloadTextFile(`${base}.txt`, toPlain(title, items));
     else downloadTextFile(`${base}.doc`, toWordHtml(title, items), 'application/msword');
+    toast(t('exDone'), 'ok');
   }
 
 
@@ -245,24 +258,31 @@ export class BoardExport {
 
   async exportFilesZip() {
     if (!this.a.boardId) return;
-    const blob = await this.mediaZip(this.a.boardId);
-    if (!blob) {
-      toast(t('exFail'));
-      return;
+    const done = busy(t('exBusy'));
+    try {
+      const blob = await this.mediaZip(this.a.boardId);
+      if (!blob) {
+        toast(t('exFail'), 'err');
+        return;
+      }
+      downloadBlob(`${this.exportFileBase()}-files.zip`, blob);
+      toast(t('exDone'), 'ok');
+    } finally {
+      done();
     }
-    downloadBlob(`${this.exportFileBase()}-files.zip`, blob);
   }
 
 
   async exportJson() {
     if (!this.a.boardId) return;
-    const { exportBoard } = await import('../export/jsonio');
+    const { exportBoard } = await import('../export/boardio');
     const text = exportBoard(this.a.doc, this.a.boardId);
     if (!text) {
-      toast(t('exFail'));
+      toast(t('exFail'), 'err');
       return;
     }
     downloadTextFile(`${this.exportFileBase()}.json`, text, 'application/json');
+    toast(t('exDone'), 'ok');
   }
 
 
@@ -276,24 +296,25 @@ export class BoardExport {
       const file = input.files?.[0];
       if (!file) return;
       void (async () => {
+        const done = busy(t('exImportBusy'));
         try {
-          const { importActions, parseBoardExport } = await import('../export/jsonio');
+          const { importActions, parseBoardExport } = await import('../export/boardio');
           const data = parseBoardExport(await file.text());
-          // Imported boards attach under Home; fall back to the doc root
-          // or the current board when no 'home' id exists.
-          const host =
-            this.a.doc.boards.home?.id ??
-            Object.values(this.a.doc.boards).find((b) => b.parentId === null)?.id ??
-            this.a.boardId;
+          // Imported boards attach under Home; shared surviving-board
+          // policy falls back to the doc root or the current board.
+          const host = survivingBoard(this.a.doc, undefined, this.a.boardId);
           const res = data && host ? importActions(this.a.doc, data, host) : null;
           if (!res) {
-            toast(t('exImportFail'));
+            toast(t('exImportFail'), 'err');
             return;
           }
           this.a.store.dispatch({ type: 'batch', actions: res.actions });
           this.a.openBoard(res.boardId);
+          toast(t('exImportDone'), 'ok');
         } catch {
-          toast(t('exImportFail'));
+          toast(t('exImportFail'), 'err');
+        } finally {
+          done();
         }
       })();
     });

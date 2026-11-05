@@ -1,9 +1,10 @@
 import { t } from '../strings';
-import { openToolPopup, type ToolPopup } from './popup';
+import { haspopup, openToolPopup, type ToolPopup } from './popup';
 
 // Quick-capture popup: a small text surface that files the text as a
 // note into the current board's Unsorted inbox. Cmd+Enter commits.
-export function openCapturePopup(anchor: HTMLElement, onAdd: (text: string) => void): ToolPopup {
+export function openCapturePopup(anchor: HTMLElement | DOMRect, onAdd: (text: string) => void): ToolPopup {
+  haspopup(anchor, 'dialog');
   const node = document.createElement('div');
   node.className = 'qc-body';
   const area = document.createElement('textarea');

@@ -313,10 +313,14 @@ export class TodoCard implements CardView {
     reactBtn.className = 'todo-due todo-react-btn';
     reactBtn.dataset.noclick = '1';
     reactBtn.innerHTML = ICONS.reactions;
+    reactBtn.title = t('addReaction');
+    reactBtn.setAttribute('aria-label', t('addReaction'));
     const due = document.createElement('button');
     due.type = 'button';
     due.className = 'todo-due';
     due.dataset.noclick = '1';
+    due.title = t('setDueDate');
+    due.setAttribute('aria-label', t('setDueDate'));
     row.append(check, text, you, reacts, reactBtn, due);
     return { row, check, text, you, reacts, reactBtn, due, shown: '' };
   }
@@ -386,6 +390,9 @@ export class TodoCard implements CardView {
       const label = hasDue ? relDue(item.dueAt!, item.dueTime === true) : CAL_ICON;
       if (r.due.dataset.lbl !== label) {
         r.due.dataset.lbl = label;
+        // A dated chip's name must contain its visible text; the bare
+        // icon keeps the action label.
+        r.due.setAttribute('aria-label', hasDue ? label : t('setDueDate'));
         if (hasDue) r.due.textContent = label;
         else r.due.innerHTML = label;
       }

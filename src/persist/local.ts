@@ -3,6 +3,7 @@ import type { PersistedWorkspace, StorageAdapter } from './storage';
 const KEY = 'scatterboard:v1';
 const LAST_BOARD = 'scatterboard:last-board';
 const POS_PREFIX = 'scatterboard:pos:';
+const CORRUPT_KEY = 'scatterboard:v1.corrupt';
 const OLD_POS_PREFIX = 'planboard:pos:';
 
 // One-time rename from the pre-rename planboard:* keys. Runs in boot()
@@ -34,9 +35,16 @@ export function migrateStorageKeys() {
 }
 
 export class LocalStorageAdapter implements StorageAdapter {
+  private corruptRaw: string | null = null;
+
+  corrupt(): string | null {
+    return this.corruptRaw;
+  }
+
   async load(): Promise<PersistedWorkspace | null> {
+    let raw: string | null = null;
     try {
-      const raw = localStorage.getItem(KEY);
+      raw = localStorage.getItem(KEY);
       if (!raw) return null;
       const w = JSON.parse(raw) as PersistedWorkspace;
       // Position rows may postdate the doc serialize; newest wins.
@@ -53,6 +61,15 @@ export class LocalStorageAdapter implements StorageAdapter {
       }
       return w;
     } catch {
+      // Parse failure is not 'no data': quarantine the bytes under a
+      // backup key so the seed's first autosave can't destroy them.
+      if (raw !== null) {
+        try {
+          localStorage.setItem(CORRUPT_KEY, raw);
+          localStorage.removeItem(KEY);
+        } catch {}
+        this.corruptRaw = raw;
+      }
       return null;
     }
   }

@@ -6,10 +6,10 @@ import { editRailType } from '../ui/rail';
 import { t } from '../strings';
 import { choice } from '../ui/toast';
 import { fetchLinkPreview } from '../ui/unfurl';
-import { hostOf, urlTitle } from '../ui/embeds';
+import { hostOf, urlTitle } from '../net/embeds';
 import { openLinkPopup } from '../ui/toolpopups';
 import { applyLink, selectionInRoot, selectionRange } from '../ui/richtext';
-import { sanitizeHtml, scrubHtml } from '../ui/sanitize';
+import { sanitizeHtml, scrubContent } from '../ui/sanitize';
 export class Editing {
   constructor(private a: App) {}
 
@@ -179,12 +179,15 @@ export class Editing {
       this.a.store.dispatch({ type: 'element.patch', id, patch: { content: { column: { title: text } } } });
       return;
     }
+    // Every remaining type owns its own content shape; only notes take
+    // the plain note write.
+    if (el.type !== 'note') return;
     const note = html !== undefined ? { text, html } : { text };
     this.a.store.dispatch({
       type: 'batch',
       actions: [{ type: 'element.patch', id, patch: { content: { note } } }, ...this.syncGroupActions(el, note)],
     });
-    if (el.type === 'note') this.maybeOfferDocument(el);
+    this.maybeOfferDocument(el);
   }
 
 
@@ -285,7 +288,7 @@ export class Editing {
     if (!el) return;
     // Table cells and any other html-bearing content fields get the
     // same scrub as the import path.
-    scrubHtml(content);
+    scrubContent(content);
     this.a.store.dispatch({ type: 'element.patch', id, patch: { content } });
     if ('todo' in content) {
       this.maybeOfferTodoTitle(el, content.todo);

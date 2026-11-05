@@ -1,7 +1,7 @@
 import type { Element } from '../state/schema';
 import { fileDoc } from '../state/schema';
 import { downloadBlobRef } from '../persist/blobs';
-import { fmtSize } from '../ui/files';
+import { fmtSize } from '../ingest/files';
 import { ICONS } from '../ui/icons';
 import type { CardCtx } from './factory';
 import type { CardView } from './note';

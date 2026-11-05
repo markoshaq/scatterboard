@@ -63,7 +63,12 @@ describe('member layout guards', () => {
   // and pins the member absolutely over its siblings (the .card.table
   // regression). The base .card rule is fine - it sits earlier.
   it('no card-type rule declares position', () => {
-    const css = readFileSync(join(__dirname, '..', 'src', 'style.css'), 'utf8');
+    // style.css is a pure @import list; resolve it so the guard sees
+    // the same concatenated sheets the build does.
+    const entry = readFileSync(join(__dirname, '..', 'src', 'style.css'), 'utf8');
+    const css = [...entry.matchAll(/@import '(.+?)';/g)]
+      .map((m) => readFileSync(join(__dirname, '..', 'src', m[1]!), 'utf8'))
+      .join('\n');
     const colBody = css.indexOf('.col-body > .card');
     expect(colBody).toBeGreaterThan(-1);
     for (const m of css.matchAll(/\.card\.[\w-]+\s*\{[^}]*\}/g)) {
@@ -87,7 +92,7 @@ describe('BoardIndex structural guards', () => {
 
   it('counts every board in the same single pass', () => {
     const d = perfDoc(100);
-    d.boards.other = createBoard({ id: 'other', parentId: 'home' });
+    d.boards.other = createBoard({ id: 'other', title: 'Other', parentId: 'home' });
     const n = createNote(d, 'other', 0, 0);
     d.elements[n.id] = n;
     const col = createColumn(d, 'other', 0, 0);

@@ -1,10 +1,11 @@
 import { App } from './app';
 import { Store } from './state/store';
-import { migrateDoc, type Doc } from './state/schema';
+import { EDITOR_TYPES, migrateDoc, survivingBoard, type Doc } from './state/schema';
 import { LocalStorageAdapter, migrateStorageKeys } from './persist/local';
+import { downloadTextFile } from './draw/strokes';
 import { SqliteAdapter } from './persist/sqlite';
 import { purgeOrphanBlobs } from './persist/blobs';
-import { toast } from './ui/toast';
+import { choice, toast } from './ui/toast';
 import { t } from './strings';
 
 function boardIdFromHash(): string | null {
@@ -24,7 +25,10 @@ export async function boot() {
   migrateStorageKeys();
   const local = new LocalStorageAdapter();
   const adapter = (await SqliteAdapter.create(local)) ?? local;
-  if (adapter instanceof SqliteAdapter) adapter.onDegraded = () => toast(t('persistDegraded'));
+  if (adapter instanceof SqliteAdapter) adapter.onDegraded = () => toast(t('persistDegraded'), 'warn');
+  // Ask for durable storage so the doc survives quota pressure;
+  // browsers may refuse silently, the adapter stays best-effort either way.
+  void navigator.storage?.persist?.().catch(() => {});
   const persisted = await adapter.load();
   const fresh = !(persisted && persisted.version === 1 && Object.keys(persisted.doc.boards).length);
   // The welcome seed chunk only loads when a fresh doc is needed;
@@ -32,10 +36,10 @@ export async function boot() {
   const perfN = import.meta.env.DEV ? new URLSearchParams(location.search).get('seed') : null;
   let doc: Doc;
   if (perfN !== null) {
-    const { seedPerfDoc } = await import('./state/seed');
+    const { seedPerfDoc } = await import('./dev/seed');
     doc = seedPerfDoc(+perfN || 1600);
   } else if (fresh) {
-    const { seedDoc } = await import('./state/seed');
+    const { seedDoc } = await import('./dev/seed');
     doc = seedDoc();
   } else {
     doc = migrateDoc(persisted!.doc);
@@ -43,10 +47,36 @@ export async function boot() {
   void purgeOrphanBlobs(doc);
   const store = new Store(doc);
   const app = new App(document.getElementById('app')!, store, adapter);
+  // First-paint filler served by index.html; the canvas covers it from
+  // here on, so it can go.
+  document.getElementById('boot-load')?.remove();
   app.prefs = persisted?.prefs ?? {};
   app.applyPrefs();
   if (fresh && perfN === null) app.welcomeHint();
+  // A persisted blob that failed to parse was quarantined by the
+  // adapter; offer a rescue download before the seed's autosave lands.
+  const corruptRaw = adapter.corrupt?.();
+  if (fresh && corruptRaw) {
+    const raw = corruptRaw;
+    choice(t('persistCorrupt'), t('persistCorruptSave'), () =>
+      downloadTextFile('scatterboard-backup.json', raw, 'application/json'),
+    );
+  }
   if (import.meta.env.DEV) (window as unknown as { __app: App }).__app = app;
+
+  // Last-ditch crash surface: flush pending autosave, then offer a
+  // reload. A silent failure in a local-first app reads as lost work.
+  let crashed = false;
+  const onCrash = () => {
+    if (crashed) return;
+    crashed = true;
+    void app
+      .flush()
+      .catch(() => {})
+      .finally(() => choice(t('errCrash'), t('errReload'), () => location.reload(), undefined, 0));
+  };
+  window.addEventListener('error', onCrash);
+  window.addEventListener('unhandledrejection', onCrash);
 
   // #/e/<id> boots into the element's editor: synthesize a #/b/ history
   // entry underneath so history.back() exits to the board. The mode
@@ -54,16 +84,13 @@ export async function boot() {
   // hash as-is, don't rebuild it.
   const eid = editorIdFromHash();
   const eel = eid ? doc.elements[eid] : undefined;
-  if (eel && doc.boards[eel.boardId] && (eel.type === 'document' || eel.type === 'sketch' || eel.type === 'image')) {
+  if (eel && doc.boards[eel.boardId] && EDITOR_TYPES.has(eel.type)) {
     app.openBoard(eel.boardId);
     history.pushState(null, '', location.hash);
     app.applyRoute();
   } else {
     const requested = boardIdFromHash() ?? adapter.lastBoard();
-    const fallback =
-      (doc.boards.home ? 'home' : undefined) ??
-      Object.values(doc.boards).find((b) => b.parentId === null)?.id ??
-      Object.values(doc.boards)[0]?.id;
+    const fallback = survivingBoard(doc);
     const start = requested && doc.boards[requested] ? requested : fallback;
     if (start) app.openBoard(start);
     app.applyRoute();
@@ -88,5 +115,31 @@ export async function boot() {
     } catch {
       // Agent unavailable this boot; skip silently.
     }
+  }
+
+  // PWA entry points: the OS share target (?share=1 with url/text/
+  // title fields) files into Unsorted, and the manifest shortcuts open
+  // quick capture or the new-board picker. Consumed params leave the
+  // URL so a reload does not replay them.
+  let consumed = false;
+  if (q.has('share')) {
+    const shared = q.get('url') ?? q.get('text') ?? q.get('title');
+    if (shared) app.fileCaptured(shared.slice(0, 4000));
+    for (const k of ['share', 'url', 'text', 'title']) q.delete(k);
+    consumed = true;
+  }
+  if (q.has('capture')) {
+    app.openShortcutCapture();
+    q.delete('capture');
+    consumed = true;
+  }
+  if (q.has('newboard')) {
+    app.openShortcutNewBoard();
+    q.delete('newboard');
+    consumed = true;
+  }
+  if (consumed) {
+    const qs = q.toString();
+    history.replaceState(null, '', `${location.pathname}${qs ? `?${qs}` : ''}${location.hash}`);
   }
 }

@@ -1,17 +1,16 @@
 import type { Store } from './state/store';
-import { boardRefOf, commentDoc, createAnnotation, createColumn, createComment, createDocument, createEmbed, createHeading, createLine, createLink, createNote, createSketch, createSwatch, createTable, createTodo, documentDoc, headingDoc, imageDoc, lineDoc, linkDoc, sketchDoc, uid, GRID, IMAGE_W, UNSORTED, type Doc, type Element, type ElementType, type ID, type EmbedKind, type ImageDoc, type LineEnd, type PresentOpts } from './state/schema';
+import { boardRefOf, createAnnotation, createColumn, createComment, createDocument, createEmbed, createHeading, createLine, createLink, createNote, createSketch, createSwatch, createTable, createTodo, documentDoc, headingDoc, imageDoc, linkDoc, sketchDoc, uid, EDITOR_TYPES, GRID, IMAGE_W, UNSORTED, type Doc, type Element, type ElementType, type ID, type EmbedKind, type ImageDoc, type PresentOpts } from './state/schema';
 import type { Action, ElementPatch } from './state/actions';
 import { getClipboard, setClipboard } from './state/clipboard';
-import type { DocStorage } from './persist/storage';
+import type { DocStorage, Lang, Prefs } from './persist/storage';
 import { blobTotalSize, clearBlobs, putBlob } from './persist/blobs';
-import { ingestFiles, ingestPaste, prepareImage, type IngestApi } from './ui/files';
-import { scrubHtml } from './ui/sanitize';
-import { hostOf, urlTitle } from './ui/embeds';
+import { ingestFiles, ingestPaste, prepareImage, type IngestApi } from './ingest/files';
+import { scrubContent } from './ui/sanitize';
+import { hostOf, urlTitle } from './net/embeds';
 import { Viewport } from './canvas/viewport';
 import { Renderer, type DraftLine, type Guide, type SceneLine } from './canvas/renderer';
 import { CardsLayer } from './cards/layer';
 import { cardAriaLabel } from './cards/factory';
-import { openThreadPopup } from './cards/comment';
 import { Topbar, type Crumb } from './ui/topbar';
 import { Rail } from './ui/rail';
 import { attachPointer } from './canvas/input';
@@ -25,10 +24,9 @@ import { imgModeFromHash, imgModeParam, type ImgMode } from './editor/imgmode';
 import type { ImgEditorHandle } from './editor/imgeditor';
 import { openShortcutsPanel } from './ui/shortcutpanel';
 import { openCapturePopup } from './ui/capture';
-import { setFormatting } from './ui/locale';
-import type { Lang } from './persist/storage';
+import { setFormatting } from './locale';
 import { CREATE_ITEMS } from './ui/rail';
-import { openHelpMenu, openMobileMenu, openViewMenu, openZoomMenu } from './ui/toolpopups';
+import { openHelpMenu, openMobileMenu, openViewMenu } from './ui/toolpopups';
 import { installAvailable, runInstall } from './ui/install';
 import { DROP_EXCLUDE, mobileShell } from './ui/util';
 import { closeBoardPopup, closeToolPopup } from './ui/popup';
@@ -37,15 +35,15 @@ import { builtinTemplates } from './state/templates';
 import { openNewBoardPicker } from './ui/newboard';
 import { openAboutPopup, openAgentPopup, openSettings, SCALE_STEPS } from './ui/settings';
 import { isDark, setTheme, setUiScale, systemDark } from './ui/theme';
-import type { Prefs } from './persist/storage';
 import { BoardExport } from './app/export';
 import { Editing } from './app/editing';
 import { RailTools } from './app/tools';
 import { Panels } from './app/panels';
 import { Gestures } from './app/gestures';
 import { Overlays } from './app/overlays';
+import { Deletion } from './app/deletion';
+import { Comments } from './app/comments';
 const SAVE_DEBOUNCE = 700;
-const DRAG_SLOP = 3;
 
 
 export class App {
@@ -58,6 +56,8 @@ export class App {
   readonly tools = new RailTools(this);
   readonly panels = new Panels(this);
   readonly gestures = new Gestures(this);
+  readonly deletion = new Deletion(this);
+  readonly comments = new Comments(this);
 
   store: Store;
 
@@ -113,7 +113,7 @@ export class App {
 
   private wasFiltering = false;
 
-  private draft: DraftLine | null = null;
+  draft: DraftLine | null = null;
 
   // Screen-space helpers outside .doc's transform: the empty-board
   // hint render() toggles, and a visually-hidden live region that
@@ -122,7 +122,7 @@ export class App {
 
   private liveEl: HTMLElement;
 
-  private endDraft: { id: ID; which: 'from' | 'to'; x: number; y: number } | null = null;
+  endDraft: { id: ID; which: 'from' | 'to'; x: number; y: number } | null = null;
 
   readonly overlays: Overlays;
 
@@ -214,11 +214,16 @@ export class App {
     this.docEl.appendChild(this.layer.node);
     this.overlays = new Overlays(this);
     this.renderer = new Renderer(this.canvasEl, this.chromeEl, this.vp);
+    const onUndo = () => {
+      if (!this.lockedView()) this.store.undo();
+    };
+    const onRedo = () => {
+      if (!this.lockedView()) this.store.redo();
+    };
     this.topbar = new Topbar(root, {
       onZoomIn: () => this.vp.zoomStep(1),
       onZoomOut: () => this.vp.zoomStep(-1),
-      onZoomMenu: (anchor) =>
-        openZoomMenu(anchor, { zoom: () => this.vp.z, onZoom: (z) => this.vp.zoomTo(z), onFit: () => this.fitView() }),
+      onZoomReset: () => this.vp.reset(),
       onFit: () => this.fitView(),
       onNavigate: (id) => this.openBoard(id),
       onUnsorted: () => this.panels.openUnsorted(),
@@ -230,12 +235,8 @@ export class App {
       onMore: (anchor) => this.openMobileMenu(anchor),
       onCrumbIcon: (id, anchor) => this.panels.iconPickerFor(id, anchor),
       onCrumbBoards: () => this.panels.openBoards(),
-      onUndo: () => {
-        if (!this.lockedView()) this.store.undo();
-      },
-      onRedo: () => {
-        if (!this.lockedView()) this.store.redo();
-      },
+      onUndo,
+      onRedo,
     });
     this.rail = new Rail(root, {
       onDrop: (type, at, kind) => this.createFromRail(type, at, kind),
@@ -245,12 +246,8 @@ export class App {
       onUpload: () => this.pickFiles('*/*'),
       onDraw: () => this.enterDrawMode(),
       onCapture: (anchor) => this.openCapture(anchor),
-      onUndo: () => {
-        if (!this.lockedView()) this.store.undo();
-      },
-      onRedo: () => {
-        if (!this.lockedView()) this.store.redo();
-      },
+      onUndo,
+      onRedo,
       onTrash: () => this.onRailTrash(),
       onBoardColor: (hex) => {
         if (this.boardId && !this.lockedView()) {
@@ -421,16 +418,15 @@ export class App {
     const em = location.hash.match(/^#\/e\/([^/?#]+)/);
     if (em) {
       const el = this.doc.elements[em[1]!];
-      if (el && (el.type === 'document' || el.type === 'sketch' || el.type === 'image')) {
+      if (el && EDITOR_TYPES.has(el.type)) {
         void this.openElementEditor(el);
         return;
       }
     }
     this.closeElementEditor();
-    const em2 = location.hash.match(/^#\/e\/([^/?#]+)/);
     // A stale #/e route (element gone or a type with no editor) gets
     // rewritten to the board so Back/Forward semantics stay sane.
-    if (em2 && this.boardId) history.replaceState(null, '', `#/b/${this.boardId}`);
+    if (em && this.boardId) history.replaceState(null, '', `#/b/${this.boardId}`);
     const bm = location.hash.match(/^#\/b\/([^/?#]+)/);
     if (bm && bm[1] !== this.boardId) {
       this.openBoard(bm[1]!);
@@ -478,7 +474,7 @@ export class App {
           patch: (doc) => {
             const cur = this.doc.elements[el.id];
             if (cur && documentDoc(cur)) {
-              scrubHtml(doc);
+              scrubContent(doc);
               this.store.dispatch({ type: 'element.patch', id: el.id, patch: { content: { document: doc } } });
             }
           },
@@ -872,74 +868,26 @@ export class App {
   }
 
 
-  openCommentThread(id: ID, anchor: HTMLElement | DOMRect) {
-    const el = this.doc.elements[id];
-    if (el?.type !== 'comment') return;
-    // Opening the thread marks it read for the pin unread badge.
-    const commentOf = () => {
-      const e = this.doc.elements[id];
-      return e ? (commentDoc(e) ?? null) : null;
-    };
-    const markSeen = () => {
-      const n = commentOf()?.items.length ?? 0;
-      this.prefs.commentSeen = { ...(this.prefs.commentSeen ?? {}), [id]: n };
-      this.scheduleSave();
-      this.overlays.syncPins();
-    };
-    const items = () => commentOf()?.items ?? [];
-    markSeen();
-    const pop = openThreadPopup(anchor, items, {
-      onAdd: (text) => {
-        if (this.lockedView()) return;
-        const c = commentOf();
-        if (!c) return;
-        this.store.dispatch({
-          type: 'element.patch',
-          id,
-          patch: { content: { comment: { items: [...c.items, { id: uid(), text, createdAt: Date.now() }] } } },
-        });
-        markSeen();
-      },
-      onEdit: (iid, text) => {
-        if (this.lockedView()) return;
-        const c = commentOf();
-        if (!c) return;
-        this.store.dispatch({
-          type: 'element.patch',
-          id,
-          patch: {
-            content: {
-              comment: { items: c.items.map((i) => (i.id === iid ? { ...i, text, editedAt: Date.now() } : i)) },
-            },
-          },
-        });
-      },
-      onDelete: (iid) => {
-        if (this.lockedView()) return;
-        const c = commentOf();
-        if (!c) return;
-        this.store.dispatch({
-          type: 'element.patch',
-          id,
-          patch: { content: { comment: { items: c.items.filter((i) => i.id !== iid) } } },
-        });
-      },
-    });
-    // Anchored comments with no items would linger as blank pins; when
-    // the popup closes empty, the element goes with it.
-    const close = pop.close.bind(pop);
-    pop.close = () => {
-      close();
-      const el = this.doc.elements[id];
-      if (el?.anchorId !== undefined && !items().length && !this.lockedView()) {
-        this.store.dispatch({ type: 'element.delete', el });
-      }
-      if (this.sel.delete(id)) this.requestRender();
-    };
-  }
+  private linesCache: { key: string; lines: SceneLine[] } | null = null;
 
-
+  // Line resolution walks every line + its endpoint rects; pointerdown
+  // hit-tests reuse the frame's result via this cache, invalidated by
+  // doc rev, board, rect or gesture-state changes.
   resolvedLines(): SceneLine[] {
+    const lift = this.gestures.liftMember();
+    const ld = lift ? this.gestures.liftDelta(lift.memberId) : null;
+    const d = this.endDraft;
+    const key = [
+      this.store.rev,
+      this.boardId,
+      this.layer.rectRev,
+      this.presenting,
+      this.board()?.presentOpts?.focus,
+      this.sel.size ? [...this.sel].join(',') : '',
+      d ? `${d.id}:${d.which}:${d.x},${d.y}` : '',
+      lift && ld ? `${lift.memberId}:${ld.dx},${ld.dy}` : '',
+    ].join('|');
+    if (this.linesCache?.key === key) return this.linesCache.lines;
     const out: SceneLine[] = [];
     // Lifted members keep their arrows glued: endpoints resolve against
     // the lifted rect, same as chips and the selection outline.
@@ -963,6 +911,7 @@ export class App {
       }
       out.push({ el: l.el, x1: l.x1, y1: l.y1, x2: l.x2, y2: l.y2, selected: this.sel.has(el.id), dim: this.dims(el.id) });
     }
+    this.linesCache = { key, lines: out };
     return out;
   }
 
@@ -997,34 +946,6 @@ export class App {
   }
 
 
-  // Accent outline on the card a connect/endpoint drag would attach to.
-  private connectHint: ID | null = null;
-
-  private setConnectHint(id: ID | null) {
-    if (id === this.connectHint) return;
-    if (this.connectHint) this.hintNode(this.connectHint)?.classList.remove('connect-target');
-    if (id) this.hintNode(id)?.classList.add('connect-target');
-    this.connectHint = id;
-  }
-
-
-  private hintNode(id: ID): HTMLElement | null {
-    // The flat view map resolves member views directly.
-    return this.layer.view(id)?.node ?? null;
-  }
-
-
-  // Drop hit-test that sees through interactive overlays (pins, label
-  // pills, connect handle, anno paths) to the card underneath.
-  private cardAtPoint(clientX: number, clientY: number): ID | null {
-    for (const n of document.elementsFromPoint(clientX, clientY)) {
-      const c = (n as HTMLElement).closest?.('.card');
-      if (c instanceof HTMLElement && c.dataset.id) return c.dataset.id;
-    }
-    return null;
-  }
-
-
   isTextTarget(e: Event): boolean {
     const el = e.target as HTMLElement;
     return (
@@ -1055,218 +976,8 @@ export class App {
 
 
   private onRailTrash() {
-    if (this.editingId || this.sel.size) this.deleteSelection();
+    if (this.editingId || this.sel.size) this.deletion.deleteSelection();
     else this.panels.openTrash();
-  }
-
-
-  // --- line endpoint gestures ---
-
-  // Drag a line by its body: both ends translate together, detaching to
-  // free points while it moves; on drop each end re-anchors to whatever
-  // card it landed on.
-  startLineDrag(id: ID, e: PointerEvent) {
-    if (this.lockedView()) return;
-    const el = this.doc.elements[id];
-    const c = el ? lineDoc(el) : null;
-    if (!el || !c || el.locked) return;
-    const rl = resolveLine(el, this.doc, (x) => this.layer.rectOf(x));
-    if (!rl) return;
-    const pid = e.pointerId;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const p0 = this.boardPoint(e);
-    let moved = false;
-    const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
-      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_SLOP) return;
-      if (!moved) {
-        moved = true;
-        this.store.beginGroup();
-      }
-      const p = this.boardPoint(ev);
-      const dx = Math.round(p.x - p0.x);
-      const dy = Math.round(p.y - p0.y);
-      this.store.dispatch({
-        type: 'element.patch',
-        id,
-        patch: {
-          content: {
-            line: { ...c, from: { x: rl.x1 + dx, y: rl.y1 + dy }, to: { x: rl.x2 + dx, y: rl.y2 + dy } },
-          },
-        },
-      });
-    };
-    const cleanup = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', cancel);
-    };
-    const cancel = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
-      cleanup();
-      if (moved) {
-        // Restore the captured endpoints: a cancelled drag keeps the
-        // original anchors instead of stranding the line on free points.
-        const curEl = this.doc.elements[id];
-        if (curEl && lineDoc(curEl)) {
-          this.store.dispatch({ type: 'element.patch', id, patch: { content: { line: c } } });
-        }
-        this.store.endGroup('line-move');
-        this.requestRender();
-      }
-    };
-    const up = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
-      cleanup();
-      if (moved) {
-        const curEl = this.doc.elements[id];
-        const cur = curEl ? lineDoc(curEl) : null;
-        if (cur) {
-          const snap = (pt: { x: number; y: number }): LineEnd => {
-            const s = this.vp.toScreen(pt.x, pt.y);
-            const tid = this.cardAtPoint(s.x, s.y);
-            const end: LineEnd = { x: Math.round(pt.x), y: Math.round(pt.y) };
-            if (tid && tid !== id) end.el = tid;
-            return end;
-          };
-          this.store.dispatch({
-            type: 'element.patch',
-            id,
-            patch: { content: { line: { ...cur, from: snap(cur.from), to: snap(cur.to) } } },
-          });
-        }
-        this.store.endGroup('line-move');
-        this.requestRender();
-      }
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', cancel);
-  }
-
-  startEndpointGesture(id: ID, which: 'from' | 'to', e: PointerEvent) {
-    if (this.lockedView()) return;
-    const el = this.doc.elements[id];
-    const c = el ? lineDoc(el) : null;
-    if (!el || !c) return;
-    const pid = e.pointerId;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    let moved = false;
-    const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
-      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_SLOP) return;
-      if (!moved) {
-        moved = true;
-        this.store.beginGroup();
-      }
-      const p = this.boardPoint(ev);
-      this.endDraft = { id, which, x: p.x, y: p.y };
-      this.setConnectHint(this.cardAtPoint(ev.clientX, ev.clientY));
-      this.requestRender();
-    };
-    const cleanup = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', cancel);
-    };
-    const cancel = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
-      cleanup();
-      this.endDraft = null;
-      this.setConnectHint(null);
-      if (moved) this.store.endGroup('line-end');
-      this.requestRender();
-    };
-    const up = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
-      cleanup();
-      this.endDraft = null;
-      this.setConnectHint(null);
-      if (moved) {
-        const targetId = this.cardAtPoint(ev.clientX, ev.clientY);
-        const p = this.boardPoint(ev);
-        const end: LineEnd = { x: Math.round(p.x), y: Math.round(p.y) };
-        if (targetId && targetId !== id) end.el = targetId;
-        this.store.dispatch({
-          type: 'element.patch',
-          id,
-          patch: { content: { line: which === 'from' ? { ...c, from: end } : { ...c, to: end } } },
-        });
-        this.store.endGroup('line-end');
-      } else if (ev.detail <= 1) {
-        // detail>1 means this up belongs to a dblclick; the label edit
-        // owns that gesture, so only the first click cycles the marker
-        // (pen/touch ups report detail 0 and must still cycle).
-        const cur = which === 'from' ? c.fromMarker : c.toMarker;
-        const next = cur === 'none' ? 'arrow' : cur === 'arrow' ? ('dot' as const) : ('none' as const);
-        this.store.dispatch({
-          type: 'element.patch',
-          id,
-          patch: {
-            content: {
-              line:
-                which === 'from' ? { ...c, fromMarker: next } : { ...c, toMarker: next },
-            },
-          },
-        });
-      }
-      this.requestRender();
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', cancel);
-  }
-
-
-  startConnect(sourceId: ID, e: PointerEvent) {
-    if (this.lockedView()) return;
-    const src = this.doc.elements[sourceId];
-    if (!src) return;
-    const r = this.layer.rectOf(src);
-    const from = { x: r.x + r.w, y: r.y + r.h / 2 };
-    const pid = e.pointerId;
-    const p0 = this.boardPoint(e);
-    this.draft = { x1: from.x, y1: from.y, x2: p0.x, y2: p0.y };
-    this.requestRender();
-    const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
-      const p = this.boardPoint(ev);
-      this.draft = { x1: from.x, y1: from.y, x2: p.x, y2: p.y };
-      const t = this.cardAtPoint(ev.clientX, ev.clientY);
-      this.setConnectHint(t !== sourceId ? t : null);
-      this.requestRender();
-    };
-    const cleanup = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', cancel);
-    };
-    const cancel = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
-      cleanup();
-      this.draft = null;
-      this.setConnectHint(null);
-      this.requestRender();
-    };
-    const up = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
-      cleanup();
-      this.draft = null;
-      this.setConnectHint(null);
-      const targetId = this.cardAtPoint(ev.clientX, ev.clientY);
-      if (targetId && targetId !== sourceId && this.boardId) {
-        const p = this.boardPoint(ev);
-        const el = createLine(this.doc, this.boardId, { el: sourceId, x: from.x, y: from.y }, { el: targetId, x: Math.round(p.x), y: Math.round(p.y) });
-        this.store.dispatch({ type: 'element.create', el });
-        this.setSelection([el.id]);
-      }
-      this.requestRender();
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', cancel);
   }
 
 
@@ -1485,149 +1196,42 @@ export class App {
 
 
   deleteSelection() {
-    if (!this.sel.size || this.lockedView()) return;
-    this.editing.endEdit();
-    closeToolPopup();
-    const actions: Action[] = [];
-    const deleting = new Set<ID>();
-    const deadBoards = new Set<ID>();
-    for (const id of this.sel) {
-      const el = this.doc.elements[id];
-      if (!el) continue;
-      if (el.type === 'column') {
-        // Members unfile next to the column's rendered rect: a nested
-        // column's stored x/y is its stale pre-filing spot.
-        const cr = this.layer.rectOf(el);
-        this.layer.members(el.id).forEach((m, i) => {
-          actions.push({
-            type: 'element.patch',
-            id: m.id,
-            patch: { parentId: null, x: Math.round(cr.x + 24 + i * 20), y: Math.round(cr.y + 24 + i * 20) },
-          });
-        });
-      }
-      deleting.add(el.id);
-      const ref = boardRefOf(el);
-      if (ref) {
-        for (const a of this.cascadeActions(ref)) {
-          actions.push(a);
-          if (a.type === 'element.delete') deleting.add(a.el.id);
-          else if (a.type === 'board.delete') deadBoards.add(a.board.id);
-        }
-      }
-    }
-    // Board cards/shortcuts elsewhere that point at the deleted subtree
-    // would dangle (same sweep deleteBoardCascade does).
-    for (const el of Object.values(this.doc.elements)) {
-      if (deleting.has(el.id)) continue;
-      const ref = boardRefOf(el);
-      if (ref && deadBoards.has(ref)) {
-        deleting.add(el.id);
-        actions.push({ type: 'element.delete', el });
-      }
-    }
-    actions.unshift(...this.detachCommentActions(deleting));
-    actions.unshift(...this.detachLineActions(deleting));
-    const now = Date.now();
-    for (const id of this.sel) {
-      const el = this.doc.elements[id];
-      if (!el) continue;
-      actions.push({ type: 'element.delete', el });
-      // Board cards and cascade children skip the bin: a restored card
-      // without its board would be broken.
-      if (el.type !== 'board') actions.push({ type: 'trash.add', id: el.id, entry: { el, deletedAt: now } });
-    }
-    this.store.dispatch({ type: 'batch', actions });
-    this.sel.clear();
-    this.filterIds.clear();
+    this.deletion.deleteSelection();
   }
 
 
-  // Lines attached to a deleted card keep their last resolved point as a free end.
-  detachLineActions(deleting: Set<ID>): Action[] {
-    const out: Action[] = [];
-    const rectOf = (el: Element) => this.layer.rectOf(el);
-    for (const el of Object.values(this.doc.elements)) {
-      if (el.type !== 'line' || deleting.has(el.id)) continue;
-      const c = lineDoc(el);
-      if (!c) continue;
-      const fromGone = c.from.el !== undefined && deleting.has(c.from.el);
-      const toGone = c.to.el !== undefined && deleting.has(c.to.el);
-      if (!fromGone && !toGone) continue;
-      const l = resolveLine(el, this.doc, rectOf);
-      if (!l) continue;
-      const next = { ...c };
-      if (fromGone) next.from = { x: Math.round(l.x1), y: Math.round(l.y1) };
-      if (toGone) next.to = { x: Math.round(l.x2), y: Math.round(l.y2) };
-      out.push({ type: 'element.patch', id: el.id, patch: { content: { line: next } } });
-    }
-    return out;
+  detachLineActions(deleting: Set<ID>) {
+    return this.deletion.detachLineActions(deleting);
   }
 
 
-  // Card-type converts replace the element in place: line endpoints and
-  // comment anchors retarget onto the new card in the same batch.
-  retargetAttachActions(fromId: ID, toId: ID): Action[] {
-    const out: Action[] = [];
-    for (const el of Object.values(this.doc.elements)) {
-      if (el.type === 'line') {
-        const c = lineDoc(el);
-        if (!c) continue;
-        const next = { ...c };
-        if (c.from.el === fromId) next.from = { ...c.from, el: toId };
-        if (c.to.el === fromId) next.to = { ...c.to, el: toId };
-        if (next.from !== c.from || next.to !== c.to) {
-          out.push({ type: 'element.patch', id: el.id, patch: { content: { line: next } } });
-        }
-      } else if (el.type === 'comment' && el.anchorId === fromId) {
-        out.push({ type: 'element.patch', id: el.id, patch: { anchorId: toId } });
-      }
-    }
-    return out;
+  detachCommentActions(deleting: Set<ID>) {
+    return this.deletion.detachCommentActions(deleting);
   }
 
 
-  // Comments anchored to a deleted card detach to free coordinates at the
-  // anchor's current spot, in the same delete batch (line-detach pattern).
-  detachCommentActions(deleting: Set<ID>): Action[] {
-    const out: Action[] = [];
-    for (const el of Object.values(this.doc.elements)) {
-      if (el.type !== 'comment' || el.anchorId === undefined || deleting.has(el.id)) continue;
-      const anchor = this.doc.elements[el.anchorId];
-      if (!anchor || !deleting.has(anchor.id)) continue;
-      const r = this.layer.rectOf(anchor);
-      out.push({
-        type: 'element.patch',
-        id: el.id,
-        patch: { anchorId: undefined, x: Math.round(r.x + r.w + 20), y: Math.round(r.y) },
-      });
-    }
-    return out;
+  retargetAttachActions(fromId: ID, toId: ID) {
+    return this.deletion.retargetAttachActions(fromId, toId);
   }
 
 
-  cascadeActions(boardId: ID): Action[] {
-    const out: Action[] = [];
-    const seen = new Set<ID>();
-    const visit = (bid: ID) => {
-      if (seen.has(bid)) return;
-      seen.add(bid);
-      const board = this.doc.boards[bid];
-      if (!board) return;
-      for (const el of Object.values(this.doc.elements)) {
-        if (el.boardId === bid) out.push({ type: 'element.delete', el });
-      }
-      for (const l of Object.values(this.doc.labels)) {
-        // Board-scoped labels would orphan in the doc forever.
-        if (l.boardId === bid) out.push({ type: 'label.delete', label: l });
-      }
-      out.push({ type: 'board.delete', board });
-      for (const b of Object.values(this.doc.boards)) {
-        if (b.parentId === bid) visit(b.id);
-      }
-    };
-    visit(boardId);
-    return out;
+  cascadeActions(boardId: ID) {
+    return this.deletion.cascadeActions(boardId);
+  }
+
+
+  startLineDrag(id: ID, e: PointerEvent) {
+    this.gestures.startLineDrag(id, e);
+  }
+
+
+  startEndpointGesture(id: ID, which: 'from' | 'to', e: PointerEvent) {
+    this.gestures.startEndpointGesture(id, which, e);
+  }
+
+
+  startConnect(sourceId: ID, e: PointerEvent) {
+    this.gestures.startConnect(sourceId, e);
   }
 
 
@@ -1669,7 +1273,7 @@ export class App {
   cutSelection() {
     if (this.lockedView()) return;
     this.copySelection();
-    this.deleteSelection();
+    this.deletion.deleteSelection();
   }
 
 
@@ -1883,10 +1487,6 @@ export class App {
   }
 
 
-  // Native color wells fire 'input' continuously; a short-lived undo
-  // group collapses a whole scrub into one history entry.
-  colorTimer = 0;
-
   zOrder(dir: 'front' | 'back') {
     this.tools.zOrder(dir);
   }
@@ -2015,7 +1615,7 @@ export class App {
     let content: { image: ImageDoc } | undefined;
     if (Math.abs(aspect - c.aspect) > 0.001) {
       try {
-        const { loadBitmap, cropImage, canvasBlob } = await import('./canvas/imgops');
+        const { loadBitmap, cropImage, canvasBlob } = await import('./editor/imgops');
         const bmp = await loadBitmap(c.blobRef);
         if (!bmp) {
           toast(t('imageMissing'), 'err');

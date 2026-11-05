@@ -87,15 +87,15 @@ export function sanitizeHtml(html: string): string {
 // boundary that persists html: JSON import, agent commands, and live
 // card commits (the scrubber only strips markup the editor can't
 // produce, so it is safe at commit).
-export function scrubHtml(v: unknown, depth = 0): void {
+export function scrubContent(v: unknown, depth = 0): void {
   if (depth > 24 || !v || typeof v !== 'object') return;
   if (Array.isArray(v)) {
-    for (const item of v) scrubHtml(item, depth + 1);
+    for (const item of v) scrubContent(item, depth + 1);
     return;
   }
   const o = v as Record<string, unknown>;
   for (const [k, val] of Object.entries(o)) {
     if (k === 'html' && typeof val === 'string') o[k] = sanitizeHtml(val);
-    else scrubHtml(val, depth + 1);
+    else scrubContent(val, depth + 1);
   }
 }

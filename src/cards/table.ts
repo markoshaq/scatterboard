@@ -1,14 +1,15 @@
 import type { CellType, Element, TableCell, TableDoc } from '../state/schema';
 import { tableDoc, UNSORTED } from '../state/schema';
 import { t } from '../strings';
-import { evalFormula, isFormula, remapCells, FORMULA_NAMES } from './formula';
-import { openToolPopup, type ToolPopup } from '../ui/popup';
+import { evalFormula, isFormula, remapCells } from './formula';
 import { ensureBlockChildren, isBlankSurface, richKeydown } from '../ui/richtext';
 import type { CardCtx } from './factory';
 import type { CardView } from './note';
 import { cardBg } from '../ui/theme';
-import { fmtCurrency, fmtDate, fmtNumber } from '../ui/locale';
+import { fmtCurrency, fmtDate, fmtNumber } from '../locale';
 import { COL_PAD } from './measure';
+import { TableGrips, type GripHost } from './table/grips';
+import { TableFx, type FxHost } from './table/fxpop';
 
 // .card.table padding is 10px per side; column resize clamps at 40px.
 const TB_PAD = 10;
@@ -42,28 +43,26 @@ function displayOf(cell: TableCell, cells: TableCell[][]): string {
 // Cell focus lives in the view: a click focuses a cell (cell rail),
 // dbl-click or typing enters text edit on it. The whole card is one
 // undo-group edit session, like the todo card.
-export class TableCard implements CardView {
+export class TableCard implements CardView, GripHost, FxHost {
   id: string;
   node: HTMLElement;
   editing = false;
-  private ctx: CardCtx;
+  ctx: CardCtx;
+  gridEl: HTMLElement;
+  cellEls: HTMLElement[][] = [];
   private titleEl: HTMLElement;
-  private gridEl: HTMLElement;
   private capEl: HTMLElement;
   private handle: HTMLElement;
-  private cellEls: HTMLElement[][] = [];
   private focus: { r: number; c: number } | null = null;
   private editingCell = false;
   private fieldEl: HTMLElement | null = null;
   private wantDomFocus = false;
-  private fx: { pop: ToolPopup; node: HTMLElement } | null = null;
   private lastTitle = '';
   private lastCap = '';
   private downAt = { x: 0, y: 0 };
-  private grips: HTMLElement | null = null;
-  private gripDrag = false;
   private colSig = '';
-  private gripSig = '';
+  private gripCtl = new TableGrips(this);
+  private fxCtl = new TableFx(this);
 
   constructor(el: Element, ctx: CardCtx) {
     this.id = el.id;
@@ -161,7 +160,7 @@ export class TableCard implements CardView {
     this.update(el);
   }
 
-  private content(): TableDoc | null {
+  content(): TableDoc | null {
     const el = this.ctx.doc.elements[this.id];
     return el ? tableDoc(el) : null;
   }
@@ -291,11 +290,10 @@ export class TableCard implements CardView {
   // to the app and ends the session.
   private editKeydown(e: KeyboardEvent, cellEl: HTMLElement) {
     const meta = e.metaKey || e.ctrlKey;
-    if (this.fx && e.key === 'Enter') {
+    if (this.fxCtl.isOpen && e.key === 'Enter') {
       e.preventDefault();
       e.stopPropagation();
-      const first = this.fx.node.querySelector<HTMLElement>('.pop-row');
-      first?.click();
+      this.fxCtl.accept();
       return;
     }
     if (e.key === 'Enter' && !e.shiftKey && !meta) {
@@ -406,7 +404,7 @@ export class TableCard implements CardView {
 
   // --- content pushes (all inside the app's edit-session group) ---
 
-  private pushCell(cellEl: HTMLElement) {
+  pushCell(cellEl: HTMLElement) {
     const c = this.content();
     if (!c) return;
     const r = +cellEl.dataset.r!;
@@ -420,8 +418,8 @@ export class TableCard implements CardView {
     const cells = c.cells.map((row) => row.slice());
     cells[r]![col] = { ...cell, text, html };
     this.dispatch({ ...c, cells });
-    if (/^=[A-Za-z]*$/.test(text)) this.openFx(cellEl);
-    else this.closeFx();
+    if (/^=[A-Za-z]*$/.test(text)) this.fxCtl.open(cellEl);
+    else this.fxCtl.close();
   }
 
   private setCellText(r: number, c: number, text: string) {
@@ -551,7 +549,7 @@ export class TableCard implements CardView {
 
   // Column reorder from the top grip strip: move src col to index dst,
   // cells and widths splice together so layouts stay in sync.
-  private moveColumn(src: number, dst: number) {
+  moveColumn(src: number, dst: number) {
     const c = this.content();
     if (!c || src === dst) return;
     const cells = c.cells.map((row) => {
@@ -596,7 +594,7 @@ export class TableCard implements CardView {
 
   // The width the card actually renders at: members ignore el.w and
   // take the column's inner width.
-  private renderedW(el: Element): number {
+  renderedW(el: Element): number {
     if (el.parentId && el.parentId !== UNSORTED) {
       const pw = this.ctx.doc.elements[el.parentId]?.w;
       if (pw) return pw - COL_PAD * 2;
@@ -604,7 +602,7 @@ export class TableCard implements CardView {
     return el.w ?? 300;
   }
 
-  private setColWidth(ci: number, w: number) {
+  setColWidth(ci: number, w: number) {
     const c = this.content();
     if (!c) return;
     const widths = this.materializeWidths();
@@ -612,133 +610,7 @@ export class TableCard implements CardView {
     this.dispatch({ ...c, widths });
   }
 
-  // Column edge resize + header-strip reorder grips, mounted only while
-  // editing. Positions come from the first-row cell offsets.
-  private syncGrips(force = false) {
-    // A resize/reorder drag owns the grips: rebuilding mid-gesture would
-    // remove the captured element and kill the in-flight pointer stream.
-    if (this.gripDrag) return;
-    if (!this.editing) {
-      this.grips?.remove();
-      this.grips = null;
-      return;
-    }
-    const c = this.content();
-    const cols = c?.cells[0]?.length ?? 0;
-    const row0 = this.cellEls[0];
-    if (!c || !cols || !row0?.length) {
-      this.grips?.remove();
-      this.grips = null;
-      return;
-    }
-    // Grips rebind per rebuild and read cell offsets, so they only
-    // rebuild when geometry can have moved: structure, widths, card
-    // width or the zoom bucket (edge offsets counter-scale). Row moves
-    // and buildGrid call with force since they keep the same sig.
-    const el = this.ctx.doc.elements[this.id];
-    const zb = Math.round((this.ctx.zoom?.() ?? 1) * 50);
-    const sig = `${c.cells.length}|${cols}|${(c.widths ?? []).join(',')}|${el ? this.renderedW(el) : 0}|${zb}`;
-    if (!force && this.grips && sig === this.gripSig) return;
-    this.gripSig = sig;
-    if (!this.grips) {
-      this.grips = document.createElement('div');
-      this.grips.className = 'tb-grips';
-      this.grips.dataset.noclick = '1';
-      this.gridEl.appendChild(this.grips);
-    }
-    this.grips.textContent = '';
-    const h = this.gridEl.offsetHeight;
-    for (let ci = 0; ci < cols; ci++) {
-      const cell = row0[ci]!;
-      const x = cell.offsetLeft;
-      const w = cell.offsetWidth;
-
-      const grip = document.createElement('div');
-      grip.className = 'tb-grip';
-      grip.style.left = `${x}px`;
-      grip.style.width = `${w}px`;
-      grip.dataset.noclick = '1';
-      this.bindColDrag(grip, ci);
-      this.grips.appendChild(grip);
-
-      if (ci < cols) {
-        const edge = document.createElement('div');
-        edge.className = 'tb-edge';
-        // Grip widths counter-scale with zoom, so the offset does too.
-        edge.style.left = `${x + w - 3 / this.scale()}px`;
-        edge.style.height = `${h}px`;
-        edge.dataset.noclick = '1';
-        this.bindColResize(edge, ci, w);
-        this.grips.appendChild(edge);
-      }
-    }
-    // Row grips mirror the column grips on the left edge.
-    for (let ri = 0; ri < this.cellEls.length; ri++) {
-      const cell = this.cellEls[ri]?.[0];
-      if (!cell) continue;
-      const grip = document.createElement('div');
-      grip.className = 'tb-rgrip';
-      grip.style.top = `${cell.offsetTop}px`;
-      grip.style.height = `${cell.offsetHeight}px`;
-      grip.dataset.noclick = '1';
-      this.bindRowDrag(grip, ri);
-      this.grips.appendChild(grip);
-    }
-  }
-
-  // Accent insertion line shown at the row/column boundary a grip drag
-  // would drop onto (same idea as .drop-hint on columns).
-  private gripMark(axis: 'h' | 'v', at: number) {
-    if (!this.grips) return;
-    let m = this.grips.querySelector<HTMLElement>('.tb-mark');
-    if (!m) {
-      m = document.createElement('div');
-      this.grips.appendChild(m);
-    }
-    m.className = `tb-mark ${axis}`;
-    if (axis === 'h') m.style.top = `${at}px`;
-    else m.style.left = `${at}px`;
-  }
-
-  private bindRowDrag(grip: HTMLElement, ri: number) {
-    grip.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      grip.setPointerCapture(e.pointerId);
-      this.gripDrag = true;
-      const pid = e.pointerId;
-      const centers = this.cellEls.map((row) => {
-        const r = row[0]!.getBoundingClientRect();
-        return r.top + r.height / 2;
-      });
-      let dst = ri;
-      let moved = false;
-      const move = (ev: PointerEvent) => {
-        if (ev.pointerId !== pid) return;
-        moved = true;
-        const raw = centers.findIndex((cy) => ev.clientY < cy);
-        dst = raw < 0 ? centers.length - 1 : raw;
-        const cell = this.cellEls[dst]?.[0];
-        if (cell) this.gripMark('h', raw < 0 ? cell.offsetTop + cell.offsetHeight : cell.offsetTop);
-        grip.classList.add('tb-grip-drag');
-      };
-      const up = (ev: PointerEvent) => {
-        if (ev.pointerId !== pid) return;
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
-        window.removeEventListener('pointercancel', up);
-        grip.classList.remove('tb-grip-drag');
-        this.gripDrag = false;
-        if (ev.type === 'pointerup' && moved && Math.abs(ev.clientY - e.clientY) > 4) this.moveRow(ri, dst);
-        this.syncGrips(true);
-      };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
-      window.addEventListener('pointercancel', up);
-    });
-  }
-
-  private moveRow(src: number, dst: number) {
+  moveRow(src: number, dst: number) {
     const c = this.content();
     if (!c || src === dst) return;
     const cells = c.cells.slice();
@@ -759,76 +631,6 @@ export class TableCard implements CardView {
     });
   }
 
-  private bindColResize(edge: HTMLElement, ci: number, w0: number) {
-    edge.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const x0 = e.clientX;
-      edge.setPointerCapture(e.pointerId);
-      this.gripDrag = true;
-      const pid = e.pointerId;
-      const move = (ev: PointerEvent) => {
-        if (ev.pointerId !== pid) return;
-        this.setColWidth(ci, w0 + (ev.clientX - x0) / this.scale());
-      };
-      const up = (ev: PointerEvent) => {
-        if (ev.pointerId !== pid) return;
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
-        window.removeEventListener('pointercancel', up);
-        this.gripDrag = false;
-        this.syncGrips(true);
-      };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
-      window.addEventListener('pointercancel', up);
-    });
-  }
-
-  private bindColDrag(grip: HTMLElement, ci: number) {
-    grip.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      grip.setPointerCapture(e.pointerId);
-      const row0 = this.cellEls[0];
-      if (!row0) return;
-      this.gripDrag = true;
-      const pid = e.pointerId;
-      const centers = row0.map((cell) => {
-        const r = cell.getBoundingClientRect();
-        return r.left + r.width / 2;
-      });
-      let dst = ci;
-      let moved = false;
-      const move = (ev: PointerEvent) => {
-        if (ev.pointerId !== pid) return;
-        moved = true;
-        const raw = centers.findIndex((cx) => ev.clientX < cx);
-        dst = raw < 0 ? centers.length - 1 : raw;
-        const cell = row0[dst];
-        if (cell) this.gripMark('v', raw < 0 ? cell.offsetLeft + cell.offsetWidth : cell.offsetLeft);
-        grip.classList.add('tb-grip-drag');
-      };
-      const up = (ev: PointerEvent) => {
-        if (ev.pointerId !== pid) return;
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
-        window.removeEventListener('pointercancel', up);
-        grip.classList.remove('tb-grip-drag');
-        this.gripDrag = false;
-        if (ev.type === 'pointerup' && moved && Math.abs(ev.clientX - e.clientX) > 4) this.moveColumn(ci, dst);
-        this.syncGrips(true);
-      };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
-      window.addEventListener('pointercancel', up);
-    });
-  }
-
-  private scale(): number {
-    const r = this.gridEl.getBoundingClientRect();
-    return r.width > 0 && this.gridEl.offsetWidth > 0 ? r.width / this.gridEl.offsetWidth : 1;
-  }
 
   // Rail Formula tool: focus a cell, make sure it starts with '=' and
   // open the function autocomplete.
@@ -845,67 +647,7 @@ export class TableCard implements CardView {
       sel.selectAllChildren(el);
       sel.collapseToEnd();
     }
-    this.openFx(el);
-  }
-
-  // --- formula autocomplete ---
-
-  private fxFilter(cellEl: HTMLElement): string {
-    const m = /^=([A-Za-z]*)/.exec(cellEl.innerText.replace(/\n$/, ''));
-    return (m?.[1] ?? '').toUpperCase();
-  }
-
-  private openFx(cellEl: HTMLElement) {
-    if (this.fx) {
-      this.renderFx(cellEl);
-      return;
-    }
-    const node = document.createElement('div');
-    node.className = 'menu-body';
-    node.addEventListener('pointerdown', (e) => e.preventDefault());
-    const pop = openToolPopup(cellEl.getBoundingClientRect(), node);
-    this.fx = { pop, node };
-    this.renderFx(cellEl);
-  }
-
-  private renderFx(cellEl: HTMLElement) {
-    if (!this.fx) return;
-    const filter = this.fxFilter(cellEl);
-    const names = FORMULA_NAMES.filter((n) => n.startsWith(filter));
-    if (!names.length) {
-      this.closeFx();
-      return;
-    }
-    this.fx.node.textContent = '';
-    for (const name of names) {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'pop-row';
-      const lab = document.createElement('span');
-      lab.className = 'pop-label';
-      lab.textContent = name;
-      row.appendChild(lab);
-      row.addEventListener('click', () => this.pickFx(name));
-      this.fx.node.appendChild(row);
-    }
-  }
-
-  private pickFx(name: string) {
-    const f = this.focus;
-    const el = f ? this.cellEls[f.r]?.[f.c] : null;
-    this.closeFx();
-    if (!el) return;
-    el.textContent = `=${name}(`;
-    this.pushCell(el);
-    el.focus();
-    const sel = getSelection()!;
-    sel.selectAllChildren(el);
-    sel.collapseToEnd();
-  }
-
-  private closeFx() {
-    this.fx?.pop.close();
-    this.fx = null;
+    this.fxCtl.open(el);
   }
 
   // --- card view ---
@@ -957,12 +699,12 @@ export class TableCard implements CardView {
       for (let col = 0; col < cols; col++) this.syncCell(r, col, c);
     }
     this.syncFocusDom();
-    this.syncGrips();
+    this.gripCtl.sync();
   }
 
   private buildGrid(rows: number, cols: number) {
     this.gridEl.textContent = '';
-    this.grips = null;
+    this.gripCtl.reset();
     this.colSig = '';
     this.cellEls = [];
     for (let r = 0; r < rows; r++) {
@@ -1082,7 +824,7 @@ export class TableCard implements CardView {
     this.focus = null;
     this.fieldEl = null;
     this.wantDomFocus = false;
-    this.closeFx();
+    this.fxCtl.close();
     this.node.classList.remove('editing');
     this.titleEl.contentEditable = 'false';
     this.capEl.contentEditable = 'false';
@@ -1098,7 +840,7 @@ export class TableCard implements CardView {
   }
 
   destroy() {
-    this.closeFx();
+    this.fxCtl.close();
     this.ctx.events.unobserveNode?.(this);
     this.node.remove();
   }

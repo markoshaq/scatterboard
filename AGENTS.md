@@ -36,7 +36,7 @@ calls; fully offline.
 ## Layout
 
 - `src/state/`
-  - `schema.ts`: Doc {boards, elements, comments, labels, trash,
+  - `schema.ts`: Doc {boards, elements, labels, trash,
     templates, seq},
     Element, Label, Comment, TrashEntry, factories, `UNSORTED` sentinel,
     `migrateDoc` (defaults for fields added after persisted v1). Board
@@ -57,11 +57,16 @@ calls; fully offline.
   - `templates.ts`: Template snapshots {id, name, board, elements,
     labels}, 4 builtin presets, `snapshotTemplate`,
     `instantiateActions`.
-- `src/canvas/`: `viewport` (one board-space transform), `renderer`
+- `src/canvas/`: `viewport` (one board-space transform; button/shortcut
+  zooms tween via `animateTo` while wheel/pinch/drag stay instant and
+  cancel it, `snapTo`/`fitTarget` serve instant paths like print fit),
+  `renderer`
   (Canvas2D: grid, lines, marquee, selection outlines, guides), `input`
   (pointer gestures), `lines` (resolve/hit/midpoint), `snap`, `hit`.
 - `src/cards/`: `layer.ts` (view registry, `rectOf`/`heightOf`,
-  viewport culling), `factory.ts` (type -> CardView), `measure.ts`
+  viewport culling; stamps `.card-in` only on elements new to the doc,
+  so creates/pastes pop while boot, board switches, undo and culled
+  remounts stay silent), `factory.ts` (type -> CardView), `measure.ts`
   (pre-mount height estimates per type, co-located with the card DOM
   they approximate), `boardindex.ts` (rev-keyed member/count index),
   one file per card type. `CardView`/`CardEvents` interfaces live in `note.ts`.
@@ -75,7 +80,10 @@ calls; fully offline.
   seated inside `.cards` by el.z (host fallback = topmost).
   `table.ts` is the cell-grid card: cell focus lives in the view
   (`cellFocused()` drives the rail via `App.editingEl`; `onCellFocus`
-  requests a re-render), `formula.ts` evaluates `=NAME(args)` cell
+  requests a re-render); the column-resize/reorder grip strip lives in
+  `table/grips.ts` and the `=` formula autocomplete in `table/fxpop.ts`
+  (both mount only while editing, against the `GripHost`/`FxHost`
+  slices of the card). `formula.ts` evaluates `=NAME(args)` cell
   text (6 functions, A1 refs/ranges, errors render raw).
 - `src/draw/`: `strokes.ts` (path/hit/bbox/serialize + file download),
   `pad.ts` `DrawPad` shared pen/select/eraser session: floating
@@ -91,23 +99,32 @@ calls; fully offline.
   `export.ts` html -> markdown/plaintext. Route `#/e/<id>` mounts
   them via `App.applyRoute`; Esc/back exits, document edits live-commit
   inside one store group, sketch/image saves land as one content patch.
-- `src/canvas/imgops.ts`: raster ops for the image editor + More's
-  Crop Image to Fit Dot Grid: `oriented` (rotate CCW/flip), `cropImage`,
-  `removeBackground` (edge flood-fill cutout, client-side), `loadBitmap`,
-  `canvasBlob`.
+  `imgops.ts` holds the raster ops shared by the image editor and
+  More's Crop Image to Fit Dot Grid: `oriented` (rotate CCW/flip),
+  `cropImage`, `removeBackground` (edge flood-fill cutout,
+  client-side), `loadBitmap`, `canvasBlob`.
 - `src/ui/`:
   - `rail.ts` contextual left rail: 'create' / 'tools' / 'edit' modes,
     driven by `TOOL_DEFS` + `SINGLE_TOOLS`/`EDIT_TOOLS` + `toolsFor`;
     Trash pinned bottom (deletes the card while editing, drag target)
-    plus the board-accent colour well.
+    plus the board-accent colour well. At <=720px (`mobileShell()` in
+    util.ts) the rail becomes a bottom bar: the palette collapses to a
+    '+' button that opens a `.pal-grid` sheet, pref-gated undo/redo
+    join the idle row, and the bar lifts with --vvh to sit above the
+    on-screen keyboard.
   - `richtext.ts` execCommand-based ops over the single contenteditable
     surface: block styles, marks, lists, colours, inline code, links,
     markdown autoformat, `richKeydown`, `isBlankSurface`.
-  - `popup.ts` anchored tool popups (one open, Esc/outside-down close),
-    `toolpopups.ts` colour/labels/reactions/menu/text-style/link
-    builders + `openViewMenu` (topbar View menu: Present entry, per-board
-    dot-grid toggle, presentation toggles),
-    `duepopup.ts` the original dismiss pattern.
+  - `popup.ts` anchored tool popups (one open, Esc/outside-down close;
+    under `mobileShell()` every popup docks as a `.sheet` bottom sheet
+    and skips place()); `outro(node)` is the shared exit: stamp `.out`,
+    let the closing animation in `styles/motion.css` run, then remove.
+    Popups, panels, scrims and the due picker all close through it.
+    `toolpopups.ts` colour/labels/reactions/menu/
+    text-style/link builders + `openViewMenu` (topbar View menu: Present
+    entry, per-board dot-grid toggle, presentation toggles, Fit board)
+    + `openMobileMenu` (the phone topbar overflow), `duepopup.ts` the
+    original dismiss pattern (sheets it via CSS only).
   - `panel.ts` slide-over chrome shared by Unsorted/Trash/Search/Boards
     (`openSearchPanel` in `search.ts`, `boards.ts` the boards/projects
     panel listing the board tree via `openPanel`).
@@ -123,7 +140,9 @@ calls; fully offline.
     storage meter, source link); `theme.ts` light/dark/system state
     (unset follows the OS, `systemDark()`), `canvasColors()`,
     `cardBg()`, `setUiScale`. `toast.ts` also has `hint()` (dismissible) and
-    `choice()` (one action + dismiss). `locale.ts` holds number/
+    `choice()` (one action + dismiss); every removal fades via `.out`
+    (`dismissEl`: controls drop out immediately, the shell lingers to
+    fade). `locale.ts` (src root) holds number/
     currency/date formatting prefs (browserLang + currency) read by
     table cells. `capture.ts` is the quick-capture popup (text ->
     Unsorted note). Language switches persist + reload; strings.ts
@@ -133,16 +152,21 @@ calls; fully offline.
     (both seated into `.cards` after their card to honour el.z; member
     anchors stay in the host),
     `shortcutpanel.ts` `/` modal, `topbar.ts` crumbs/zoom/unsorted
-    chip/Export + View + Help menus,
-    `icons.ts` all SVG icon strings, `util.ts` `dragGhost`,
-    `files.ts` file/image ingest + paste parsing + `fmtSize`,
-    `embeds.ts` provider URL -> iframe src parsing (YouTube/Vimeo/
-    Spotify/SoundCloud/Maps; no fetch) plus `urlTitle` (URL-derived
-    titles, no fetch). `shortcuts.ts` is the global
-    keydown map (modal surfaces own their keys); `unfurl.ts` is the
+    chip/Export + View + Help menus (the trailing controls collapse to
+    a '...' overflow on <=720px; the zoombar hides there too),
+    `icons.ts` all SVG icon strings, `util.ts` `dragGhost`/`mobileShell`.
+    `shortcuts.ts` is the global
+    keydown map (modal surfaces own their keys): card roots are
+    tabindex -1 role=group, an arrow key with no selection runs
+    `App.stepCard(0)` (nearest to view centre), Tab/Shift+Tab steps
+    cards in reading order, Enter begins the edit; `unfurl.ts` is the
     link-preview fetch through api.allorigins.win, the only fetch in
     the codebase besides embed iframes. Embed cards fetch their page
     title without the unfurl pref; link cards only with it.
+- `src/ingest/files.ts`: file/image ingest + paste parsing + `fmtSize`.
+- `src/net/embeds.ts`: provider URL -> iframe src parsing (YouTube/Vimeo/
+  Spotify/SoundCloud/Maps; no fetch) plus `urlTitle` (URL-derived
+  titles, no fetch).
 - `src/lang/`: lazy locale tables (de/es/fr/pt) loaded by
   `strings.loadLang`; en lives inline in strings.ts.
 - `src/export/`: board-level export writers, all client-side:
@@ -151,7 +175,7 @@ calls; fully offline.
   the canvas in Chrome/Safari, data: does not; Canvas2D rect+text
   fallback when the snapshot refuses), `pdf.ts` minimal one-page
   JPEG PDF writer, `linear.ts` reading-order serializer (md/txt/
-  word-html), `jsonio.ts` subtree export + re-id import actions,
+  word-html), `boardio.ts` subtree export + re-id import actions,
   `zip.ts` store-only archive, `menu.ts` the topbar Export popup,
   `download.ts` blob download/slug/dedup-name helpers. Doc-local
   export stays in `editor/export.ts`.
@@ -171,9 +195,13 @@ calls; fully offline.
   them synchronously; unset means follow the browser/OS.
 - `src/app.ts`: wiring: selection, drag gestures entry points, canvas
   overlays (chips/pins/label pills/connect handle), render loop,
-  autosave. Collaborators live in `src/app/`: `editing.ts` (edit
+  autosave. Two screen-space helpers sit in `.viewport` beside the
+  canvases: `.board-empty` (shown while a board has no cards) and a
+  `.vh` live region that announces `stepCard` landings (type + snippet).
+  Collaborators live in `src/app/`: `editing.ts` (edit
   sessions, text commits, sync groups, helper offers, link/embed
-  enrich),
+  enrich), `deletion.ts` (delete cascade/detach/sweep policy +
+  deleteSelection), `comments.ts` (comment thread ops),
   `tools.ts` (rail tool dispatch + card ops incl. converts),
   `panels.ts` (side panels: unsorted/trash/search/boards, board ops,
   icons, templates, route filters), `gestures.ts` (drag/drop, trash +
@@ -189,8 +217,14 @@ calls; fully offline.
   only (`?v=__BUILD_ID__` busts the runtime cache per deploy). boot.ts
   runs `migrateStorageKeys`, picks the adapter (sqlite OPFS else
   localStorage), loads/seeds/migrates the doc, mounts App, and applies
-  the initial `#/b/`/`#/e/` route; `window.__app` is dev-only.
-- `src/state/seed.ts`: first-run welcome board + `seedPerfDoc(n)`
+  the initial `#/b/`/`#/e/` route; `window.__app` is dev-only. PWA
+  entry params consumed at boot: `?share=1` (manifest share_target;
+  url/text/title files a note into Unsorted via `App.fileCaptured`),
+  `?capture=1` and `?newboard=1` (manifest shortcuts). index.html
+  paints a `#boot-load` dot pulse until App mounts and removes it.
+  `styles/print.css` hides chrome for window.print; App fits the board
+  on `beforeprint` and restores the view on `afterprint`.
+- `src/dev/seed.ts`: first-run welcome board + `seedPerfDoc(n)`
   profiling doc (dev-only `?seed=N`).
 - `src/agent/` (lazy chunk, loaded by boot on `?do=`/`?agent=`/`?port=`/
   `prefs.agent` or by the settings toggle; `?agent=` carries the
@@ -203,8 +237,12 @@ calls; fully offline.
   commands a `?do=` link may run unconfirmed; anything else asks via a
   toast choice. Link/embed urls are scheme-checked (`isSafeUrl`),
   dispatch content is shape-checked per type (`saneContent` in
-  schema.ts, shared with jsonio import), create ids may not collide,
-  and column parents must live on the element's board. `validate.ts`
+  schema.ts, shared with boardio import), create ids may not collide,
+  and column parents must live on the element's board. `build.ts`
+  turns the friendly create/patch props into elements
+  (`mergeContent`/`buildElement`); `vaction.ts` validates raw dispatch
+  payloads (`vAction`, the cross-board move fixups and the run-time
+  id-collision recheck). `validate.ts`
   `AgentError {code,message}` + field/ref/
   shape checks; `cmdurl.ts` `?do=<base64url JSON>` one-shot command
   lists; `client.ts` persistent `ws://127.0.0.1` session (token pair,
@@ -246,7 +284,7 @@ calls; fully offline.
   handle, pins, table grips) counter-scale via `calc(Npx * var(--iz))`
   so targets stay constant screen px; `--iz` is set on `.doc` in
   `App.applyTransform`. Overlay anchors occluded by a card hide via
-  `App.coveredByCard` (label pills, connect handle).
+  `Overlays.coveredByCard` (label pills, connect handle).
 - `[data-noclick]` marks in-card controls that must not enter edit or
   start a drag-into-edit.
 - Lines are elements with `from`/`to` endpoints (`LineEnd {el?, x, y}`);

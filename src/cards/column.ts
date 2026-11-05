@@ -2,7 +2,7 @@ import type { Element, ID } from '../state/schema';
 import { columnMembers, columnTitle, lineDoc } from '../state/schema';
 import { memberCount, t } from '../strings';
 import type { CardView } from './note';
-import { createCard, type CardCtx } from './factory';
+import type { CardCtx } from './factory';
 import { cardBg, canvasColors } from '../ui/theme';
 import { COL_CHIPS, memberChipPad } from './measure';
 import { clipSeg, pointInRect } from '../canvas/hit';
@@ -120,7 +120,7 @@ export class ColumnCard implements CardView {
     for (const m of list) {
       let v = this.members.get(m.id);
       if (!v) {
-        v = createCard(m, this.ctx);
+        v = this.ctx.createCard(m, this.ctx);
         this.members.set(m.id, v);
         this.ctx.registerView?.(v);
       }

@@ -92,7 +92,11 @@ export function defaultTile(): string {
 // mirror means follow the OS. This way neither direction flashes the
 // wrong theme while the workspace loads.
 let savedTheme: string | null = null;
-try {
-  savedTheme = localStorage.getItem('scatterboard:theme');
-} catch {}
+// Same Node >=22 stub guard as bootLang(): under vitest the binding
+// exists but has no Storage methods and warns on access.
+if (typeof process === 'undefined' || !process.versions?.node) {
+  try {
+    savedTheme = localStorage.getItem('scatterboard:theme');
+  } catch {}
+}
 setTheme(savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : systemDark() ? 'dark' : 'light');

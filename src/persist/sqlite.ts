@@ -135,6 +135,11 @@ export class SqliteAdapter implements DocStorage {
   private broken = false;
   private codec: JsonCodec | null | undefined;
   private pos = new Map<string, { x: number; y: number; z: number }>();
+  private corruptRaw: string | null = null;
+
+  corrupt(): string | null {
+    return this.corruptRaw;
+  }
   // Fires once when a write fails and saves degrade to localStorage.
   onDegraded?: () => void;
 
@@ -261,7 +266,16 @@ export class SqliteAdapter implements DocStorage {
         w = lw;
         void this.put(WS_KEY, JSON.stringify(lw));
       }
-      if (!w || typeof w.doc !== 'object' || !w.doc) return null;
+      if (!w || typeof w.doc !== 'object' || !w.doc) {
+        // Parseable-or-nothing: a corrupt payload is quarantined to a
+        // sidecar row and flagged so boot can offer a rescue download.
+        if (raw) {
+          this.corruptRaw = raw;
+          await this.put(`${WS_KEY}.corrupt`, raw);
+          await this.put(WS_KEY, '');
+        }
+        return null;
+      }
       this.bytes = new Blob([JSON.stringify(w)]).size;
       // Position rows may postdate the doc serialize; the newest wins.
       for (const [bid, p] of this.pos) {

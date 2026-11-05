@@ -35,7 +35,7 @@ export interface Prefs {
   commentSeen?: Record<ID, number>;
   // Recently viewed board ids, most recent first.
   recentBoards?: ID[];
-  // Online extra (off by default): fetch link-card previews.
+  // Online extra (on by default): fetch link-card previews.
   unfurl?: boolean;
   // Local agent (off by default): let a localhost bridge drive the
   // board over WebSocket. agentBridge holds the paired bridge identity
@@ -55,6 +55,9 @@ export interface PersistedWorkspace {
 export interface StorageAdapter {
   load(): Promise<PersistedWorkspace | null>;
   save(w: PersistedWorkspace): Promise<void>;
+  // Raw bytes of a workspace that failed to parse at the last load():
+  // boot offers a rescue download instead of seeding over the bytes.
+  corrupt?(): string | null;
 }
 
 // The app's full adapter surface: storage plus the size meter and the

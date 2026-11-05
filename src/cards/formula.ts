@@ -1,5 +1,5 @@
 import type { TableCell } from '../state/schema';
-import { localeTag } from '../ui/locale';
+import { localeTag } from '../locale';
 
 // Tiny formula evaluator: =NAME(args) where args are numbers, A1-style
 // cell refs, or A1:B3 ranges. SUM/MIN/MAX/COUNT/AVERAGE fold over the
@@ -188,10 +188,12 @@ export function isFormula(text: string): boolean {
 // Rewrite A1 refs inside a formula string through map(r, c), leaving
 // quoted spans alone so literals like "A1" survive. Structural table
 // edits call this on every cell so formulas keep tracking moved data.
-export function remapRefs(text: string, map: (r: number, c: number) => { r: number; c: number }): string {
+function remapRefs(text: string, map: (r: number, c: number) => { r: number; c: number }): string {
   if (!isFormula(text)) return text;
   const seg = (s: string) =>
-    s.replace(/([A-Za-z]+)([0-9]+)/g, (_m, ls: string, ds: string) => {
+    s.replace(/([A-Za-z]+)([0-9]+)/g, (m, ls: string, ds: string, off: number, src: string) => {
+      // Call position is a function name (=LOG10(2)), not a cell ref.
+      if (src.charAt(off + m.length) === '(') return m;
       const p = map(parseInt(ds, 10) - 1, colOf(ls));
       return `${colName(p.c)}${p.r + 1}`;
     });
