@@ -21,7 +21,7 @@ import pt from '../src/lang/pt';
 
 // Key-parity: every en string must exist in every locale table.
 const enSrc = fs.readFileSync('src/strings.ts', 'utf8');
-const enKeys = [...enSrc.slice(0, enSrc.indexOf('\n};')).matchAll(/^  (\w+):/gm)].map((m) => m[1]);
+const enKeys = [...enSrc.slice(0, enSrc.indexOf('\n};')).matchAll(/^ {2}(\w+):/gm)].map((m) => m[1]!);
 describe('i18n parity', () => {
   for (const [lang, table] of Object.entries({ de, es, fr, pt })) {
     it(`${lang} covers every en key`, () => {

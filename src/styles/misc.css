@@ -296,3 +296,26 @@
   overflow: hidden;
 }
 
+
+/* Corner minimap: bottom-right of the viewport, pointer events feed
+   the pan handler in ui/minimap.ts. */
+.minimap {
+  position: absolute;
+  right: 14px;
+  /* Clears the bottom-right zoom bar (14px inset + ~36px bar + 8px gap). */
+  bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+  z-index: 15;
+  background: var(--chrome);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px var(--shadow-1);
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.minimap canvas {
+  display: block;
+  width: 180px;
+  height: 120px;
+}

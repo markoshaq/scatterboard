@@ -326,6 +326,8 @@ export interface MenuItem {
   icon?: string;
   checked?: boolean;
   hint?: string;
+  // Read-only footer row (card metadata): renders as text, not a button.
+  info?: boolean;
   onPick(): void;
 }
 
@@ -337,6 +339,13 @@ export function openMenuPopup(anchor: HTMLElement | DOMRect, items: MenuItem[], 
   if (keepSelection) node.addEventListener('pointerdown', (e) => e.preventDefault());
   const pop = openToolPopup(anchor, node, below);
   for (const item of items) {
+    if (item.info) {
+      const row = document.createElement('div');
+      row.className = 'pop-info';
+      row.textContent = item.label;
+      node.appendChild(row);
+      continue;
+    }
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'pop-row';
@@ -577,6 +586,8 @@ interface ViewMenuApi {
   onToggle(key: keyof PresentOpts): void;
   grid(): boolean;
   onToggleGrid(): void;
+  minimap(): boolean;
+  onToggleMinimap(): void;
   onPresent(): void;
   onFit(): void;
 }
@@ -648,6 +659,7 @@ export function openViewMenu(anchor: HTMLElement, api: ViewMenuApi): ToolPopup {
   });
 
   toggleRow(t('viewGrid'), ICONS.dots, api.grid, api.onToggleGrid);
+  toggleRow(t('viewMinimap'), ICONS.minimap, api.minimap, api.onToggleMinimap);
 
   head(t('viewPresenting'));
   toggleRow(t('focusSelected'), ICONS.selTool, () => !!api.presentOpts().focus, () => api.onToggle('focus'));

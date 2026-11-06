@@ -45,6 +45,14 @@
   background: none;
 }
 
+.pop-info {
+  font-size: calc(11.5px * var(--ui));
+  color: var(--ink-6);
+  padding: 7px 8px 6px;
+  margin-top: 4px;
+  border-top: 1px solid var(--edge);
+}
+
 .pop-icon {
   width: 16px;
   height: 16px;

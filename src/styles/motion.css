@@ -124,7 +124,8 @@
   animation: pop-out 0.13s ease-in forwards;
 }
 
-.tool-pop.sheet.out {
+.tool-pop.sheet.out,
+.due-pop.sheet.out {
   animation: sheet-out 0.18s ease-in forwards;
 }
 

@@ -5,6 +5,7 @@ import {
   defaultWidth,
   documentDoc,
   embedDoc,
+  fileDoc,
   headingDoc,
   imageDoc,
   linkDoc,
@@ -90,7 +91,11 @@ export function fallbackHeight(
     const aspect = c?.aspect && c.aspect > 0 ? c.aspect : 1;
     return Math.round(w / aspect) + (c?.caption ? 26 : 14);
   }
-  if (el.type === 'file') return 62;
+  if (el.type === 'file') {
+    const c = fileDoc(el);
+    const pdf = c?.mime === 'application/pdf' || (!!c && !c.mime && /\.pdf$/i.test(c.name));
+    return 62 + (pdf ? 138 : 0);
+  }
   if (el.type === 'document') {
     const c = documentDoc(el);
     if (c?.displayMode !== 'detail') return 64;

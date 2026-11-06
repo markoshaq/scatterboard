@@ -12,6 +12,7 @@ interface TopbarEvents {
   onFit: () => void;
   onNavigate: (id: ID) => void;
   onUnsorted: () => void;
+  onDue: () => void;
   onView: (anchor: HTMLElement) => void;
   onHelp: (anchor: HTMLElement) => void;
   onExport: (anchor: HTMLElement) => void;
@@ -20,6 +21,7 @@ interface TopbarEvents {
   onMore: (anchor: HTMLElement) => void;
   onCrumbIcon: (id: ID, anchor: HTMLElement) => void;
   onCrumbBoards?: (id: ID, anchor: HTMLElement) => void;
+  onCrumbRename?: (id: ID, title: string) => void;
   onUndo: () => void;
   onRedo: () => void;
 }
@@ -34,6 +36,7 @@ export class Topbar {
   private titleEl: HTMLElement;
   private chipEl: HTMLElement;
   private unsortedEl: HTMLButtonElement;
+  private dueEl: HTMLButtonElement;
   private zoomEl: HTMLButtonElement;
   private undoBtn: HTMLButtonElement;
   private redoBtn: HTMLButtonElement;
@@ -63,6 +66,16 @@ export class Topbar {
     this.unsortedEl.append(unsIc, document.createElement('span'));
     haspopup(this.unsortedEl, 'dialog');
     this.unsortedEl.addEventListener('click', () => this.events.onUnsorted());
+    this.dueEl = document.createElement('button');
+    this.dueEl.type = 'button';
+    this.dueEl.className = 'due-chip';
+    this.dueEl.style.display = 'none';
+    const dueIc = document.createElement('span');
+    dueIc.className = 'unsorted-ic';
+    dueIc.innerHTML = ICONS.txDue;
+    this.dueEl.append(dueIc, document.createElement('span'));
+    haspopup(this.dueEl, 'dialog');
+    this.dueEl.addEventListener('click', () => this.events.onDue());
     this.chipEl = document.createElement('span');
     this.chipEl.className = 'save-chip';
     this.chipEl.textContent = t('saved');
@@ -108,7 +121,7 @@ export class Topbar {
     tip(moreBtn, t('moreMenu'));
     haspopup(moreBtn, 'menu');
     moreBtn.addEventListener('click', () => this.events.onMore(moreBtn));
-    bar.append(brand, brandSep, this.titleEl, this.unsortedEl, exportBtn, viewBtn, helpBtn, agentBtn, gear, moreBtn);
+    bar.append(brand, brandSep, this.titleEl, this.unsortedEl, this.dueEl, exportBtn, viewBtn, helpBtn, agentBtn, gear, moreBtn);
 
     const zoom = document.createElement('div');
     zoom.className = 'zoombar';
@@ -186,7 +199,39 @@ export class Topbar {
       }
       const txt = document.createElement('span');
       txt.textContent = c.title;
-      if (last) txt.addEventListener('click', () => this.events.onCrumbBoards?.(c.id, el));
+      if (last) {
+        txt.addEventListener('click', () => this.events.onCrumbBoards?.(c.id, el));
+        // Double-click the current board's name renames it inline; the
+        // single click still opens the boards panel.
+        txt.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          if (!this.events.onCrumbRename) return;
+          const input = document.createElement('input');
+          input.className = 'crumb-rename';
+          input.value = c.title;
+          txt.replaceWith(input);
+          input.focus();
+          input.select();
+          let done = false;
+          const finish = (commit: boolean) => {
+            if (done) return;
+            done = true;
+            const v = input.value.trim();
+            if (commit && v && v !== c.title) {
+              this.events.onCrumbRename!(c.id, v);
+              return; // the store change re-renders the crumbs
+            }
+            input.replaceWith(txt);
+          };
+          input.addEventListener('keydown', (ev) => {
+            ev.stopPropagation();
+            if (ev.key === 'Enter') finish(true);
+            if (ev.key === 'Escape') finish(false);
+          });
+          input.addEventListener('blur', () => finish(input.isConnected));
+          input.addEventListener('click', (ev) => ev.stopPropagation());
+        });
+      }
       el.appendChild(txt);
       if (!last) el.addEventListener('click', () => this.events.onNavigate(c.id));
       this.titleEl.appendChild(el);
@@ -197,6 +242,16 @@ export class Topbar {
     if (n === this.lastUnsorted) return;
     this.lastUnsorted = n;
     this.unsortedEl.lastElementChild!.textContent = `${n} ${t('unsortedTitle')}`;
+  }
+
+  private lastDue = 0;
+
+  // Due chip: hidden while nothing is overdue or due today.
+  setDue(n: number) {
+    if (n === this.lastDue) return;
+    this.lastDue = n;
+    this.dueEl.style.display = n ? '' : 'none';
+    this.dueEl.lastElementChild!.textContent = `${n} ${t('dueTitle')}`;
   }
 
   // Save chip pops bottom-left while a save runs, flashes 'Saved' and

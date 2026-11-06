@@ -61,6 +61,7 @@ const SECTIONS: [StringKey, [string, StringKey][]][] = [
   ]],
   ['scGrpPresent', [
     ['Cmd+Opt+P', 'scPresent'],
+    ['Arrows', 'scPresentStep'],
   ]],
 ];
 

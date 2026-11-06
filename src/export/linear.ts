@@ -131,8 +131,8 @@ export function toMarkdown(title: string, items: Item[]): string {
   return `${parts.filter((p) => p !== '').join('\n\n')}\n`;
 }
 
-export function toPlain(title: string, items: Item[]): string {
-  const parts = [(title || 'Untitled board').toUpperCase(), ''];
+function plainLines(items: Item[]): string[] {
+  const parts: string[] = [];
   for (const it of items) {
     if (it.k === 'h') parts.push(it.text, '');
     else if (it.k === 'p') parts.push(it.text);
@@ -141,7 +141,32 @@ export function toPlain(title: string, items: Item[]): string {
     else if (it.k === 'quote') parts.push(`  ${it.text}`);
     else if (it.k === 'table') for (const r of it.rows) parts.push(r.join('  |  '));
   }
+  return parts;
+}
+
+export function toPlain(title: string, items: Item[]): string {
+  const parts = [(title || 'Untitled board').toUpperCase(), '', ...plainLines(items)];
   return `${parts.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
+}
+
+// Clipboard text for an arbitrary element set (Cmd+C): same linear
+// rendering as the plain-text export, minus the board title. Members
+// whose column came along are skipped: columnItems already emits them.
+export function elementsToPlain(doc: Doc, els: Element[]): string {
+  const ids = new Set(els.map((e) => e.id));
+  const top = els.filter((e) => {
+    let p = e.parentId;
+    let guard = 0;
+    while (p && guard++ < 64) {
+      if (ids.has(p)) return false;
+      p = doc.elements[p]?.parentId ?? null;
+    }
+    return true;
+  });
+  const items: Item[] = [];
+  const seen = new Set<ID>();
+  for (const el of readingOrder(top)) elementItems(el, doc, items, false, seen);
+  return plainLines(items).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function esc(s: string): string {

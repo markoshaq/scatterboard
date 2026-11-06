@@ -44,14 +44,33 @@ export async function boot() {
   } else {
     doc = migrateDoc(persisted!.doc);
   }
-  void purgeOrphanBlobs(doc);
+  void (async () => {
+    const { snapshotBlobRefs } = await import('./persist/snapshots');
+    const keep = await snapshotBlobRefs().catch(() => undefined);
+    await purgeOrphanBlobs(doc, keep);
+  })();
   const store = new Store(doc);
   const app = new App(document.getElementById('app')!, store, adapter);
   // First-paint filler served by index.html; the canvas covers it from
   // here on, so it can go.
   document.getElementById('boot-load')?.remove();
   app.prefs = persisted?.prefs ?? {};
+  app.lastSavedAt = persisted?.savedAt ?? 0;
   app.applyPrefs();
+  // Daily automatic snapshot: version history for a workspace that
+  // lives only in browser storage. Named snapshots never prune before
+  // it does.
+  void (async () => {
+    if (!Object.keys(doc.elements).length) return;
+    const { listSnapshots, createSnapshot } = await import('./persist/snapshots');
+    const list = await listSnapshots();
+    if (!list.some((s) => Date.now() - s.createdAt < 86400000)) {
+      await createSnapshot(doc, app.prefs, t('snapAuto'), true);
+    }
+  })().catch(() => {});
+  // Folder backup: restores the stored directory handle and offers a
+  // restore when the mirror is newer than this workspace.
+  void app.fsync.init().catch(() => {});
   if (fresh && perfN === null) app.welcomeHint();
   // A persisted blob that failed to parse was quarantined by the
   // adapter; offer a rescue download before the seed's autosave lands.

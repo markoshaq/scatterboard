@@ -13,8 +13,12 @@ export function attachPointer(root: HTMLElement, app: App) {
   const touches = new Map<number, { x: number; y: number }>();
   let pinching = false;
   let pinchPrev: { d: number; cx: number; cy: number } | null = null;
+  // First finger's down point + time: a second finger landing while it
+  // is held still on a card opens that card's menu (the iPad gesture).
+  let touch0: { x: number; y: number; t: number } | null = null;
   const pinchGeom = () => {
     const [a, b] = [...touches.values()];
+    if (!a || !b) return { d: 0, cx: 0, cy: 0 };
     return { d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
   };
   root.addEventListener('pointerdown', (e) => {
@@ -27,8 +31,28 @@ export function attachPointer(root: HTMLElement, app: App) {
       touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (touches.size === 1) {
         activePointer = e.pointerId;
+        touch0 = { x: e.clientX, y: e.clientY, t: performance.now() };
         onDown(e, app);
         return;
+      }
+      // Second finger on a held-still card press opens the card's menu
+      // instead of a pinch: the press has to sit unmoved for a beat
+      // (>=250ms) so a normal two-finger pan still wins.
+      if (activePointer !== null && touch0 && touches.size === 2) {
+        const f0 = touch0;
+        const cur = touches.get(activePointer);
+        const held = performance.now() - f0.t;
+        const still = cur && Math.hypot(cur.x - f0.x, cur.y - f0.y) <= 12;
+        if (held >= 250 && held <= 1600 && still) {
+          const tgt = document.elementFromPoint(f0.x, f0.y);
+          if (tgt?.closest?.('.card, .comment-pin')) {
+            window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: activePointer, pointerType: 'touch' }));
+            touches.delete(e.pointerId);
+            touch0 = null;
+            tgt.dispatchEvent(new MouseEvent('contextmenu', { clientX: f0.x, clientY: f0.y, bubbles: true }));
+            return;
+          }
+        }
       }
       // Second finger: cancel the first finger's gesture (the cancel
       // paths undo any in-flight marquee/drag cleanly), then pinch. The
@@ -71,7 +95,10 @@ export function attachPointer(root: HTMLElement, app: App) {
     // move does not jump; a lone remaining finger keeps the pinch flag
     // until it lifts, so picking a drag back up cannot jump the board.
     pinchPrev = touches.size >= 2 ? pinchGeom() : null;
-    if (touches.size === 0) pinching = false;
+    if (touches.size === 0) {
+      pinching = false;
+      touch0 = null;
+    }
   };
   window.addEventListener('pointerup', release);
   window.addEventListener('pointercancel', release);
@@ -168,6 +195,35 @@ export function startElementDrag(e: PointerEvent, app: App, cardId: ID) {
   const wasSelected = app.sel.has(cardId);
   if (e.shiftKey) {
     app.toggleSelect(cardId);
+    return;
+  }
+  // Touch: a finger that starts moving pans the board; it never drags
+  // a card the user only meant to tap past. Selection lands on release
+  // instead, and a card that is already selected falls through to the
+  // normal drag path below, so tap-then-drag still moves it.
+  if (e.pointerType === 'touch' && !wasSelected) {
+    const pid = e.pointerId;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < DRAG_SLOP + 5) return;
+      cleanup();
+      app.startPan(ev);
+    };
+    const done = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      cleanup();
+      if (ev.type === 'pointerup') app.selectOnly(cardId);
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', done);
+      window.removeEventListener('pointercancel', done);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', done);
+    window.addEventListener('pointercancel', done);
     return;
   }
   if (!wasSelected) app.selectOnly(cardId);

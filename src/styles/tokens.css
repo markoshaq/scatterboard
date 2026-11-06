@@ -140,3 +140,20 @@ html.dark body {
   --checker-b: #2a2a24;
 }
 
+
+/* High-contrast request: muted inks, dots and edges step up. */
+@media (prefers-contrast: more) {
+  :root {
+    --ink-2: #3d3d33;
+    --faint: #8a8a7c;
+    --edge: rgba(30, 30, 20, 0.2);
+    --edge-strong: rgba(30, 30, 20, 0.3);
+  }
+
+  html.dark {
+    --ink-2: #e2e2d6;
+    --faint: #8a8a7c;
+    --edge: rgba(255, 255, 255, 0.26);
+    --edge-strong: rgba(255, 255, 255, 0.36);
+  }
+}

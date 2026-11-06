@@ -15,7 +15,7 @@ export function migrateStorageKeys() {
       ['planboard:last-board', LAST_BOARD],
       ['planboard:lang', 'scatterboard:lang'],
       ['planboard:theme', 'scatterboard:theme'],
-    ]) {
+    ] as const) {
       const v = localStorage.getItem(oldKey);
       if (v === null) continue;
       if (localStorage.getItem(newKey) === null) localStorage.setItem(newKey, v);

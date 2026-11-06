@@ -36,6 +36,10 @@
     display: none;
   }
 
+  .minimap {
+    display: none !important;
+  }
+
   .save-chip {
     left: calc(14px + env(safe-area-inset-left, 0px));
     bottom: calc(70px + env(safe-area-inset-bottom, 0px));

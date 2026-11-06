@@ -48,6 +48,42 @@ export class Gestures {
     return r && r.memberId === id ? { dx: r.dx, dy: r.dy } : null;
   }
 
+  // Edge auto-pan: while a drag gesture holds the pointer within M px
+  // of a screen edge, the board glides that way each frame and the
+  // gesture re-fires with the same client point (boardPoint follows
+  // the pan, so the card keeps travelling).
+  private edgePan = { raf: 0, ev: null as PointerEvent | null, fire: null as (() => void) | null };
+
+  private armEdgePan(ev: PointerEvent, fire: () => void) {
+    this.edgePan.ev = ev;
+    this.edgePan.fire = fire;
+    if (this.edgePan.raf) return;
+    const M = 44;
+    const S = 16;
+    const tick = () => {
+      const e = this.edgePan.ev;
+      let dx = 0;
+      let dy = 0;
+      if (e) {
+        if (e.clientX < M) dx = -Math.min(S, (M - e.clientX) * 0.4);
+        else if (e.clientX > innerWidth - M) dx = Math.min(S, (e.clientX - innerWidth + M) * 0.4);
+        if (e.clientY < M) dy = -Math.min(S, (M - e.clientY) * 0.4);
+        else if (e.clientY > innerHeight - M) dy = Math.min(S, (e.clientY - innerHeight + M) * 0.4);
+        if (dx || dy) {
+          this.a.vp.panBy(dx, dy);
+          this.edgePan.fire?.();
+        }
+      }
+      this.edgePan.raf = requestAnimationFrame(tick);
+    };
+    this.edgePan.raf = requestAnimationFrame(tick);
+  }
+
+  private disarmEdgePan() {
+    if (this.edgePan.raf) cancelAnimationFrame(this.edgePan.raf);
+    this.edgePan = { raf: 0, ev: null, fire: null };
+  }
+
   trashRect: DOMRect | null | undefined;
 
 
@@ -59,6 +95,7 @@ export class Gestures {
   dragMove(ids: ID[], origins: Map<ID, { x: number; y: number }>, start: { x: number; y: number }, ev: PointerEvent) {
     if (this.a.lockedView()) return;
     this.dragging = true;
+    this.armEdgePan(ev, () => this.dragMove(ids, origins, start, this.edgePan.ev!));
     // A mid-gesture delete (shortcut undo, Backspace) drops elements
     // out from under the drag; skip them instead of crashing on x/y.
     ids = ids.filter((id) => this.a.doc.elements[id] && origins.has(id));
@@ -292,6 +329,7 @@ export class Gestures {
 
 
   endDrag(ev?: PointerEvent) {
+    this.disarmEdgePan();
     this.dragging = false;
     this.trashRect = undefined;
     this.setTrashHint(false);
@@ -378,6 +416,7 @@ export class Gestures {
   // Position patches already dispatched stay committed, so the card
   // keeps its mid-drag spot as one undoable entry.
   abortDrag() {
+    this.disarmEdgePan();
     this.dragging = false;
     this.trashRect = undefined;
     this.clearMemberReorder();

@@ -173,13 +173,13 @@ describe('jsonio round trip', () => {
     for (const a of res!.actions) applyAction(d, a, change);
 
     expect(res!.boardId).not.toBe('sub');
-    const newBoard = d.boards[res!.boardId];
+    const newBoard = d.boards[res!.boardId]!;
     expect(newBoard.title).toBe('Sub');
     expect(newBoard.parentId).toBe('home');
     const imported = Object.values(d.elements).filter((e) => e.boardId === res!.boardId);
     expect(imported.length).toBe(1);
     expect(imported[0]!.id).not.toBe(n.id);
-    const newLabel = d.labels[imported[0]!.labels[0]!];
+    const newLabel = d.labels[imported[0]!.labels[0]!]!;
     expect(newLabel.name).toBe('L1');
     expect(newLabel.boardId).toBe(res!.boardId);
   });
@@ -313,7 +313,7 @@ describe('Store groups', () => {
     expect(store.endGroup('edit')).toBe(true);
     store.undo();
     expect(el.x).toBe(0);
-    expect(store.doc.elements['ghost']).toBeUndefined();
+    expect(store.doc.elements.ghost).toBeUndefined();
   });
 });
 

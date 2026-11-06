@@ -1,6 +1,6 @@
 import type { Element } from '../state/schema';
 import { fileDoc } from '../state/schema';
-import { downloadBlobRef } from '../persist/blobs';
+import { blobUrl, downloadBlobRef } from '../persist/blobs';
 import { fmtSize } from '../ingest/files';
 import { ICONS } from '../ui/icons';
 import type { CardCtx } from './factory';
@@ -21,6 +21,8 @@ export class FileCard implements CardView {
   private downAt = { x: 0, y: 0 };
   private lastName = '';
   private lastSize = -1;
+  private previewEl: HTMLElement | null = null;
+  private previewRef = '';
 
   constructor(el: Element, ctx: CardCtx) {
     this.id = el.id;
@@ -76,6 +78,33 @@ export class FileCard implements CardView {
     if (c.size !== this.lastSize) {
       this.sizeEl.textContent = fmtSize(c.size);
       this.lastSize = c.size;
+    }
+    // PDFs get a static first-page preview above the icon row. The
+    // iframe is pointer-inert so card click/drag still works.
+    const pdf = c.mime === 'application/pdf' || (!c.mime && /\.pdf$/i.test(c.name));
+    if (pdf && this.previewRef !== c.blobRef) {
+      this.previewRef = c.blobRef;
+      if (!this.previewEl) {
+        this.previewEl = document.createElement('div');
+        this.previewEl.className = 'fc-preview';
+        const f = document.createElement('iframe');
+        f.className = 'fc-frame';
+        f.tabIndex = -1;
+        f.setAttribute('aria-hidden', 'true');
+        f.setAttribute('loading', 'lazy');
+        this.previewEl.appendChild(f);
+        this.node.insertBefore(this.previewEl, this.node.firstChild);
+      }
+      const f = this.previewEl.querySelector('iframe')!;
+      f.removeAttribute('src');
+      const ref = c.blobRef;
+      void blobUrl(ref).then((u) => {
+        if (u && this.previewRef === ref) f.src = u;
+      });
+    } else if (!pdf && this.previewRef) {
+      this.previewRef = '';
+      this.previewEl?.remove();
+      this.previewEl = null;
     }
   }
 

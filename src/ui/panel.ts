@@ -12,6 +12,8 @@ export interface PanelHandle {
 interface PanelOpts {
   title: string;
   helper?: string;
+  // Secondary header buttons, rendered before the primary actionLabel.
+  actions?: { label: string; onAction(): void }[];
   actionLabel?: string;
   onAction?: () => void;
 }
@@ -28,6 +30,14 @@ export function openPanel(opts: PanelOpts): PanelHandle {
   title.className = 'sp-title';
   title.textContent = opts.title;
   head.appendChild(title);
+  for (const a of opts.actions ?? []) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sp-action';
+    btn.textContent = a.label;
+    btn.addEventListener('click', a.onAction);
+    head.appendChild(btn);
+  }
   if (opts.actionLabel && opts.onAction) {
     const action = document.createElement('button');
     action.type = 'button';

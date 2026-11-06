@@ -164,7 +164,7 @@ export function blobUrl(id: ID): Promise<string | null> {
   return p;
 }
 
-function blobRefsInDoc(doc: Doc): Set<ID> {
+export function blobRefsInDoc(doc: Doc): Set<ID> {
   const out = new Set<ID>();
   for (const el of Object.values(doc.elements)) {
     const r = blobRefOf(el);
@@ -189,12 +189,14 @@ function blobRefsInDoc(doc: Doc): Set<ID> {
   return out;
 }
 
-export async function purgeOrphanBlobs(doc: Doc): Promise<void> {
+export async function purgeOrphanBlobs(doc: Doc, keep?: Set<ID>): Promise<void> {
   try {
     // Boot does not await this: the doc keeps mutating while it runs,
     // so liveness is re-derived right before each delete rather than
-    // once up front (a blob written mid-purge must survive).
+    // once up front (a blob written mid-purge must survive). `keep`
+    // holds refs live snapshots still need even when the doc does not.
     for (const id of await listBlobIds()) {
+      if (keep?.has(id)) continue;
       if (!blobRefsInDoc(doc).has(id)) await deleteBlob(id);
     }
   } catch {

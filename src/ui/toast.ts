@@ -29,7 +29,7 @@ function dismissEl(el: HTMLElement, after?: () => void) {
   after?.();
 }
 
-// tone marks the accent edge: 'ok' confirmations, 'warn' degraded
+// tone marks the status dot: 'ok' confirmations, 'warn' degraded
 // states, 'err' failures (which also upgrade the live region to alert).
 export function toast(msg: string, tone?: 'ok' | 'warn' | 'err') {
   const el = document.createElement('div');

@@ -1,5 +1,6 @@
 import { dayNames, monthName, t } from '../strings';
-import { claimToolPopup, closeToolPopup, cycleKeys, focusBack, focusInto, haspopup, outro, popDismiss, pushDismiss, releaseToolPopup } from './popup';
+import { bindVvh, claimToolPopup, closeToolPopup, cycleKeys, focusBack, focusInto, haspopup, outro, popDismiss, pushDismiss, releaseToolPopup, sheetGrab } from './popup';
+import { mobileShell } from './util';
 
 export interface DueValue {
   dueAt?: number;
@@ -30,6 +31,7 @@ export function openDuePopup(opts: {
   onCommit: (v: DueValue) => void;
 }): DuePopupHandle {
   closeToolPopup();
+  bindVvh();
   haspopup(opts.anchor, 'dialog');
   opts.anchor.setAttribute('aria-expanded', 'true');
   const st: PopupState = {
@@ -54,8 +56,9 @@ export function openDuePopup(opts: {
   st.viewY = base.getFullYear();
   st.viewM = base.getMonth();
 
+  const sheet = mobileShell();
   const node = document.createElement('div');
-  node.className = 'due-pop';
+  node.className = sheet ? 'due-pop sheet' : 'due-pop';
   node.setAttribute('role', 'dialog');
   node.addEventListener('keydown', (e) => {
     e.stopPropagation();
@@ -257,11 +260,17 @@ export function openDuePopup(opts: {
   renderCal();
   renderFoot();
 
-  const r = opts.anchor.getBoundingClientRect();
-  const vw = window.visualViewport?.width ?? innerWidth;
-  const vh = window.visualViewport?.height ?? innerHeight;
-  node.style.left = `${Math.max(8, Math.min(r.left, vw - 260))}px`;
-  node.style.top = `${Math.max(8, Math.min(r.bottom + 6, vh - 340))}px`;
+  if (sheet) {
+    // Same bottom-sheet contract as tool popups: CSS docks it, the
+    // grab strip pulls it down to dismiss, JS never positions it.
+    sheetGrab(node, () => closePop(false));
+  } else {
+    const r = opts.anchor.getBoundingClientRect();
+    const vw = window.visualViewport?.width ?? innerWidth;
+    const vh = window.visualViewport?.height ?? innerHeight;
+    node.style.left = `${Math.max(8, Math.min(r.left, vw - 260))}px`;
+    node.style.top = `${Math.max(8, Math.min(r.bottom + 6, vh - 340))}px`;
+  }
   document.body.appendChild(node);
   window.addEventListener('pointerdown', onDocDown, true);
 

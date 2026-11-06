@@ -143,6 +143,7 @@ export interface ImageDoc {
   natW?: number;
   natH?: number;
   strokes?: Stroke[];
+  alt?: string;
 }
 
 interface FileDoc {
@@ -805,6 +806,7 @@ export function saneContent(v: unknown, type: ElementType): v is TypeContent {
         optStr(c.source) &&
         optNum(c.natW) &&
         optNum(c.natH) &&
+        optStr(c.alt) &&
         (c.strokes === undefined || saneStrokes(c.strokes))
       );
     case 'file':

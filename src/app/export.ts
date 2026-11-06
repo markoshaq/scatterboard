@@ -1,5 +1,5 @@
 import type { App } from '../app';
-import { blobRefOf, survivingBoard, UNSORTED, type Element, type ID } from '../state/schema';
+import { blobRefOf, lineDoc, survivingBoard, UNSORTED, type Element, type ID } from '../state/schema';
 import { getBlob } from '../persist/blobs';
 import { Viewport, type Rect } from '../canvas/viewport';
 import { CardsLayer } from '../cards/layer';
@@ -69,15 +69,17 @@ export class BoardExport {
   }
 
 
-  // Render the whole board to an offscreen canvas at `scale` (css px per
-  // board unit). Cards are rasterized via an svg foreignObject snapshot
-  // when the engine allows it; otherwise a simple canvas pass draws
-  // card rects + text (see export/boardpng.ts).
-  async boardRaster(scale: number, region?: Rect): Promise<HTMLCanvasElement | null> {
+  // Render the board (or, with `only`, just the picked cards) to an
+  // offscreen canvas at `scale` (css px per board unit). Cards are
+  // rasterized via an svg foreignObject snapshot when the engine
+  // allows it; otherwise a simple canvas pass draws card rects + text
+  // (see export/boardpng.ts).
+  async boardRaster(scale: number, region?: Rect, only?: Set<ID>): Promise<HTMLCanvasElement | null> {
     const boardId = this.a.boardId;
     if (!boardId) return null;
     this.a.editing.endEdit();
-    const u = unionRect(this.a.layer.elements().map((e) => this.a.layer.rectOf(e)));
+    const inLimit = (e: Element) => !only || only.has(e.id) || (e.anchorId !== undefined && only.has(e.anchorId));
+    const u = unionRect(this.a.layer.elements().filter(inLimit).map((e) => this.a.layer.rectOf(e)));
     const pad = 80;
     // An explicit region crops exactly; otherwise the bounds cover
     // every card plus padding (or a default 800x600 for empty boards).
@@ -97,11 +99,21 @@ export class BoardExport {
     fvp.z = 1;
     const off = new CardsLayer(this.a.doc, fvp, SHOT_EVENTS, () => this.a.store.rev);
     off.boardId = boardId;
+    off.limit = only ?? null;
     const stage = document.createElement('div');
     stage.style.cssText = 'position:fixed;left:-100000px;top:0;width:0;height:0;overflow:visible;pointer-events:none';
     stage.appendChild(off.node);
     document.body.appendChild(stage);
     off.sync(new Set(), null, true);
+    // Selection shots keep a line when it was picked itself or when
+    // both card endpoints came along.
+    const lines = only
+      ? this.a.resolvedLines().filter((l) => {
+          if (only.has(l.el.id)) return true;
+          const c = lineDoc(l.el);
+          return !!c?.from.el && !!c.to.el && only.has(c.from.el) && only.has(c.to.el);
+        })
+      : this.a.resolvedLines();
     let dom: HTMLElement;
     try {
       const { buildShotDom, inlineBlobImages, settleImages } = await import('../export/boardpng');
@@ -119,9 +131,9 @@ export class BoardExport {
       // after the snapshot.
       const chips = new ChipsLayer(this.a.doc, { onChip: () => {} });
       chips.sync(this.a.overlays.chipTargets(true, off));
-      this.a.overlays.anno.sync(this.a.overlays.annoItems(true));
+      this.a.overlays.anno.sync(this.a.overlays.annoItems(true).filter((i) => inLimit(i.el)));
       this.a.overlays.pins.sync(this.a.overlays.pinItems(off, true).map((p) => ({ ...p, seat: null })));
-      this.a.overlays.syncLabelPills(this.a.resolvedLines(), true);
+      this.a.overlays.syncLabelPills(lines, true);
       dom = buildShotDom(off.node, [this.a.overlays.anno.node, this.a.overlays.pins.node, this.a.overlays.labelHost, chips.node], bounds);
       await inlineBlobImages(dom);
       if (this.a.boardId !== boardId) return null;
@@ -136,16 +148,16 @@ export class BoardExport {
     const spec: ShotSpec = {
       bounds,
       grid: this.a.board()?.grid ?? true,
-      lines: this.a.resolvedLines(),
+      lines,
       dom,
       cards: this.a.layer
         .elements()
-        .filter((e) => e.type !== 'line' && e.type !== 'annotation' && e.anchorId === undefined)
+        .filter((e) => e.type !== 'line' && e.type !== 'annotation' && e.anchorId === undefined && inLimit(e))
         .map((e): FallbackCard => ({ rect: this.a.layer.rectOf(e), label: this.a.panels.snippetFor(e), color: e.color })),
-      annotations: this.a.layer.elements().filter((e) => e.type === 'annotation'),
+      annotations: this.a.layer.elements().filter((e) => e.type === 'annotation' && inLimit(e)),
       pins: this.a.layer
         .elements()
-        .filter((e) => e.type === 'comment' && e.anchorId !== undefined)
+        .filter((e) => e.type === 'comment' && e.anchorId !== undefined && inLimit(e))
         .map((e) => this.a.layer.rectOf(e)),
     };
     try {
@@ -173,6 +185,31 @@ export class BoardExport {
   }
 
 
+  // Card menu 'Copy as image': rasterize just the selection (column
+  // members ride along inside their column) and put a png on the OS
+  // clipboard.
+  async copySelectionImage() {
+    const set = this.a.copySet();
+    if (!set.length) return;
+    const done = busy(t('copyBusy'));
+    try {
+      const cv = await this.boardRaster(2, undefined, new Set(set.map((e) => e.id)));
+      const { toBlob } = await import('../export/boardpng');
+      const blob = cv && (await toBlob(cv, 'image/png'));
+      if (!blob || typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+        toast(t('copyFail'), 'err');
+        return;
+      }
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      toast(t('copied'), 'ok');
+    } catch {
+      toast(t('copyFail'), 'err');
+    } finally {
+      done();
+    }
+  }
+
+
   async exportPng() {
     const done = busy(t('exBusy'));
     try {
@@ -183,6 +220,7 @@ export class BoardExport {
       }
       downloadBlob(`${this.exportFileBase()}.png`, blob);
       toast(t('exDone'), 'ok');
+    this.a.markExported();
     } finally {
       done();
     }
@@ -206,6 +244,7 @@ export class BoardExport {
       const pdf = jpegToPdf(jpeg, cv.width, cv.height, (cv.width / scale) * 0.75, (cv.height / scale) * 0.75);
       downloadBlob(`${this.exportFileBase()}.pdf`, pdf);
       toast(t('exDone'), 'ok');
+    this.a.markExported();
     } finally {
       done();
     }
@@ -223,6 +262,7 @@ export class BoardExport {
     else if (kind === 'txt') downloadTextFile(`${base}.txt`, toPlain(title, items));
     else downloadTextFile(`${base}.doc`, toWordHtml(title, items), 'application/msword');
     toast(t('exDone'), 'ok');
+    this.a.markExported();
   }
 
 
@@ -267,6 +307,7 @@ export class BoardExport {
       }
       downloadBlob(`${this.exportFileBase()}-files.zip`, blob);
       toast(t('exDone'), 'ok');
+    this.a.markExported();
     } finally {
       done();
     }
@@ -283,6 +324,7 @@ export class BoardExport {
     }
     downloadTextFile(`${this.exportFileBase()}.json`, text, 'application/json');
     toast(t('exDone'), 'ok');
+    this.a.markExported();
   }
 
 

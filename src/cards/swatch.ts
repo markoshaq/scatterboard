@@ -1,6 +1,8 @@
 import type { Element } from '../state/schema';
 import { swatchDoc } from '../state/schema';
 import { t } from '../strings';
+import { copyTextToClipboard } from '../persist/blobs';
+import { toast } from '../ui/toast';
 import type { CardCtx } from './factory';
 import type { CardView } from './note';
 
@@ -110,6 +112,14 @@ export class SwatchCard implements CardView {
     meta.className = 'sw-meta';
     this.valueEl = document.createElement('div');
     this.valueEl.className = 'sw-value';
+    this.valueEl.dataset.noclick = '1';
+    this.valueEl.title = t('copyLink');
+    this.valueEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const el = this.ctx.doc.elements[this.id];
+      const c = el ? swatchDoc(el) : null;
+      if (c) void copyTextToClipboard(c.color).then(() => toast(t('copied'), 'ok'));
+    });
     this.captionEl = document.createElement('div');
     this.captionEl.className = 'sw-caption';
     this.captionEl.dataset.ph = t('captionPlaceholder');

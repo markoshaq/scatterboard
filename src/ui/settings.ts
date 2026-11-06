@@ -1,6 +1,7 @@
 import type { Currency, Lang } from '../persist/storage';
 import { LANGS, t } from '../strings';
 import { fmtSize } from '../ingest/files';
+import { fmtDate } from '../locale';
 import { ICONS } from './icons';
 import { haspopup, openToolPopup, type ToolPopup } from './popup';
 import { isIos, inStandalone } from './install';
@@ -18,8 +19,8 @@ interface SettingsApi {
   onBrowserLang(v: boolean): void;
   currency(): Currency | null;
   onCurrency(c: Currency | null): void;
-  flag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl' | 'agent'): boolean;
-  onFlag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl' | 'agent', v: boolean): void;
+  flag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl' | 'agent' | 'spellcheck'): boolean;
+  onFlag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl' | 'agent' | 'spellcheck', v: boolean): void;
   // Whether the agent bridge socket is live right now.
   agentStatus(): boolean;
   // Stored bridge credentials exist (paired via an ?agent= link once).
@@ -29,6 +30,14 @@ interface SettingsApi {
   onGuideAlpha(v: number): void;
   onTemplates(): void;
   onReset(): void;
+  // Folder backup over the File System Access API. Null status means
+  // no folder is connected; 'denied' needs a user-gesture reconnect.
+  syncDirSupported(): boolean;
+  syncDirStatus(): Promise<{ name: string; state: 'on' | 'denied' | 'fail' | 'off'; lastSyncAt: number } | null>;
+  onSyncDirPick(): Promise<void>;
+  onSyncDirReconnect(): Promise<void>;
+  onSyncDirStop(): Promise<void>;
+  onSnapshots(): void;
   // Toolbar palette editor: ordered keys with hidden flags, moves and
   // a reset back to the default order.
   railItems(): { key: string; label: string; hidden: boolean }[];
@@ -357,6 +366,7 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   toggle(t('setInk'), () => api.flag('ink'), (v) => api.onFlag('ink', v));
   toggle(t('setUndoArrows'), () => api.flag('undoArrows'), (v) => api.onFlag('undoArrows', v));
   toggle(t('setAutoEdit'), () => api.flag('autoEdit'), (v) => api.onFlag('autoEdit', v));
+  toggle(t('setSpellcheck'), () => api.flag('spellcheck'), (v) => api.onFlag('spellcheck', v));
   node.appendChild(head(t('setGuides')));
   seg([
     { label: t('guideFull'), on: () => api.guideAlpha() === 1, pick: () => api.onGuideAlpha(1) },
@@ -370,6 +380,82 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   unfurlHow.className = 'ts-head agent-how';
   unfurlHow.textContent = t('unfurlHow');
   node.appendChild(unfurlHow);
+
+  group(t('setBackup'));
+  const syncBox = document.createElement('div');
+  node.appendChild(syncBox);
+  const syncHow = document.createElement('div');
+  syncHow.className = 'ts-head agent-how';
+  node.appendChild(syncHow);
+  if (!api.syncDirSupported()) {
+    syncHow.textContent = t('backupUnsupported');
+  } else {
+    const renderSync = () => {
+      void api.syncDirStatus().then((s) => {
+        if (!syncBox.isConnected) return;
+        syncBox.textContent = '';
+        const pickRow = document.createElement('button');
+        pickRow.type = 'button';
+        pickRow.className = 'pop-row';
+        const pickLab = document.createElement('span');
+        pickLab.className = 'pop-label';
+        pickLab.textContent = t('backupFolder');
+        const pickExtra = document.createElement('span');
+        pickExtra.className = 'sp-rextra';
+        pickExtra.textContent = s ? s.name : t('backupOff');
+        pickRow.append(pickLab, pickExtra);
+        pickRow.addEventListener('click', () => {
+          void api.onSyncDirPick().then(renderSync);
+        });
+        syncBox.appendChild(pickRow);
+        if (s && s.state === 'denied') {
+          const re = document.createElement('button');
+          re.type = 'button';
+          re.className = 'pop-row';
+          const reLab = document.createElement('span');
+          reLab.className = 'pop-label';
+          reLab.textContent = t('backupReconnect');
+          re.appendChild(reLab);
+          re.addEventListener('click', () => {
+            void api.onSyncDirReconnect().then(renderSync);
+          });
+          syncBox.appendChild(re);
+        }
+        if (s) {
+          const stop = document.createElement('button');
+          stop.type = 'button';
+          stop.className = 'pop-row';
+          const stopLab = document.createElement('span');
+          stopLab.className = 'pop-label';
+          stopLab.textContent = t('backupStop');
+          stop.appendChild(stopLab);
+          stop.addEventListener('click', () => {
+            void api.onSyncDirStop().then(renderSync);
+          });
+          syncBox.appendChild(stop);
+        }
+        syncHow.textContent =
+          s && s.state === 'on' && s.lastSyncAt
+            ? t('backupLast').replace('{when}', fmtDate(s.lastSyncAt))
+            : s && s.state === 'fail'
+              ? t('backupFail')
+              : t('backupHint');
+      });
+    };
+    renderSync();
+  }
+  const snapRow = document.createElement('button');
+  snapRow.type = 'button';
+  snapRow.className = 'pop-row';
+  const snapLab = document.createElement('span');
+  snapLab.className = 'pop-label';
+  snapLab.textContent = t('snapTitle');
+  snapRow.appendChild(snapLab);
+  snapRow.addEventListener('click', () => {
+    pop.close();
+    api.onSnapshots();
+  });
+  node.appendChild(snapRow);
 
   // Actions sit apart from the option groups, separated so they do not
   // read as more toggle rows.
@@ -422,7 +508,7 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
 // Help > About: version, storage usage and the source link.
 export function openAboutPopup(
   anchor: HTMLElement,
-  api: { storage(): Promise<{ doc: number; blobs: number; persisted: boolean }> },
+  api: { storage(): Promise<{ doc: number; blobs: number; persisted: boolean }>; lastExportAt?(): number | undefined },
 ): ToolPopup {
   const node = document.createElement('div');
   node.className = 'stp-body';
@@ -450,6 +536,11 @@ export function openAboutPopup(
     .catch(() => {
       meter.textContent = '';
     });
+  const lastEx = api.lastExportAt?.();
+  const exLine = document.createElement('div');
+  exLine.className = 'stp-meter about-export';
+  exLine.textContent = lastEx ? t('aboutLastExport').replace('{when}', fmtDate(lastEx)) : t('aboutNoExport');
+  node.appendChild(exLine);
   const ghRow = document.createElement('button');
   ghRow.type = 'button';
   ghRow.className = 'pop-row';

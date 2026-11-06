@@ -146,6 +146,40 @@ export function bindVvh() {
   set();
 }
 
+// A real grab strip behind the pill visual: pull it down past a
+// thumb's reach to dismiss (the handle is otherwise decorative).
+// touch-action: none on .sheet-grab keeps the drag in JS instead of
+// scrolling the sheet. Shared by openToolPopup and the due picker.
+export function sheetGrab(node: HTMLElement, onDismiss: () => void) {
+  const grab = document.createElement('div');
+  grab.className = 'sheet-grab';
+  node.prepend(grab);
+  let gpid: number | null = null;
+  let gy = 0;
+  grab.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    gpid = e.pointerId;
+    gy = e.clientY;
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== gpid) return;
+      node.style.transform = `translateY(${Math.max(0, ev.clientY - gy)}px)`;
+    };
+    const end = (ev: PointerEvent) => {
+      if (ev.pointerId !== gpid) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      gpid = null;
+      const dy = Math.max(0, ev.clientY - gy);
+      node.style.transform = '';
+      if (dy > 72) onDismiss();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  });
+}
+
 // Anchored popup in screen space. One at a time; Esc and outside
 // pointerdown close it (same dismiss pattern as the due popup).
 // `below` drops the popup under the anchor instead of level with it,
@@ -167,39 +201,7 @@ export function openToolPopup(anchor: HTMLElement | DOMRect, content: HTMLElemen
   node.className = sheet ? 'tool-pop sheet' : 'tool-pop';
   node.setAttribute('role', 'dialog');
   node.appendChild(content);
-  if (sheet) {
-    // A real grab strip behind the pill visual: pull it down past a
-    // thumb's reach to dismiss (the handle is otherwise decorative).
-    // touch-action: none on .sheet-grab keeps the drag in JS instead of
-    // scrolling the sheet.
-    const grab = document.createElement('div');
-    grab.className = 'sheet-grab';
-    node.prepend(grab);
-    let gpid: number | null = null;
-    let gy = 0;
-    grab.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      gpid = e.pointerId;
-      gy = e.clientY;
-      const move = (ev: PointerEvent) => {
-        if (ev.pointerId !== gpid) return;
-        node.style.transform = `translateY(${Math.max(0, ev.clientY - gy)}px)`;
-      };
-      const end = (ev: PointerEvent) => {
-        if (ev.pointerId !== gpid) return;
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', end);
-        window.removeEventListener('pointercancel', end);
-        gpid = null;
-        const dy = Math.max(0, ev.clientY - gy);
-        node.style.transform = '';
-        if (dy > 72) closePop(false);
-      };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', end);
-      window.addEventListener('pointercancel', end);
-    });
-  }
+  if (sheet) sheetGrab(node, () => closePop(false));
   node.addEventListener('pointerdown', (e) => e.stopPropagation());
   node.addEventListener('keydown', (e) => cycleKeys(e, node));
   const opener = anchor instanceof HTMLElement ? anchor : (document.activeElement as HTMLElement | null);

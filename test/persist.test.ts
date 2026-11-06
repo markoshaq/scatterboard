@@ -97,13 +97,13 @@ describe('LocalStorageAdapter', () => {
   it('overlays saveBoardPos rows onto the loaded doc', async () => {
     const a = new LocalStorageAdapter();
     const w = workspace();
-    w.doc.boards.home.position = { x: 0, y: 0, z: 1 };
+    w.doc.boards.home!.position = { x: 0, y: 0, z: 1 };
     await a.save(w);
     a.saveBoardPos('home', { x: 10, y: 20, z: 2 });
     a.saveBoardPos('ghost', { x: 1, y: 1, z: 1 });
     const loaded = await a.load();
     // Newest row wins over the serialized doc value.
-    expect(loaded!.doc.boards.home.position).toEqual({ x: 10, y: 20, z: 2 });
+    expect(loaded!.doc.boards.home!.position).toEqual({ x: 10, y: 20, z: 2 });
     // A pos row for a board the doc no longer has is ignored.
     expect(loaded!.doc.boards.ghost).toBeUndefined();
   });
@@ -111,10 +111,10 @@ describe('LocalStorageAdapter', () => {
   it('ignores a corrupt pos row', async () => {
     const a = new LocalStorageAdapter();
     const w = workspace();
-    w.doc.boards.home.position = { x: 0, y: 0, z: 1 };
+    w.doc.boards.home!.position = { x: 0, y: 0, z: 1 };
     await a.save(w);
     localStorage.setItem('scatterboard:pos:home', '{bad');
     const loaded = await a.load();
-    expect(loaded!.doc.boards.home.position).toEqual({ x: 0, y: 0, z: 1 });
+    expect(loaded!.doc.boards.home!.position).toEqual({ x: 0, y: 0, z: 1 });
   });
 });

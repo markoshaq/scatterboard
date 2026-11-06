@@ -33,7 +33,9 @@ function inkWidths(s: Stroke, pressures: number[], times: number[]): number[] {
       f = 0.3 + p * 1.5;
     } else {
       const i0 = Math.max(0, i - 1);
-      const dist = Math.hypot(s.pts[i]?.[0] - s.pts[i0]?.[0], s.pts[i]?.[1] - s.pts[i0]?.[1]);
+      const [px, py] = s.pts[i]!;
+      const [px0, py0] = s.pts[i0]!;
+      const dist = Math.hypot(px - px0, py - py0);
       const dt = Math.max(4, (times[i] ?? 0) - (times[i0] ?? 0));
       const v = dist / dt; // px per ms
       f = Math.min(1.6, Math.max(0.3, 1.45 - v * 1.1));

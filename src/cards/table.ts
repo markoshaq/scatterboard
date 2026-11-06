@@ -223,6 +223,7 @@ export class TableCard implements CardView, GripHost, FxHost {
     for (let r = 0; r < this.cellEls.length; r++) {
       for (let c = 0; c < this.cellEls[r]!.length; c++) {
         const el = this.cellEls[r]![c];
+        if (!el) continue;
         const on = !!this.focus && this.focus.r === r && this.focus.c === c;
         el.classList.toggle('focused', on);
         if (on && this.editingCell) this.makeEditable(el);

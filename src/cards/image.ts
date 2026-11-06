@@ -22,6 +22,7 @@ export class ImageCard implements CardView {
   private img: HTMLImageElement;
   private missing: HTMLElement;
   private capEl: HTMLElement;
+  private altEl: HTMLInputElement;
   private handle: HTMLElement;
   private selected = false;
   private downSelected = false;
@@ -43,6 +44,7 @@ export class ImageCard implements CardView {
     this.img = document.createElement('img');
     this.img.className = 'im-img';
     this.img.draggable = false;
+    this.img.decoding = 'async';
     this.img.alt = '';
     this.missing = document.createElement('div');
     this.missing.className = 'im-missing';
@@ -53,13 +55,36 @@ export class ImageCard implements CardView {
     this.capEl.className = 'im-cap';
     this.capEl.dataset.ph = t('captionPlaceholder');
 
+    // Alt text: screen-reader description, edited as a one-line input
+    // shown only while the card is in edit mode.
+    this.altEl = document.createElement('input');
+    this.altEl.type = 'text';
+    this.altEl.className = 'im-alt';
+    this.altEl.dataset.noclick = '1';
+    this.altEl.placeholder = t('altTextPh');
+    this.altEl.setAttribute('aria-label', t('altText'));
+    this.altEl.addEventListener('input', () => {
+      const el = this.ctx.doc.elements[this.id];
+      const c = el ? imageDoc(el) : null;
+      if (!c) return;
+      const alt = this.altEl.value;
+      if (alt !== (c.alt ?? '')) this.ctx.events.onContent(this.id, { image: { ...c, alt } });
+    });
+    this.altEl.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') this.ctx.events.onEditEnd(this.id);
+    });
+    this.altEl.addEventListener('blur', () => {
+      if (this.editing) this.ctx.events.onEditEnd(this.id);
+    });
+
     this.handle = document.createElement('div');
     this.handle.className = 'resize-handle';
     this.handle.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       this.ctx.events.onResizeHandle(this.id, e);
     });
-    this.node.append(this.wrap, this.capEl, this.handle);
+    this.node.append(this.wrap, this.capEl, this.altEl, this.handle);
 
     this.node.addEventListener('pointerdown', (e) => {
       this.downSelected = this.selected;
@@ -114,6 +139,11 @@ export class ImageCard implements CardView {
     if (!c) return;
     this.wrap.style.aspectRatio = c.aspect > 0 ? `${c.aspect}` : '1';
     this.node.classList.toggle('has-cap', !!c.caption);
+    const alt = c.alt ?? '';
+    if (this.img.alt !== alt) this.img.alt = alt;
+    if (alt) this.node.setAttribute('aria-label', alt);
+    else this.node.setAttribute('aria-label', t('railImage'));
+    if (!this.editing && this.altEl.value !== alt) this.altEl.value = alt;
     if (c.blobRef !== this.curRef) {
       this.curRef = c.blobRef;
       this.missing.style.display = 'none';

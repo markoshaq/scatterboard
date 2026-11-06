@@ -195,7 +195,8 @@ export function attachShortcuts(app: App) {
         break;
       case 'z':
       case 'Z':
-        app.fitView();
+        if (app.sel.size) app.fitSelection();
+        else app.fitView();
         break;
       case 'i':
       case 'I':
@@ -207,19 +208,23 @@ export function attachShortcuts(app: App) {
         break;
       case 'ArrowLeft':
         e.preventDefault();
-        app.nudge(e.shiftKey ? -10 : -1, 0);
+        if (app.presenting && !e.shiftKey) app.presentStep(-1);
+        else app.nudge(e.shiftKey ? -10 : -1, 0);
         break;
       case 'ArrowRight':
         e.preventDefault();
-        app.nudge(e.shiftKey ? 10 : 1, 0);
+        if (app.presenting && !e.shiftKey) app.presentStep(1);
+        else app.nudge(e.shiftKey ? 10 : 1, 0);
         break;
       case 'ArrowUp':
         e.preventDefault();
-        app.nudge(0, e.shiftKey ? -10 : -1);
+        if (app.presenting && !e.shiftKey) app.presentStep(-1);
+        else app.nudge(0, e.shiftKey ? -10 : -1);
         break;
       case 'ArrowDown':
         e.preventDefault();
-        app.nudge(0, e.shiftKey ? 10 : 1);
+        if (app.presenting && !e.shiftKey) app.presentStep(1);
+        else app.nudge(0, e.shiftKey ? 10 : 1);
         break;
     }
   });

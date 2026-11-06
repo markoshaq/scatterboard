@@ -1,6 +1,7 @@
 import type { App } from '../app';
 import { boardRefOf, createBoard, createBoardCard, nextZ, survivingBoard, uid, UNSORTED, type Board, type Element, type ID } from '../state/schema';
-import { putBlob } from '../persist/blobs';
+import type { Action } from '../state/actions';
+import { copyTextToClipboard, putBlob } from '../persist/blobs';
 import { prepareImage } from '../ingest/files';
 import type { Rect } from '../canvas/viewport';
 import { toast } from '../ui/toast';
@@ -8,7 +9,8 @@ import { relTime, t } from '../strings';
 import { typeIcon } from '../ui/icons';
 import { dragGhost, DROP_EXCLUDE } from '../ui/util';
 import { openPanel, panelEmpty, panelRow, dayGroupLabel, type PanelHandle } from '../ui/panel';
-import { openSearchPanel, searchBoard, type SearchHit } from '../ui/search';
+import { openSearchPanel, searchBoard, searchDoc, type SearchHit } from '../ui/search';
+import { collectDue, openDuePanel, type DuePanel } from '../ui/duepanel';
 import { openBoardsPanel, type BoardRow, type BoardsPanel } from '../ui/boards';
 import { choice } from '../ui/toast';
 import { builtinTemplates, instantiateActions, snapshotTemplate } from '../state/templates';
@@ -21,7 +23,9 @@ export class Panels {
 
   panel: PanelHandle | null = null;
 
-  panelKind: 'unsorted' | 'trash' | 'search' | 'boards' | null = null;
+  panelKind: 'unsorted' | 'trash' | 'search' | 'boards' | 'due' | null = null;
+
+  private duePanel: DuePanel | null = null;
 
   collapsedBoards = new Set<ID>();
 
@@ -51,11 +55,23 @@ export class Panels {
 
 
   unsortedItems(): Element[] {
-    return this.a.layer.members(UNSORTED).filter((e) => e.type !== 'line').reverse();
+    const items = this.a.layer.members(UNSORTED).filter((e) => e.type !== 'line');
+    switch (this.a.prefs.unsortedSort ?? 'added') {
+      case 'oldest':
+        return items;
+      case 'modified':
+        return items.sort((a, b) => b.modifiedAt - a.modifiedAt);
+      case 'alpha':
+        return items.sort((a, b) => this.snippetFor(a).localeCompare(this.snippetFor(b)));
+      case 'type':
+        return items.sort((a, b) => a.type.localeCompare(b.type) || a.createdAt - b.createdAt);
+      default:
+        return items.reverse();
+    }
   }
 
 
-  takePanel(kind: 'unsorted' | 'trash' | 'search' | 'boards', handle: PanelHandle) {
+  takePanel(kind: 'unsorted' | 'trash' | 'search' | 'boards' | 'due', handle: PanelHandle) {
     this.closePanel();
     this.lastPanelSig = '';
     this.panel = handle;
@@ -66,6 +82,7 @@ export class Panels {
       if (this.panel === handle) {
         this.panel = null;
         this.panelKind = null;
+        this.duePanel = null;
       }
     };
   }
@@ -88,7 +105,12 @@ export class Panels {
     }
     this.takePanel(
       'trash',
-      openPanel({ title: t('trashTitle'), actionLabel: t('emptyTrash'), onAction: () => this.emptyTrash() }),
+      openPanel({
+        title: t('trashTitle'),
+        actions: [{ label: t('restoreAll'), onAction: () => this.restoreAllTrash() }],
+        actionLabel: t('emptyTrash'),
+        onAction: () => this.emptyTrash(),
+      }),
     );
     this.renderPanel();
   }
@@ -104,7 +126,8 @@ export class Panels {
     this.takePanel(
       'search',
       openSearchPanel({
-        search: (q) => searchBoard(this.a.doc, boardId, q),
+        search: (q, scope) => (scope === 'all' ? searchDoc(this.a.doc, q) : searchBoard(this.a.doc, boardId, q)),
+        boardTitle: () => this.a.doc.boards[boardId]?.title ?? '',
         recents: () =>
           (this.a.prefs.recentBoards ?? [])
             .map((bid) => {
@@ -120,6 +143,29 @@ export class Panels {
   }
 
 
+  openDue() {
+    if (this.panelKind === 'due') {
+      this.closePanel();
+      return;
+    }
+    this.duePanel = openDuePanel({
+      items: () => collectDue(this.a.doc),
+      onJump: (d) => this.jumpToHit({ boardId: d.boardId, elementId: d.elId, icon: '', snippet: '', modifiedAt: 0, unsorted: d.unsorted }),
+      onDone: (d) => {
+        const el = this.a.doc.elements[d.elId];
+        const c = el && 'todo' in el.content ? el.content.todo : null;
+        if (!c || this.a.lockedView()) return;
+        this.a.store.dispatch({
+          type: 'element.patch',
+          id: d.elId,
+          patch: { content: { todo: { ...c, items: c.items.map((i) => (i.id === d.itemId ? { ...i, done: true } : i)) } } },
+        });
+      },
+    });
+    this.takePanel('due', this.duePanel);
+  }
+
+
   openBoards() {
     if (this.panelKind === 'boards') {
       this.closePanel();
@@ -129,6 +175,7 @@ export class Panels {
       'boards',
       openBoardsPanel({
         boards: () => this.boardsList(),
+        recents: () => this.recentBoardRows(),
         onOpen: (id) => this.a.openBoard(id, undefined, false, true),
         onRename: (id, title) => {
           if (!this.a.lockedView()) this.a.store.dispatch({ type: 'board.patch', id, patch: { title } });
@@ -140,8 +187,36 @@ export class Panels {
           else this.collapsedBoards.add(id);
         },
         onIcon: (id, anchor) => this.iconPickerFor(id, anchor),
+        onCopyLink: (id) => {
+          void copyTextToClipboard(this.a.boardUrl(id)).then(() => toast(t('copied'), 'ok'));
+        },
       }),
     );
+  }
+
+
+  // Recently opened boards, shown as a jump list above the tree.
+  // Editable/deletable stay off: rename and delete live on the tree row.
+  recentBoardRows(): BoardRow[] {
+    const cards = this.a.layer.canvasCounts();
+    const out: BoardRow[] = [];
+    for (const id of this.a.prefs.recentBoards ?? []) {
+      const b = this.a.doc.boards[id];
+      if (!b) continue;
+      out.push({
+        id: b.id,
+        depth: 0,
+        title: b.title || t('untitled'),
+        ...(b.icon !== undefined ? { icon: b.icon } : {}),
+        cards: cards.get(b.id) ?? 0,
+        boards: 0,
+        current: b.id === this.a.boardId,
+        collapsed: false,
+        editable: false,
+        deletable: false,
+      });
+    }
+    return out;
   }
 
 
@@ -272,8 +347,15 @@ export class Panels {
   }
 
 
+  // Workspace-wide search and the Due panel share this entry point:
+  // cards filed to Unsorted have no canvas position, so their jump
+  // lands on the Unsorted panel instead.
   jumpToHit(hit: SearchHit) {
     const q = hit.query ?? '';
+    if (hit.unsorted) {
+      this.openUnsorted();
+      return;
+    }
     if (!hit.elementId) {
       this.a.openBoard(hit.boardId, q || undefined);
       this.applyRouteFilter();
@@ -345,30 +427,37 @@ export class Panels {
   }
 
 
+  // Shared sanitize for drag-restore and restore-all: dead or
+  // foreign-board anchors would leave the card permanently invisible
+  // (it skips the layer, the pins overlay, and marquee), cross-board
+  // sync groups and labels likewise cannot follow.
+  private restoredEl(src: Element, boardId: ID, pt: { x: number; y: number }, parentId: ID | null): Element {
+    const el: Element = {
+      ...src,
+      boardId,
+      parentId,
+      x: Math.round(pt.x),
+      y: Math.round(pt.y),
+      z: nextZ(this.a.doc),
+    };
+    if (el.anchorId !== undefined && this.a.doc.elements[el.anchorId]?.boardId !== boardId) {
+      delete el.anchorId;
+    }
+    el.labels = el.labels.filter((l) => this.a.doc.labels[l]?.boardId === boardId);
+    if (boardId !== src.boardId) delete el.syncGroup;
+    // Keep the card's own colour; only inherit the board accent on a
+    // card that has none.
+    if (el.color === undefined) this.a.stampBoardColor(el);
+    return el;
+  }
+
+
   restoreTrash(id: ID, pt: { x: number; y: number }) {
     if (this.a.lockedView()) return;
     const entry = this.a.doc.trash[id];
     if (!entry) return;
     const boardId = this.a.boardId ?? entry.el.boardId;
-    const el: Element = {
-      ...entry.el,
-      boardId,
-      parentId: this.a.columnAt(pt),
-      x: Math.round(pt.x),
-      y: Math.round(pt.y),
-      z: nextZ(this.a.doc),
-    };
-    // Dead or foreign-board anchors would leave the restored card
-    // permanently invisible: it skips the layer, the pins overlay
-    // (no anchor), and marquee.
-    if (el.anchorId !== undefined && this.a.doc.elements[el.anchorId]?.boardId !== boardId) {
-      delete el.anchorId;
-    }
-    el.labels = el.labels.filter((l) => this.a.doc.labels[l]?.boardId === boardId);
-    if (boardId !== entry.el.boardId) delete el.syncGroup;
-    // Keep the card's own colour; only inherit the board accent on a
-    // card that has none.
-    if (el.color === undefined) this.a.stampBoardColor(el);
+    const el = this.restoredEl(entry.el, boardId, pt, this.a.columnAt(pt));
     this.a.store.dispatch({
       type: 'batch',
       actions: [
@@ -377,6 +466,36 @@ export class Panels {
       ],
     });
     this.a.setSelection([el.id]);
+  }
+
+
+  // Trash panel 'Restore all': cards return to their home board (the
+  // open one when it is gone) at their original positions, columns
+  // trashed in the same batch keep their members. One undoable batch.
+  restoreAllTrash() {
+    if (this.a.lockedView()) return;
+    const entries = Object.entries(this.a.doc.trash);
+    if (!entries.length) return;
+    const target = new Map<ID, ID>();
+    for (const [id, entry] of entries) {
+      target.set(id, this.a.doc.boards[entry.el.boardId] ? entry.el.boardId : (this.a.boardId ?? entry.el.boardId));
+    }
+    const actions: Action[] = [];
+    const created: ID[] = [];
+    for (const [id, entry] of entries) {
+      const boardId = target.get(id)!;
+      let parentId: ID | null = null;
+      const p = entry.el.parentId;
+      if (p !== null && p !== UNSORTED) {
+        const pb = target.get(p) ?? this.a.doc.elements[p]?.boardId;
+        if (pb === boardId) parentId = p;
+      }
+      const el = this.restoredEl(entry.el, boardId, { x: entry.el.x, y: entry.el.y }, parentId);
+      actions.push({ type: 'element.create', el }, { type: 'trash.remove', id });
+      if (boardId === this.a.boardId) created.push(el.id);
+    }
+    this.a.store.dispatch({ type: 'batch', actions });
+    if (created.length) this.a.setSelection(created);
   }
 
 
@@ -439,7 +558,7 @@ export class Panels {
     let sig = '';
     if (this.panelKind === 'unsorted') {
       const items = this.unsortedItems();
-      sig = `u:${items.map((e) => `${e.id}:${e.modifiedAt}`).join(',')}`;
+      sig = `u:${this.a.prefs.unsortedSort ?? 'added'}:${items.map((e) => `${e.id}:${e.modifiedAt}`).join(',')}`;
     } else if (this.panelKind === 'trash') {
       let n = 0;
       let m = 0;
@@ -448,6 +567,10 @@ export class Panels {
         if (t.deletedAt > m) m = t.deletedAt;
       }
       sig = `t:${n}:${m}`;
+    } else if (this.panelKind === 'due') {
+      // Due rows follow the doc directly; a done-check or a new due
+      // item bumps the rev and re-renders the list.
+      sig = `d:${this.a.store.rev}`;
     } else {
       // Data sig, not rev: card drags bump the rev every frame while
       // the board list only changes with board meta or card counts.
@@ -463,6 +586,10 @@ export class Panels {
       (this.panel as BoardsPanel).render();
       return;
     }
+    if (this.panelKind === 'due') {
+      this.duePanel?.render();
+      return;
+    }
     const body = this.panel.body;
     body.textContent = '';
     if (this.panelKind === 'unsorted') {
@@ -471,6 +598,31 @@ export class Panels {
         body.appendChild(panelEmpty(t('unsortedEmpty')));
         return;
       }
+      const sort = document.createElement('select');
+      sort.name = 'unsorted-sort';
+      sort.className = 'sp-sort';
+      sort.title = t('sortLabel');
+      sort.setAttribute('aria-label', t('sortLabel'));
+      for (const [v, label] of [
+        ['added', t('sortAdded')],
+        ['oldest', t('sortOldest')],
+        ['modified', t('sortModified')],
+        ['alpha', t('sortAlpha')],
+        ['type', t('sortType')],
+      ] as const) {
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = label;
+        sort.appendChild(o);
+      }
+      sort.value = this.a.prefs.unsortedSort ?? 'added';
+      sort.addEventListener('change', () => {
+        this.a.prefs.unsortedSort = sort.value as NonNullable<typeof this.a.prefs.unsortedSort>;
+        this.a.scheduleSave();
+        this.lastPanelSig = '';
+        this.renderPanel();
+      });
+      body.appendChild(sort);
       for (const el of items) {
         body.appendChild(
           this.draggableRow(el, undefined, (pt) => {

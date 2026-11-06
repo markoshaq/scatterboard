@@ -101,6 +101,10 @@
   cursor: pointer;
 }
 
+.sp-hit.nav {
+  background: var(--hover);
+}
+
 .sp-ricon {
   width: 16px;
   height: 16px;
@@ -163,6 +167,78 @@ button.sp-ricon:hover {
   border: 1px solid var(--edge-strong);
   border-radius: 7px;
   background: var(--card);
+}
+
+.sp-scope {
+  margin: 0 6px 6px;
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  color: var(--ink-4);
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  background: var(--card);
+  padding: 5px 8px;
+}
+
+/* Due panel: leading done-check, trailing relative due label. */
+.due-check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--edge-strong);
+  border-radius: 5px;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.due-check svg {
+  width: 12px;
+  height: 12px;
+}
+
+.due-check:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.due-when {
+  flex: none;
+  font-size: calc(11px * var(--ui));
+  color: var(--ink-6);
+}
+
+.sp-row.due-late .due-when {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.sp-row-del {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: -4px;
+  border: 0;
+  background: none;
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 6px;
+  color: var(--ink-4);
+}
+
+.sp-row-del svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.sp-row-del:hover {
+  background: var(--hover);
+  color: var(--danger);
 }
 
 /* projects panel */

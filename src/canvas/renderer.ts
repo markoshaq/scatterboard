@@ -40,6 +40,11 @@ const EMPTY_SCENE: Scene = { grid: true, marquee: null, guides: [], guideAlpha: 
 
 export const LINE_W: Record<LineWeight, number> = { thin: 1, medium: 1.8, thick: 4 };
 
+// Backing-store cap: a 3x phone would rasterize 9x the css pixels for
+// no visible gain, so canvases stop at 2x like most drawing apps.
+const MAX_DPR = 2;
+const dpr = () => Math.min(MAX_DPR, devicePixelRatio || 1);
+
 export class Renderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -70,11 +75,11 @@ export class Renderer {
   }
 
   resize() {
-    const dpr = devicePixelRatio || 1;
-    this.canvas.width = Math.round(this.vp.vw * dpr);
-    this.canvas.height = Math.round(this.vp.vh * dpr);
-    this.chromeEl.width = Math.round(this.vp.vw * dpr);
-    this.chromeEl.height = Math.round(this.vp.vh * dpr);
+    const d = dpr();
+    this.canvas.width = Math.round(this.vp.vw * d);
+    this.canvas.height = Math.round(this.vp.vh * d);
+    this.chromeEl.width = Math.round(this.vp.vw * d);
+    this.chromeEl.height = Math.round(this.vp.vh * d);
     this.invalidate();
   }
 
@@ -90,10 +95,10 @@ export class Renderer {
   private draw() {
     this.cc = canvasColors();
     const { ctx, vp, scene } = this;
-    const dpr = devicePixelRatio || 1;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const d = dpr();
+    ctx.setTransform(d, 0, 0, d, 0, 0);
     ctx.clearRect(0, 0, vp.vw, vp.vh);
-    ctx.setTransform(dpr * vp.z, 0, 0, dpr * vp.z, dpr * vp.x, dpr * vp.y);
+    ctx.setTransform(d * vp.z, 0, 0, d * vp.z, d * vp.x, d * vp.y);
     if (scene.grid) this.drawGrid();
     // Skip lines whose bounding box misses the view: hundreds of
     // off-canvas lines should cost a compare, not a stroke.
@@ -111,9 +116,9 @@ export class Renderer {
     for (const o of scene.outlines) this.drawOutline(o.rect, o.radius);
 
     const chrome = this.chrome;
-    chrome.setTransform(dpr, 0, 0, dpr, 0, 0);
+    chrome.setTransform(d, 0, 0, d, 0, 0);
     chrome.clearRect(0, 0, vp.vw, vp.vh);
-    chrome.setTransform(dpr * vp.z, 0, 0, dpr * vp.z, dpr * vp.x, dpr * vp.y);
+    chrome.setTransform(d * vp.z, 0, 0, d * vp.z, d * vp.x, d * vp.y);
     this.ctx = chrome;
     for (const l of scene.lines) {
       if (l.selected) {
@@ -135,15 +140,15 @@ export class Renderer {
     let step = GRID;
     while (step * vp.z < 16) step *= 2;
     const r = Math.max(0.8, Math.min(1.6, 1.6 * vp.z));
-    const dpr = devicePixelRatio || 1;
-    const w = Math.max(8, Math.round(step * vp.z * dpr));
+    const d = dpr();
+    const w = Math.max(8, Math.round(step * vp.z * d));
     const key = `${w}|${r.toFixed(2)}|${this.cc.grid}`;
     if (this.gridTile?.key !== key) {
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = w;
       const tc = canvas.getContext('2d');
       if (!tc) return;
-      const rr = r * dpr;
+      const rr = r * d;
       tc.fillStyle = this.cc.grid;
       for (const [cx, cy] of [
         [0, 0],

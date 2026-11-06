@@ -1552,6 +1552,19 @@ template: S(
 <rect width="5" height="7" x="16" y="14" rx="1" />
 `,
   ),
+snap: S(
+    `
+<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+<path d="M3 3v5h5" />
+<path d="M12 7v5l4 2" />
+`,
+  ),
+minimap: S(
+    `
+<path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" />
+<rect width="10" height="7" x="12" y="13" rx="2" />
+`,
+  ),
 };
 
 export function typeIcon(type: string): string {

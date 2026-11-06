@@ -4,6 +4,65 @@ Notable changes per release, newest first. Sections: Added, Changed, Fixed, Remo
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-11-06
+
+Folder backup, named version history, a board minimap, a Due panel
+for dated to-dos, a new icon, and a round of quality-of-life wins.
+
+### Added
+
+- Settings > Backup mirrors the workspace and its media into a folder
+  you pick (browsers with File System Access, like Chrome and Edge).
+  Point it at a synced folder for device sync; a newer mirror offers
+  a restore on open.
+- Settings > Version history keeps named workspace snapshots you can
+  restore or delete, plus a daily automatic snapshot.
+- A corner minimap shows the whole board and the visible area; click
+  or drag it to pan. View > Minimap hides it.
+- A topbar chip counts to-do items that are overdue or due today and
+  opens a Due panel listing every dated item across all boards, with
+  jump-to-card and mark done.
+- A second open tab picks up saves from the first; when it has
+  unsaved or in-flight work it asks before reloading.
+- Deleting cards offers an Undo toast.
+- Clicking a colour swatch's value copies its hex.
+- `Z` frames the selected cards when something is selected.
+- Search results answer to the arrow keys and Enter, and a scope
+  switch lets search scan every board, not just the current one,
+  with the board named on each hit.
+- Double-click the board name in the topbar to rename it.
+- Dragging a card to the screen edge pans the board.
+- Boards panel rows can copy a board's link.
+- Image cards take alt text for screen readers.
+- On touch, holding a card and tapping a second finger opens its menu.
+- High-contrast mode strengthens muted colours, and About shows the
+  last export date.
+- Copy also puts the cards' text on the system clipboard, so pasting
+  into other apps works.
+- The card menu offers Copy Link to Card, Copy as Image (a rendered
+  PNG of the pick), Copy Image on image cards, and an Edited
+  timestamp.
+- Arrow keys step card to card while presenting.
+- The Boards panel opens with a Recently viewed jump list.
+- Trash offers Restore all.
+- The Unsorted panel sorts by recently added, oldest, last modified,
+  A to Z, or type.
+- Settings gains a spell check toggle.
+- The browser tab title shows the current board's name.
+- Pasting a URL while a link or embed card is selected re-points that
+  card instead of creating a new one.
+- If local saves keep failing, the app warns and offers a JSON export
+  so nothing is lost.
+
+### Changed
+
+- Touch: dragging on a card now pans the board; cards only move when
+  you drag one that is already selected (tap selects).
+- New app icon: three fanned cards in light and dark variants, and the
+  browser tab icon follows your system theme.
+- Status messages drop the colored edge strip for a small dot that
+  matches the rest of the app.
+
 ## [0.2.2] - 2026-11-05
 
 A phone layout, keyboard navigation, app install and sharing, a
@@ -28,6 +87,8 @@ right-click menu, and a broad accessibility and polish pass.
 - Colour swatches can be resized.
 - Map embeds get an Open map button; embed placeholders tint by
   provider.
+- Spotify embeds get their own compact player face, and still swap in
+  the real player on click.
 - Exports and imports show progress and confirm when done.
 - Board icons can be changed from the boards panel, and clicking a
   card's label or reaction chip opens that popup.

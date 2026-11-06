@@ -29,14 +29,17 @@ export function fmtSize(n: number): string {
 export function parseUrlText(text: string): string | null {
   const v = text.trim();
   if (!v || v.length > 2048 || /\s/.test(v)) return null;
-  // An explicit scheme (mailto:, tel:, even javascript:) goes straight
-  // to the protocol check; bare hosts get https:// when they look like
-  // a domain (has a dot) or localhost[:port].
-  const candidate = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(v)
-    ? v
-    : /\./.test(v) || /^localhost(:\d+)?([/?#]|$)/i.test(v)
-      ? `https://${v}`
-      : v;
+  // localhost[:port] must win over the scheme check: 'localhost:' reads
+  // as a scheme to new URL. Other explicit schemes (mailto:, tel:,
+  // even javascript:) go straight to the protocol check; bare hosts
+  // get https:// when they look like a domain (has a dot).
+  const candidate = /^localhost(:\d+)?([/?#]|$)/i.test(v)
+    ? `https://${v}`
+    : /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(v)
+      ? v
+      : /\./.test(v)
+        ? `https://${v}`
+        : v;
   try {
     const u = new URL(candidate);
     return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null;

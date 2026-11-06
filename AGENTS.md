@@ -28,7 +28,9 @@ calls; fully offline.
   commits and tags `v*`; pushing the tag runs `release.yml` (tag must
   match the package version, CHANGELOG section required) and
   `pages.yml`. `__APP_VERSION__` is injected via vite `define` from
-  `package.json` and shown in Help > About.
+  `package.json` and shown in Help > About. Changelog entries are
+  short, compact and user-facing: what the user gains or notices,
+  never internals.
 
 `window.__app` exposes the App instance on the dev page for poking
 (`__app.selectOnly(id)`, `__app.store.doc`, `__app.vp`).
@@ -51,7 +53,8 @@ calls; fully offline.
     optional fields.
   - `store.ts`: undo/redo stacks, `beginGroup`/`endGroup` for drags and
     edit sessions, patch coalescing.
-  - `clipboard.ts`: in-memory element snapshot for cut/copy/paste.
+  - `clipboard.ts`: in-memory element snapshot for cut/copy/paste;
+    copy also mirrors plain text to the OS clipboard.
   - `clone.ts`: `remapElements`, the shared fresh-id clone path used
     by paste/duplicate/Opt+drag and template instantiation.
   - `templates.ts`: Template snapshots {id, name, board, elements,
@@ -117,27 +120,36 @@ calls; fully offline.
     markdown autoformat, `richKeydown`, `isBlankSurface`.
   - `popup.ts` anchored tool popups (one open, Esc/outside-down close;
     under `mobileShell()` every popup docks as a `.sheet` bottom sheet
-    and skips place()); `outro(node)` is the shared exit: stamp `.out`,
-    let the closing animation in `styles/motion.css` run, then remove.
-    Popups, panels, scrims and the due picker all close through it.
-    `toolpopups.ts` colour/labels/reactions/menu/
+    and skips place()); `sheetGrab(node, dismiss)` mounts the shared
+    pull-to-dismiss strip; `outro(node)` is the shared exit: stamp
+    `.out`, let the closing animation in `styles/motion.css` run, then
+    remove. Popups, panels, scrims and the due picker all close through
+    it. `toolpopups.ts` colour/labels/reactions/menu/
     text-style/link builders + `openViewMenu` (topbar View menu: Present
     entry, per-board dot-grid toggle, presentation toggles, Fit board)
     + `openMobileMenu` (the phone topbar overflow), `duepopup.ts` the
-    original dismiss pattern (sheets it via CSS only).
-  - `panel.ts` slide-over chrome shared by Unsorted/Trash/Search/Boards
-    (`openSearchPanel` in `search.ts`, `boards.ts` the boards/projects
-    panel listing the board tree via `openPanel`).
+    due-date picker (builds its own node but shares the same dismiss +
+    sheet helpers).
+  - `panel.ts` slide-over chrome shared by Unsorted/Trash/Search/
+    Boards/Due/Snapshots (`openSearchPanel` in `search.ts`, `boards.ts`
+    the boards/projects panel listing the board tree via `openPanel`,
+    with a Recently viewed jump list above it; `duepanel.ts` lists
+    every dated open to-do item across boards and exports
+    `dueSoonCount` for the topbar chip; `snapshotpanel.ts` is the
+    version-history list).
   - `boardicons.ts` the board-icon glyph set (~60) + keyword tags,
     `mountBoardIcon` renders 'g:'/'c:'/'e:'/'b:' icon values.
   - `iconpicker.ts` board icon popup (search, Recommended,
     Letters & numbers, Upload an image, clear).
   - `newboard.ts` new-board template picker (empty, presets, saved
     templates with inline rename + delete).
+  - `minimap.ts` corner minimap: shrunken card-extents view with the
+    viewport outlined, click/drag pans the board; pref `minimap` +
+    View > Minimap toggle, hidden while presenting.
   - `settings.ts` settings popup {theme incl. System, language incl.
     Auto, UI scale, canvas prefs, formatting, toolbar-palette editor,
-    templates} + `openAboutPopup` (Help > About: `__APP_VERSION__`,
-    storage meter, source link); `theme.ts` light/dark/system state
+    templates, folder backup, Version history row} + `openAboutPopup`
+    (Help > About: `__APP_VERSION__`, storage meter, source link); `theme.ts` light/dark/system state
     (unset follows the OS, `systemDark()`), `canvasColors()`,
     `cardBg()`, `setUiScale`. `toast.ts` also has `hint()` (dismissible) and
     `choice()` (one action + dismiss); every removal fades via `.out`
@@ -152,14 +164,17 @@ calls; fully offline.
     (both seated into `.cards` after their card to honour el.z; member
     anchors stay in the host),
     `shortcutpanel.ts` `/` modal, `topbar.ts` crumbs/zoom/unsorted
-    chip/Export + View + Help menus (the trailing controls collapse to
-    a '...' overflow on <=720px; the zoombar hides there too),
+    chip/due chip/Export + View + Help menus (the trailing controls
+    collapse to a '...' overflow on <=720px; the zoombar hides there
+    too),
     `icons.ts` all SVG icon strings, `util.ts` `dragGhost`/`mobileShell`.
     `shortcuts.ts` is the global
     keydown map (modal surfaces own their keys): card roots are
     tabindex -1 role=group, an arrow key with no selection runs
     `App.stepCard(0)` (nearest to view centre), Tab/Shift+Tab steps
-    cards in reading order, Enter begins the edit; `unfurl.ts` is the
+    cards in reading order, Enter begins the edit, and while
+    presenting plain arrows run `App.presentStep` (Shift+arrow still
+    nudges); `unfurl.ts` is the
     link-preview fetch through api.allorigins.win, the only fetch in
     the codebase besides embed iframes. Embed cards fetch their page
     title without the unfurl pref; link cards only with it.
@@ -188,7 +203,15 @@ calls; fully offline.
   is the first-boot migration source and fallback),
   `blobs.ts` IndexedDB blob store {blobRef -> Blob} + objectURL cache +
   orphan purge; `blobRefsInDoc` covers elements, trash, board icons
-  and template elements. All storage ids are `scatterboard:*`; the
+  and template elements. `kv.ts` is a small IndexedDB key-value store
+  for non-doc data (the folder-backup handle, workspace snapshots),
+  `syncdir.ts` mirrors workspace.json + a media/ folder into a picked
+  directory over File System Access (Chrome-family only),
+  `snapshots.ts` keeps named workspace snapshots outside the doc
+  (`snap:` keys in kv, capped at 15, automatic ones prune first), and
+  `tabs.ts` BroadcastChannel-announces each save so a second open tab
+  pulls the newer workspace instead of silently overwriting it.
+  All storage ids are `scatterboard:*`; the
   remaining `planboard:*` literals exist only for the one-time
   copy-forward from pre-rename installs. `scatterboard:lang` and
   `scatterboard:theme` mirror explicit prefs so boot can resolve
@@ -197,16 +220,21 @@ calls; fully offline.
   overlays (chips/pins/label pills/connect handle), render loop,
   autosave. Two screen-space helpers sit in `.viewport` beside the
   canvases: `.board-empty` (shown while a board has no cards) and a
-  `.vh` live region that announces `stepCard` landings (type + snippet).
+  `.vh` live region that announces `stepCard` landings (type +
+  snippet); the corner minimap mounts there too.
   Collaborators live in `src/app/`: `editing.ts` (edit
   sessions, text commits, sync groups, helper offers, link/embed
   enrich), `deletion.ts` (delete cascade/detach/sweep policy +
   deleteSelection), `comments.ts` (comment thread ops),
   `tools.ts` (rail tool dispatch + card ops incl. converts),
-  `panels.ts` (side panels: unsorted/trash/search/boards, board ops,
-  icons, templates, route filters), `gestures.ts` (drag/drop, trash +
+  `panels.ts` (side panels: unsorted/trash/search/boards/due incl.
+  unsorted sort + trash restore-all, board ops, icons, templates,
+  route filters), `gestures.ts` (drag/drop, trash +
   column drop hints, resize, pan, overlap push), `export.ts` (PNG/PDF/
-  linear/zip/JSON export + import), `overlays.ts` (label pills, chips,
+  linear/zip/JSON export + import + selection raster to clipboard),
+  `syncdir.ts` (FolderSync: stored directory handle, post-save mirror
+  write, boot-time newer-backup restore offer),
+  `overlays.ts` (label pills, chips,
   pins, annotation seating, column member line spans, connect handle,
   coveredByCard). Delegates
   reach App internals via
@@ -217,11 +245,16 @@ calls; fully offline.
   only (`?v=__BUILD_ID__` busts the runtime cache per deploy). boot.ts
   runs `migrateStorageKeys`, picks the adapter (sqlite OPFS else
   localStorage), loads/seeds/migrates the doc, mounts App, and applies
-  the initial `#/b/`/`#/e/` route; `window.__app` is dev-only. PWA
+  the initial `#/b/`/`#/e/` route; `window.__app` is dev-only. Boot
+  also writes the daily automatic snapshot and re-attaches the
+  folder-backup handle (offering a restore when the mirror is newer). PWA
   entry params consumed at boot: `?share=1` (manifest share_target;
   url/text/title files a note into Unsorted via `App.fileCaptured`),
   `?capture=1` and `?newboard=1` (manifest shortcuts). index.html
-  paints a `#boot-load` dot pulse until App mounts and removes it.
+  paints a `#boot-load` dot pulse until App mounts and removes it,
+  and carries a meta CSP (self + inline boot script, wasm-eval and a
+  worker for sqlite, https iframes for embeds, blob: card images,
+  allorigins + localhost ws connects).
   `styles/print.css` hides chrome for window.print; App fits the board
   on `beforeprint` and restores the view on `afterprint`.
 - `src/dev/seed.ts`: first-run welcome board + `seedPerfDoc(n)`
@@ -297,7 +330,8 @@ calls; fully offline.
   `trash.add` keeps blobs; `emptyTrash` + boot-time orphan purge release
   them (shared refs between clones survive).
 - Paste runs through the DOM 'paste' event (`App.pasteExternal`):
-  internal clipboard -> OS files -> URL text; Cmd+V in shortcuts.ts is
+  internal clipboard -> OS files -> URL text (a URL with one link or
+  embed card selected re-points that card); Cmd+V in shortcuts.ts is
   intentionally inert. Cmd+Opt+V (paste styles) does not fire it.
 - Debounced autosave via `App.scheduleSave`; hash routing `#/b/<id>`.
 - No right-click menus anywhere; the rail is the only menu surface.

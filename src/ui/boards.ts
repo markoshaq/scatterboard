@@ -19,12 +19,14 @@ export interface BoardRow {
 
 interface BoardsApi {
   boards(): BoardRow[];
+  recents(): BoardRow[];
   onOpen(id: ID): void;
   onRename(id: ID, title: string): void;
   onDelete(id: ID): void;
   onNew(anchor: HTMLElement): void;
   onToggleCollapse(id: ID): void;
   onIcon(id: ID, anchor: HTMLElement): void;
+  onCopyLink(id: ID): void;
 }
 
 export interface BoardsPanel extends PanelHandle {
@@ -169,6 +171,17 @@ export function openBoardsPanel(api: BoardsApi): BoardsPanel {
     stats.textContent = statText(r);
     const acts = document.createElement('span');
     acts.className = 'bpl-actions';
+    const cp = document.createElement('button');
+    cp.type = 'button';
+    cp.className = 'bpl-mini';
+    cp.innerHTML = ICONS.copy;
+    cp.title = t('copyLinkBoard');
+    cp.setAttribute('aria-label', t('copyLinkBoard'));
+    cp.addEventListener('click', (e) => {
+      e.stopPropagation();
+      api.onCopyLink(r.id);
+    });
+    acts.appendChild(cp);
     if (r.editable) {
       const ed = document.createElement('button');
       ed.type = 'button';
@@ -228,6 +241,22 @@ export function openBoardsPanel(api: BoardsApi): BoardsPanel {
     if (!shown.length) {
       rows.appendChild(panelEmpty(t('searchEmpty')));
       return;
+    }
+    // Jump list above the tree; hidden while the filter is active
+    // since matches already land on their board.
+    if (!q) {
+      const rec = api.recents();
+      if (rec.length) {
+        const head = document.createElement('div');
+        head.className = 'sp-group';
+        head.textContent = t('recentHead');
+        rows.appendChild(head);
+        for (const r of rec) rows.appendChild(boardRow(r));
+        const all = document.createElement('div');
+        all.className = 'sp-group';
+        all.textContent = t('boardsAll');
+        rows.appendChild(all);
+      }
     }
     for (const r of shown) rows.appendChild(boardRow(r));
   }

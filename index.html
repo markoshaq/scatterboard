@@ -3,6 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Local-first allowlist: sqlite wasm needs wasm-eval and a worker;
+         embed cards are https iframes; card images are blob:; unfurl
+         previews and hero images reach https hosts; the agent bridge is
+         a localhost websocket. Inline script/style stay for the
+         first-paint theme boot. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.allorigins.win ws://127.0.0.1:* ws://localhost:* wss://127.0.0.1:*; worker-src 'self' blob:; frame-src https: blob:; media-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#f6f6f2" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -88,7 +97,9 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icon-192.png" />
     <title>Scatterboard</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f7f7f4'/%3E%3Cg fill='%23b9b9b0'%3E%3Ccircle cx='9' cy='9' r='1.6'/%3E%3Ccircle cx='16' cy='9' r='1.6'/%3E%3Ccircle cx='23' cy='9' r='1.6'/%3E%3Ccircle cx='9' cy='16' r='1.6'/%3E%3Ccircle cx='16' cy='16' r='1.6'/%3E%3Ccircle cx='23' cy='16' r='1.6'/%3E%3Ccircle cx='9' cy='23' r='1.6'/%3E%3Ccircle cx='16' cy='23' r='1.6'/%3E%3Ccircle cx='23' cy='23' r='1.6'/%3E%3C/g%3E%3Crect x='11' y='11' width='10' height='8' rx='2' fill='%23356df3'/%3E%3C/svg%3E" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="./icon-dark.svg" type="image/svg+xml" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="./icon-192.png" sizes="192x192" />
   </head>
   <body>
     <div id="app">

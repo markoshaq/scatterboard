@@ -13,6 +13,7 @@ const PRECACHE = [
   './index.html',
   './manifest.webmanifest',
   './icon.svg',
+  './icon-dark.svg',
   './icon-192.png',
   './icon-512.png',
   './jswasm/sqlite3-worker1.mjs',

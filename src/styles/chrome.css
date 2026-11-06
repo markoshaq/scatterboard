@@ -198,6 +198,17 @@ body.pan-mode .viewport {
   color: var(--ink-1);
 }
 
+.crumb-rename {
+  font: inherit;
+  color: var(--ink);
+  background: var(--hover-solid);
+  border: 1px solid var(--edge-strong);
+  border-radius: 5px;
+  padding: 1px 5px;
+  width: 12em;
+  outline: none;
+}
+
 .crumb.cur {
   color: var(--ink-1);
   font-weight: 600;
@@ -298,18 +309,36 @@ body.pan-mode .viewport {
   opacity: 0;
 }
 
-/* Tone edge: both themes share the dark toast surface, so the accent
+/* Tone dot: both themes share the dark toast surface, so the accent
    shades are fixed rather than token-driven. */
-.toast.ok {
-  box-shadow: inset 3px 0 0 #7cc98a;
-}
-
-.toast.warn {
-  box-shadow: inset 3px 0 0 #e0b060;
-}
-
+.toast.ok,
+.toast.warn,
 .toast.err {
-  box-shadow: inset 3px 0 0 #e07a62;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toast.ok::before,
+.toast.warn::before,
+.toast.err::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.toast.ok::before {
+  background: #7cc98a;
+}
+
+.toast.warn::before {
+  background: #e0b060;
+}
+
+.toast.err::before {
+  background: #e07a62;
 }
 
 .toast.busy {
@@ -408,7 +437,8 @@ body.pan-mode .viewport {
 .tool-pop,
 .due-pop,
 .short-scrim,
-.rail-ghost {
+.rail-ghost,
+.minimap {
   user-select: none;
   -webkit-user-select: none;
 }

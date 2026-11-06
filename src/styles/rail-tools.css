@@ -115,6 +115,27 @@ body.over-trash .viewport * {
   background: var(--card);
 }
 
+.due-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: calc(12px * var(--ui));
+  color: var(--ink-4);
+  background: var(--chrome);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 3px 10px;
+  cursor: pointer;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.due-chip:hover {
+  color: var(--ink-1);
+  background: var(--card);
+}
+
 .view-btn {
   font: inherit;
   font-size: calc(12px * var(--ui));

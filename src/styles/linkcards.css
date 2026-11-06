@@ -95,8 +95,48 @@
 .lk-hero[data-provider='vimeo'] {
   background: linear-gradient(135deg, #2e4553, #35617c);
 }
+/* Spotify gets its own compact-player face: dark tile, album-art block
+   on the left, green round play on the right, like the 80px embed. */
 .lk-hero[data-provider='spotify'] {
-  background: linear-gradient(135deg, #2e4536, #1f5c40);
+  aspect-ratio: auto;
+  height: 80px;
+  border-radius: 13px;
+  background: #121212;
+  color: #b3b3b3;
+}
+
+.lk-hero[data-provider='spotify'] .lk-glyph {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  background: #282828;
+  align-items: center;
+  justify-content: center;
+}
+
+.lk-hero[data-provider='spotify'] .lk-glyph svg {
+  width: 26px;
+  height: 26px;
+}
+
+.lk-hero[data-provider='spotify'] .em-play {
+  inset: auto;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  background: #1db954;
+  color: #000;
+}
+
+.lk-hero[data-provider='spotify'] .em-play:hover {
+  background: #1ed760;
 }
 .lk-hero[data-provider='soundcloud'] {
   background: linear-gradient(135deg, #4f3d2c, #7c5230);

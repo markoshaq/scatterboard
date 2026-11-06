@@ -22,6 +22,10 @@ export interface Prefs {
   undoArrows?: boolean;
   // New cards dropped from the rail open straight into editing.
   autoEdit?: boolean;
+  // Browser spell checking on editable text (on by default).
+  spellcheck?: boolean;
+  // Unsorted panel ordering.
+  unsortedSort?: 'added' | 'oldest' | 'modified' | 'alpha' | 'type';
   // Alignment-guide stroke opacity: 1 full, 0.5 faint, 0 hidden.
   guideAlpha?: number;
   // Create-palette customization: display order (item keys) and hidden
@@ -35,6 +39,10 @@ export interface Prefs {
   commentSeen?: Record<ID, number>;
   // Recently viewed board ids, most recent first.
   recentBoards?: ID[];
+  // Corner minimap (on by default; false hides it, View > Minimap).
+  minimap?: boolean;
+  // Last successful board export, for the About backup hint.
+  lastExportAt?: number;
   // Online extra (on by default): fetch link-card previews.
   unfurl?: boolean;
   // Local agent (off by default): let a localhost bridge drive the

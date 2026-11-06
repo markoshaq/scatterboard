@@ -1,13 +1,15 @@
 import type { App } from '../app';
 import { annotationDoc, boardRefOf, columnTitle, createBoard, createBoardCard, createComment, createDocument, createLabel, createLine, createNote, createSketch, documentDoc, embedDoc, headingDoc, lineDoc, linkDoc, nextZ, strokesBBox, swatchDoc, todoDoc, SKETCH_PAD_H, SKETCH_PAD_W, type Element, type CellType, type ID, type Label, type LineMarker, type LineWeight, type Stroke } from '../state/schema';
 import type { Action, ElementPatch } from '../state/actions';
-import { blobUrl, copyTextToClipboard, downloadBlobRef } from '../persist/blobs';
+import { blobUrl, copyTextToClipboard, downloadBlobRef, getBlob } from '../persist/blobs';
 import { TodoCard } from '../cards/todo';
 import { TableCard } from '../cards/table';
 import { toolMenuItems, type ToolId } from '../ui/rail';
 import { ICONS } from '../ui/icons';
 import { unionRect } from '../canvas/hit';
-import { t } from '../strings';
+import { relTime, t } from '../strings';
+import { toast } from '../ui/toast';
+import { canvasBlob } from '../editor/imgops';
 import { imgModeParam, type ImgMode } from '../editor/imgmode';
 import { downloadTextFile, strokesToSvgFile } from '../draw/strokes';
 import { LABEL_COLORS, openColorPopup, openLabelsPopup, openLinkInfoPopup, openCellAlignPopup, openMenuPopup, openReactionsPopup, openTextStylePopup, type MenuItem } from '../ui/toolpopups';
@@ -515,6 +517,7 @@ export class RailTools {
       }
       if ('image' in c) {
         items.push(
+          { label: t('copyImage'), icon: ICONS.copy, onPick: () => void this.copyImage(el) },
           { label: t('downloadOriginal'), icon: ICONS.download, onPick: () => void downloadBlobRef(c.image.blobRef, c.image.name || 'image') },
           { label: t('replaceImage'), icon: ICONS.image, onPick: () => this.a.replaceImage(el) },
           { label: t('cropToGrid'), icon: ICONS.crop, onPick: () => void this.a.cropImageToGrid(el) },
@@ -568,6 +571,13 @@ export class RailTools {
         );
       }
     }
+    if (sel.length === 1) {
+      const el = sel[0]!;
+      const url = new URL(this.a.boardUrl(el.boardId));
+      url.hash = `/b/${el.boardId}?filter_ids=${el.id}`;
+      items.push({ label: t('copyLinkCard'), icon: ICONS.link, onPick: () => void copyTextToClipboard(url.href).then(() => toast(t('copied'), 'ok')) });
+    }
+    items.push({ label: t('copyAsImage'), icon: ICONS.image, onPick: () => void this.a.exporter.copySelectionImage() });
     const allLocked = sel.every((e) => e.locked);
     items.push(
       { label: t('lockPosition'), icon: ICONS.lock, checked: allLocked, onPick: () => this.toggleLock(!allLocked) },
@@ -578,7 +588,51 @@ export class RailTools {
     if (this.a.movableCards().length) {
       items.push({ label: t('sendToUnsorted'), icon: ICONS.inbox, onPick: () => this.a.panels.fileToUnsorted() });
     }
+    if (sel.length === 1) {
+      items.push({ label: t('cardEdited').replace('{t}', relTime(sel[0]!.modifiedAt)), info: true, onPick: () => {} });
+    }
     return items;
+  }
+
+
+  // Image card -> OS clipboard. Chrome only accepts png on
+  // clipboard.write, so other formats go through a canvas re-encode.
+  // An <img> element decodes what createImageBitmap cannot (svgs
+  // without intrinsic size); the stored natW/natH sizes the canvas.
+  private async copyImage(el: Element) {
+    try {
+      const c = 'image' in el.content ? el.content.image : null;
+      const blob = c ? await getBlob(c.blobRef) : undefined;
+      if (!blob || !c || typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+        toast(t('copyFail'), 'err');
+        return;
+      }
+      let out = blob;
+      if (blob.type !== 'image/png') {
+        const url = URL.createObjectURL(blob);
+        try {
+          const img = new Image();
+          img.src = url;
+          await img.decode();
+          const cv = document.createElement('canvas');
+          cv.width = c.natW || img.naturalWidth || 300;
+          cv.height = c.natH || img.naturalHeight || 150;
+          cv.getContext('2d')!.drawImage(img, 0, 0, cv.width, cv.height);
+          const png = await canvasBlob(cv, true);
+          if (!png) {
+            toast(t('copyFail'), 'err');
+            return;
+          }
+          out = png;
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      }
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': out })]);
+      toast(t('copied'), 'ok');
+    } catch {
+      toast(t('copyFail'), 'err');
+    }
   }
 
 

@@ -24,8 +24,15 @@ from the left rail, and press `/` for the full shortcut map.
 - 17 card types, rich text, table formulas, drawing tools, comments,
   search, undo history, and export to PNG, PDF, Word, Markdown, plain
   text, zip, and JSON.
-- Installable: pin it as an app and it keeps working offline after
-  the first load.
+- Backup stays yours too: Settings can mirror the workspace and its
+  media into a folder you pick (a synced folder doubles as device
+  sync), and Version history keeps named snapshots you can roll back
+  to, plus a daily automatic one.
+- Two tabs stay safe: a save in one updates the other instead of
+  silently overwriting it.
+- Installable as an app (Help > Install app): one visit stores the
+  whole bundle for offline use, and sharing text or links to it files
+  a note in Unsorted.
 
 ## The tour
 
@@ -33,6 +40,8 @@ from the left rail, and press `/` for the full shortcut map.
 
 - Pan with Space+drag, middle mouse, or trackpad; zoom with
   Cmd/Ctrl+wheel or Cmd/Ctrl+=/-/0; `Z` fits the board.
+- A corner minimap shows the board's cards and the visible area; click
+  or drag it to pan. View > Minimap hides it.
 - Boards nest through board cards: double-click to enter, breadcrumbs
   or Cmd/Ctrl+U to come back. Routes are `#/b/<id>`; editors live at
   `#/e/<id>`.
@@ -45,7 +54,8 @@ from the left rail, and press `/` for the full shortcut map.
   Trash panel groups deleted cards by day and restores by drag.
 - Board search (Cmd/Ctrl+F) scans every text field on the current
   board, including table cells, link URLs, and comments, skipping
-  Unsorted, and sorts by relevance, modified, or last viewed.
+  Unsorted, and sorts by relevance, modified, or last viewed. A scope
+  switch widens it to every board in the workspace.
 
 ### 17 card types
 
@@ -72,7 +82,8 @@ become image cards, other files become file cards.
 
 Every selected card gets the same rail toolbox: colour, labels,
 reactions, comments, rename, lock, z-order, and type conversions (note
-to document, column to board, and more).
+to document, column to board, and more). Right-click a card for the
+same tools as a menu.
 
 ### Text editing
 
@@ -88,8 +99,10 @@ Markdown, or plain text.
 Per-cell types (number, currency, percent, date, text, checkbox),
 per-cell colour and alignment, rich text in cells, and six formula
 functions (`SUM`, `IF`, `MIN`, `MAX`, `COUNT`, `AVERAGE`) over A1
-references and ranges. Number, currency, and date cells format through
-Intl using the locale and currency set in Settings.
+references and ranges; typing `=` opens a formula autocomplete, and
+edge grips resize and reorder columns while editing. Number, currency,
+and date cells format through Intl using the locale and currency set in
+Settings.
 
 ### Drawing
 
@@ -105,7 +118,8 @@ all client-side.
 Labels with colours, emoji reactions, comment threads, four builtin
 board templates plus saved snapshots, a searchable icon picker, quick
 capture into Unsorted, synced note copies (duplicating a note can keep
-the copies identical), overlap prevention that pushes neighbours when
+the copies identical), a Due panel that gathers every dated to-do item
+across boards, overlap prevention that pushes neighbours when
 a card grows, a per-board dot-grid toggle, a customizable create
 palette, dark mode (Cmd/Ctrl+Shift+D), UI scale (Cmd/Ctrl+Shift+,/.),
 and a presentation mode (Cmd/Ctrl+Alt+P) with "Focus on selected
@@ -171,6 +185,7 @@ Press `/` in the app for the full map. Essentials:
 |---|---|
 | New note / chain another | double-click canvas / Cmd/Ctrl+Return |
 | Pan / zoom / fit | Space+drag / Cmd/Ctrl+wheel / `Z` |
+| Step through cards / edit | Tab or Shift+Tab / Enter |
 | Search / present | Cmd/Ctrl+F / Cmd/Ctrl+Alt+P |
 | Cut, copy, paste, paste styles | Cmd/Ctrl+X / C / V / Alt+V |
 | Undo, redo | Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z |
@@ -192,7 +207,7 @@ when used:
   Vimeo, Spotify, SoundCloud, Google Maps) when added, and fetch the
   page's title through the same proxy.
 
-Both degrade silently to manual titles and placeholders offline.
+Offline, both fall back to manual titles and placeholders.
 
 - "Local agent" (off by default, Settings > Online extras) connects
   the app to a bridge you run yourself over `ws://127.0.0.1` only. The
@@ -203,10 +218,12 @@ Both degrade silently to manual titles and placeholders offline.
 
 ## Requirements
 
-- A current desktop Chrome/Edge, Firefox, or Safari. Boards are stored
-  in SQLite on OPFS where available, falling back to localStorage.
-- Desktop-first by design: mouse, trackpad, and keyboard. Touch and
-  small screens are not a design goal yet.
+- A current Chrome/Edge, Firefox, or Safari, desktop or mobile. Boards
+  are stored in SQLite on OPFS where available, falling back to
+  localStorage.
+- Desktop-first, but phones work: under 720px the tool rail becomes a
+  bottom bar and popups dock as sheets; touch pans, pinch-zooms, and
+  long-press starts a marquee.
 - To run from source: Node >=20.19 (22 pinned in `.nvmrc`).
 
 ## Develop
@@ -255,8 +272,8 @@ bridge package is published by hand after the tag:
 ## Architecture
 
 Vanilla TypeScript + Vite, zero runtime dependencies; the production JS
-ships in lazy chunks with the largest at ~92 KB gzipped against a 150 KB
-budget. Two render layers:
+ships in lazy chunks with the largest at ~102 KB gzipped against a
+150 KB budget. Two render layers:
 Canvas2D draws the dot grid, connectors, marquee, and selection chrome;
 plain DOM renders cards and editing so text stays crisp at any zoom.
 Every mutation is a typed action through one store with an
@@ -264,7 +281,8 @@ auto-inverse, which is what makes batched undo groups possible.
 Persistence sits behind a storage adapter: SQLite WASM on the OPFS
 sync-access-handle pool in a worker, localStorage as migration source
 and fallback, media blobs in IndexedDB. The service worker (production
-builds only) caches the shell and hashed assets for offline use.
+builds only) precaches the shell and walks the script bundle, so the
+whole app works offline after one visit.
 
 - [AGENTS.md](AGENTS.md): current source layout and conventions
 - [ARCHITECTURE.md](ARCHITECTURE.md): the original design proposal,

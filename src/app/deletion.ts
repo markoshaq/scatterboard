@@ -3,6 +3,8 @@ import { boardRefOf, lineDoc, type Element, type ID } from '../state/schema';
 import type { Action } from '../state/actions';
 import { resolveLine } from '../canvas/lines';
 import { closeToolPopup } from '../ui/popup';
+import { choice } from '../ui/toast';
+import { t } from '../strings';
 
 // Shared deletion policy: subtree cascades, dangling board-card
 // sweeps and line/comment detaches. deleteSelection, the boards-panel
@@ -58,6 +60,8 @@ export class Deletion {
     this.a.store.dispatch({ type: 'batch', actions });
     this.a.sel.clear();
     this.a.filterIds.clear();
+    // The batch landed as one undo entry; offer the way back inline.
+    choice(t('trashedToast'), t('drawUndo'), () => this.a.store.undo());
   }
 
   // Board cards/shortcuts still pointing at boards about to be deleted.

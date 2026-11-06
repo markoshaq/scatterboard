@@ -37,6 +37,10 @@ export class CardsLayer {
   private editMark = new Map<ID, boolean>();
   private revOf: () => number;
   boardId: ID | null = null;
+  // Selection-scoped rendering (export snapshot): when set, elements()
+  // reports only these ids plus comments anchored to them, so the DOM
+  // snapshot and overlay passes see just the picked cards.
+  limit: Set<ID> | null = null;
   // Element ids already indexed on this layer: a view mounts with the
   // .card-in birth pop only for ids new to the doc, so boot, board
   // switches (tracked by knownBoard), undo and culled remounts stay
@@ -118,7 +122,11 @@ export class CardsLayer {
 
   elements(): El[] {
     this.ensureIndex();
-    return this.index.els;
+    const l = this.limit;
+    if (!l) return this.index.els;
+    return this.index.els.filter(
+      (e) => l.has(e.id) || (e.anchorId !== undefined && l.has(e.anchorId)),
+    );
   }
 
   lines(): El[] {

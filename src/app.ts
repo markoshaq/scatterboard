@@ -1,12 +1,17 @@
 import type { Store } from './state/store';
-import { boardRefOf, createAnnotation, createColumn, createComment, createDocument, createEmbed, createHeading, createLine, createLink, createNote, createSketch, createSwatch, createTable, createTodo, documentDoc, headingDoc, imageDoc, linkDoc, sketchDoc, uid, EDITOR_TYPES, GRID, IMAGE_W, UNSORTED, type Doc, type Element, type ElementType, type ID, type EmbedKind, type ImageDoc, type PresentOpts } from './state/schema';
+import { boardRefOf, createAnnotation, createColumn, createComment, createDocument, createEmbed, createHeading, createLine, createLink, createNote, createSketch, createSwatch, createTable, createTodo, documentDoc, headingDoc, imageDoc, linkDoc, migrateDoc, sketchDoc, uid, EDITOR_TYPES, GRID, IMAGE_W, UNSORTED, type Doc, type Element, type ElementType, type ID, type EmbedKind, type ImageDoc, type PresentOpts } from './state/schema';
 import type { Action, ElementPatch } from './state/actions';
 import { getClipboard, setClipboard } from './state/clipboard';
 import type { DocStorage, Lang, Prefs } from './persist/storage';
-import { blobTotalSize, clearBlobs, putBlob } from './persist/blobs';
+import { blobTotalSize, clearBlobs, copyTextToClipboard, putBlob } from './persist/blobs';
+import { clearExtra } from './persist/kv';
+import { initTabSync } from './persist/tabs';
+import { createSnapshot, deleteSnapshot, listSnapshots, readSnapshot } from './persist/snapshots';
+import { syncDirSupported } from './persist/syncdir';
 import { ingestFiles, ingestPaste, prepareImage, type IngestApi } from './ingest/files';
 import { scrubContent } from './ui/sanitize';
-import { hostOf, urlTitle } from './net/embeds';
+import { embedSrc, hostOf, urlTitle } from './net/embeds';
+import { elementsToPlain } from './export/linear';
 import { Viewport } from './canvas/viewport';
 import { Renderer, type DraftLine, type Guide, type SceneLine } from './canvas/renderer';
 import { CardsLayer } from './cards/layer';
@@ -43,6 +48,11 @@ import { Gestures } from './app/gestures';
 import { Overlays } from './app/overlays';
 import { Deletion } from './app/deletion';
 import { Comments } from './app/comments';
+import { FolderSync } from './app/syncdir';
+import { Minimap } from './ui/minimap';
+import { dueSoonCount } from './ui/duepanel';
+import { openSnapshotsPanel } from './ui/snapshotpanel';
+import { fmtDate } from './locale';
 const SAVE_DEBOUNCE = 700;
 
 
@@ -58,6 +68,9 @@ export class App {
   readonly gestures = new Gestures(this);
   readonly deletion = new Deletion(this);
   readonly comments = new Comments(this);
+  // Folder backup (File System Access): mirrors the workspace into a
+  // user-picked directory after each save; see app/syncdir.ts.
+  readonly fsync = new FolderSync(this);
 
   store: Store;
 
@@ -98,6 +111,23 @@ export class App {
 
   private saveChip = false;
 
+  // Consecutive doc-save failures; a streak means storage is broken
+  // (quota, blocked IDB), not a transient hiccup, and earns a warning.
+  private saveFails = 0;
+
+  private saveWarned = false;
+
+  // savedAt of the last workspace this tab wrote or loaded; the folder
+  // backup's newer-file check compares against it.
+  lastSavedAt = 0;
+
+  // Set before a reload that intentionally discards local state (a
+  // newer workspace arrived from another tab or the backup): flush()
+  // must not write the stale doc back over it.
+  private skipFlush = false;
+
+  private foreignSaveAsked = false;
+
   private renderQueued = false;
 
   // Elements touched by store changes since the last layer.sync; the
@@ -110,6 +140,12 @@ export class App {
   private lastIz = 1;
 
   private wasDimming = false;
+
+  private minimap: Minimap;
+
+  private tabSync: { notifySaved(): void } | null = null;
+
+  private dueCache = { rev: -1, n: 0 };
 
   private wasFiltering = false;
 
@@ -227,6 +263,7 @@ export class App {
       onFit: () => this.fitView(),
       onNavigate: (id) => this.openBoard(id),
       onUnsorted: () => this.panels.openUnsorted(),
+      onDue: () => this.panels.openDue(),
       onView: (anchor) => this.openViewMenu(anchor),
       onHelp: (anchor) => this.openHelp(anchor),
       onExport: (anchor) => this.exporter.openExportMenu(anchor),
@@ -235,6 +272,9 @@ export class App {
       onMore: (anchor) => this.openMobileMenu(anchor),
       onCrumbIcon: (id, anchor) => this.panels.iconPickerFor(id, anchor),
       onCrumbBoards: () => this.panels.openBoards(),
+      onCrumbRename: (id, title) => {
+        if (!this.lockedView()) this.store.dispatch({ type: 'board.patch', id, patch: { title } });
+      },
       onUndo,
       onRedo,
     });
@@ -257,6 +297,11 @@ export class App {
         }
       },
     });
+    this.minimap = new Minimap(this);
+    vpEl.appendChild(this.minimap.node);
+    // Second open tab: the other tab's save announces itself over the
+    // channel so this one pulls the newer doc instead of clobbering it.
+    this.tabSync = initTabSync(() => this.onForeignSave());
     const stop = document.createElement('button');
     stop.type = 'button';
     stop.className = 'present-stop';
@@ -712,6 +757,13 @@ export class App {
       onToggle: (key) => this.togglePresentOpt(key),
       grid: () => this.board()?.grid ?? true,
       onToggleGrid: () => this.toggleGrid(),
+      minimap: () => this.prefs.minimap !== false,
+      onToggleMinimap: () => {
+        if (this.prefs.minimap === false) delete this.prefs.minimap;
+        else this.prefs.minimap = false;
+        this.scheduleSave();
+        this.requestRender();
+      },
       onPresent: () => this.enterPresent(),
       onFit: () => this.fitView(),
     });
@@ -834,6 +886,12 @@ export class App {
     this.editing.refreshEditGate();
     this.topbar.setCrumbs(this.crumbs());
     this.topbar.setUnsorted(this.unsortedCount());
+    this.topbar.setDue(this.dueCount());
+    const showMap = this.prefs.minimap !== false && !!board && !this.presenting;
+    this.minimap.node.style.display = showMap ? '' : 'none';
+    if (showMap) this.minimap.draw();
+    const title = board ? `${board.title || t('untitled')} · ${t('appName')}` : t('appName');
+    if (document.title !== title) document.title = title;
     this.panels.renderPanel();
     // A board with no visible cards gets a centered hint; the moment a
     // card lands (or presenting starts) it is gone again.
@@ -865,6 +923,17 @@ export class App {
 
   private unsortedCount(): number {
     return this.layer.members(UNSORTED).length;
+  }
+
+
+  // Overdue + due-today items across every board, cached by store rev:
+  // render() runs per frame during drags but the count only moves with
+  // real doc changes.
+  private dueCount(): number {
+    if (this.dueCache.rev === this.store.rev) return this.dueCache.n;
+    const n = dueSoonCount(this.doc);
+    this.dueCache = { rev: this.store.rev, n };
+    return n;
   }
 
 
@@ -1251,7 +1320,7 @@ export class App {
 
   // --- clipboard + cloning ---
 
-  private copySet(): Element[] {
+  copySet(): Element[] {
     const out = new Map<ID, Element>();
     // Members come along transitively: a column can sit inside a column.
     const collect = (el: Element) => {
@@ -1266,7 +1335,12 @@ export class App {
 
   copySelection() {
     const set = this.copySet();
-    if (set.length) setClipboard(set);
+    if (!set.length) return;
+    setClipboard(set);
+    // Mirror the pick as plain text on the OS clipboard so it pastes
+    // into other apps; the internal snapshot still wins on our paste.
+    const text = elementsToPlain(this.doc, set);
+    if (text) void copyTextToClipboard(text).catch(() => {});
   }
 
 
@@ -1408,6 +1482,25 @@ export class App {
     this.announce(`${cardAriaLabel(target)}: ${this.panels.snippetFor(target)}`);
   }
 
+  // Present-mode arrow keys walk the cards in reading order like
+  // slides: the landing card is selected (so Focus-on-selected dims
+  // the rest) and fitted on screen.
+  presentStep(dir: -1 | 1) {
+    const els = this.layer
+      .elements()
+      .filter((e) => e.type !== 'line' && e.type !== 'annotation' && !(e.type === 'comment' && e.anchorId !== undefined))
+      .map((e) => ({ e, r: this.layer.rectOf(e) }))
+      .sort((a, b) => a.r.y - b.r.y || a.r.x - b.r.x);
+    if (!els.length) return;
+    const i = els.findIndex((c) => this.sel.has(c.e.id));
+    const target = els[i < 0 ? (dir === 1 ? 0 : els.length - 1) : (i + dir + els.length) % els.length]!.e;
+    this.selectOnly(target.id);
+    this.vp.fit(this.layer.rectOf(target), this.fitInsets());
+    this.render();
+    this.layer.view(target.id)?.node.focus({ preventScroll: true });
+    this.announce(`${cardAriaLabel(target)}: ${this.panels.snippetFor(target)}`);
+  }
+
   // Polite announcement channel for transient states (card nav) that
   // toasts should not carry visually. A beat of empty text first:
   // identical back-to-back messages do not re-announce otherwise.
@@ -1444,19 +1537,31 @@ export class App {
   }
 
 
-  fitView() {
-    const r = unionRect(this.layer.elements().map((e) => this.layer.rectOf(e)));
+  private fitInsets() {
     // Usable box inside the chrome: on desktop, 76px rail + 16 gap on
     // the left, 44px topbar + 14 gap up top, zoom HUD reserved at the
     // bottom; on phones the bar plus the floating trash/well own the
     // bottom edge, so the inset measures the buttons' top rather than
     // trusting a constant (they ride 80px above the screen bottom).
-    let insets = { l: 92, t: 58, r: 24, b: 64 };
     if (mobileShell()) {
       const top = document.querySelector('.rail-trash')?.getBoundingClientRect().top;
-      insets = { l: 12, t: 52, r: 12, b: top ? innerHeight - top + 8 : 84 };
+      return { l: 12, t: 52, r: 12, b: top ? innerHeight - top + 8 : 84 };
     }
-    this.vp.fit(r, insets);
+    return { l: 92, t: 58, r: 24, b: 64 };
+  }
+
+  fitView() {
+    const r = unionRect(this.layer.elements().map((e) => this.layer.rectOf(e)));
+    this.vp.fit(r, this.fitInsets());
+  }
+
+  // Z with a selection frames the picked cards instead of the board.
+  fitSelection() {
+    const rects = [...this.sel]
+      .map((id) => this.doc.elements[id])
+      .filter((e): e is Element => !!e)
+      .map((e) => this.layer.rectOf(e));
+    this.vp.fit(unionRect(rects), this.fitInsets());
   }
 
   dragMove(ids: ID[], origins: Map<ID, { x: number; y: number }>, start: { x: number; y: number }, ev: PointerEvent) {
@@ -1641,7 +1746,7 @@ export class App {
     // deleted or moved, and the grid snap applies to where it is now.
     const curEl = this.doc.elements[el.id];
     const cur = curEl ? imageDoc(curEl) : null;
-    if (!cur || this.lockedView()) return;
+    if (!curEl || !cur || this.lockedView()) return;
     const patch: ElementPatch = {
       x: Math.round(curEl.x / GRID) * GRID,
       y: Math.round(curEl.y / GRID) * GRID,
@@ -1667,7 +1772,49 @@ export class App {
       this.ingestFileList(files, pt);
       return;
     }
-    if (url) this.createLinkAt(pt, url);
+    if (url && !this.repointSelectedLink(url)) this.createLinkAt(pt, url);
+  }
+
+
+  // Paste a URL while a single link/embed card is selected: re-point
+  // the card instead of dropping a new one.
+  private repointSelectedLink(url: string): boolean {
+    if (this.sel.size !== 1) return false;
+    const el = this.doc.elements[[...this.sel][0]!];
+    const c = el?.content;
+    if (!el || !c) return false;
+    if ('link' in c) {
+      // Rebuild rather than spread-patching so the old url's unfurled
+      // fields (desc/image) do not linger under exactOptionalPropertyTypes.
+      this.store.dispatch({
+        type: 'element.patch',
+        id: el.id,
+        patch: {
+          content: {
+            link: { url, title: urlTitle(url) ?? hostOf(url), caption: c.link.caption, showPreview: c.link.showPreview },
+          },
+        },
+      });
+      this.editing.enrichLink(el.id, url);
+    } else if ('embed' in c) {
+      // A url that no longer parses for this provider would leave a
+      // dead player: fall back to a fresh link card instead.
+      if (!embedSrc(c.embed.kind, url)) return false;
+      this.store.dispatch({
+        type: 'element.patch',
+        id: el.id,
+        patch: {
+          content: {
+            embed: { kind: c.embed.kind, url, title: urlTitle(url) ?? hostOf(url), caption: c.embed.caption, showPreview: c.embed.showPreview },
+          },
+        },
+      });
+      this.editing.enrichEmbed(el.id, url);
+    } else {
+      return false;
+    }
+    toast(t('linkUpdated'), 'ok');
+    return true;
   }
 
 
@@ -1728,6 +1875,8 @@ export class App {
       lang: this.prefs.lang ?? activeLang(),
       currency: this.prefs.currency ?? null,
     });
+    // Editable surfaces inherit spellcheck from the body element.
+    document.body.spellcheck = this.prefs.spellcheck !== false;
     // Theme/scale change every card's colours and counter-scale, none
     // of which shows up as an element patch.
     this.refreshCards = true;
@@ -1766,6 +1915,7 @@ export class App {
             blobs: await blobTotalSize(),
             persisted: (await navigator.storage?.persisted?.().catch(() => false)) ?? false,
           }),
+          lastExportAt: () => this.prefs.lastExportAt,
         }),
     });
   }
@@ -1832,12 +1982,13 @@ export class App {
         save();
       },
       flag: (k) =>
-        k === 'undoArrows' || k === 'autoEdit' || k === 'unfurl'
+        k === 'undoArrows' || k === 'autoEdit' || k === 'unfurl' || k === 'spellcheck'
           ? this.prefs[k] !== false
           : this.prefs[k] === true,
       onFlag: (k, v) => {
         this.prefs[k] = v;
         save();
+        if (k === 'spellcheck') document.body.spellcheck = v;
         this.requestRender();
         if (k === 'agent') void import('./agent/index').then((m) => m.setAgentEnabled(this, v));
       },
@@ -1905,7 +2056,62 @@ export class App {
         save();
         this.requestRender();
       },
+      syncDirSupported: () => syncDirSupported(),
+      syncDirStatus: () => this.fsync.status(),
+      onSyncDirPick: () => this.fsync.pick(),
+      onSyncDirReconnect: () => this.fsync.reconnect(),
+      onSyncDirStop: () => this.fsync.stop(),
+      onSnapshots: () => this.openSnapshots(),
     });
+  }
+
+
+  // Settings "Version history" row: named workspace snapshots stored
+  // outside the doc (persist/snapshots.ts), restored through the
+  // adapter save plus a reload.
+  openSnapshots() {
+    this.panels.closePanel();
+    openSnapshotsPanel({
+      list: () => listSnapshots(),
+      onNew: async () => {
+        try {
+          await createSnapshot(this.doc, this.prefs, fmtDate(Date.now()), false);
+          toast(t('snapTaken'), 'ok');
+        } catch {
+          toast(t('snapFail'), 'err');
+        }
+      },
+      onRestore: (id) => {
+        choice(t('snapRestoreQ'), t('snapRestoreAct'), () => void this.restoreSnapshot(id));
+      },
+      onDelete: (id) => {
+        void deleteSnapshot(id);
+      },
+    });
+  }
+
+
+  private async restoreSnapshot(id: ID) {
+    const w = await readSnapshot(id).catch(() => null);
+    if (!w) {
+      toast(t('snapFail'), 'err');
+      return;
+    }
+    try {
+      await this.adapter.save({ version: 1, doc: migrateDoc(w.doc), savedAt: Date.now(), prefs: w.prefs ?? this.prefs });
+    } catch {
+      toast(t('snapFail'), 'err');
+      return;
+    }
+    this.tabSync?.notifySaved();
+    this.reloadDiscarding();
+  }
+
+
+  // Folder-backup and snapshot restores write through the adapter
+  // directly; other tabs still need the reload nudge.
+  notifyExternalSave() {
+    this.tabSync?.notifySaved();
   }
 
 
@@ -1918,6 +2124,7 @@ export class App {
       localStorage.removeItem('scatterboard:theme');
       await this.adapter.clear();
       await clearBlobs();
+      await clearExtra();
     } catch {
       toast(t('exFail'), 'err');
       return;
@@ -1964,6 +2171,11 @@ export class App {
   }
 
 
+  markExported() {
+    this.prefs.lastExportAt = Date.now();
+    void this.saveNow();
+  }
+
   private async saveNow() {
     const kind = this.saveKind;
     this.saveKind = 0;
@@ -1973,13 +2185,26 @@ export class App {
       if (kind === 1) {
         if (board) await this.adapter.saveBoardPos(board.id, board.position!);
       } else {
-        await this.adapter.save({ version: 1, doc: this.doc, savedAt: Date.now(), prefs: this.prefs });
+        const w = { version: 1, doc: this.doc, savedAt: Date.now(), prefs: this.prefs };
+        await this.adapter.save(w);
+        this.lastSavedAt = w.savedAt;
+        // Other tabs reload off this save; the folder mirror trails it.
+        this.tabSync?.notifySaved();
+        this.fsync.onSaved();
       }
     } catch {
       // Keep 'saving': the chip stays honest and flush() retries on
-      // pagehide instead of the rejection going unhandled.
+      // pagehide instead of the rejection going unhandled. A streak of
+      // doc-save failures means storage is really broken, so warn once
+      // and offer an export rather than losing work quietly.
+      if (kind === 2 && ++this.saveFails >= 3 && !this.saveWarned) {
+        this.saveWarned = true;
+        choice(t('saveFail'), t('exportAs'), () => void this.exporter.exportJson());
+      }
       return;
     }
+    this.saveFails = 0;
+    this.saveWarned = false;
     this.saveState = 'saved';
     if (this.saveChip) {
       this.saveChip = false;
@@ -1988,7 +2213,36 @@ export class App {
   }
 
 
+  // Another tab announced a doc save. A clean tab pulls it silently;
+  // a dirty or busy one asks first because the reload drops in-flight
+  // work. skipFlush guards the stale doc on the way out either way.
+  private onForeignSave() {
+    if (this.saveState === 'saved' && !this.editingId && !this.overlayOpen && !this.presenting) {
+      this.reloadDiscarding();
+      return;
+    }
+    if (this.foreignSaveAsked) return;
+    this.foreignSaveAsked = true;
+    choice(
+      t('tabChanged'),
+      t('tabReload'),
+      () => this.reloadDiscarding(),
+      () => {
+        this.foreignSaveAsked = false;
+      },
+      0,
+    );
+  }
+
+
+  reloadDiscarding() {
+    this.skipFlush = true;
+    location.reload();
+  }
+
+
   async flush() {
+    if (this.skipFlush) return;
     if (this.saveTimer !== null) {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;

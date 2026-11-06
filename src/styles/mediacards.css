@@ -68,6 +68,24 @@
   gap: 10px;
 }
 
+/* Static first-page preview for PDF file cards; the iframe is
+   pointer-inert so the card stays draggable and clickable. */
+.fc-preview {
+  margin: -10px -12px 8px;
+  border-radius: 10px 10px 0 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--card-edge);
+}
+
+.fc-frame {
+  display: block;
+  width: 100%;
+  height: 130px;
+  border: 0;
+  pointer-events: none;
+  background: var(--card);
+}
+
 .fc-icon {
   flex: none;
   width: 30px;
@@ -118,3 +136,23 @@
   margin-bottom: 4px;
 }
 
+
+/* Alt-text input: hidden until the card enters edit mode. */
+.im-alt {
+  display: none;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 2px;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: calc(11px * var(--iz, 1));
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--edge);
+  outline: none;
+}
+
+.card.editing .im-alt {
+  display: block;
+}

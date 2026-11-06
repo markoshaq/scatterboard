@@ -264,6 +264,9 @@ export class LinkCard implements CardView {
         this.heroImg.className = 'lk-hero-img';
         this.heroImg.alt = '';
         this.heroImg.draggable = false;
+        this.heroImg.loading = 'lazy';
+        this.heroImg.decoding = 'async';
+        this.heroImg.referrerPolicy = 'no-referrer';
         this.heroEl.insertBefore(this.heroImg, this.glyphEl);
       }
       if (this.heroImg.src !== img) this.heroImg.src = img;
@@ -281,6 +284,13 @@ export class LinkCard implements CardView {
         this.frame.className = 'em-frame';
         this.frame.allow = EMBED_ALLOW;
         this.frame.allowFullscreen = true;
+        // Provider frames get script+same-origin for players but keep
+        // top navigation, modals and downloads sandboxed off.
+        this.frame.setAttribute(
+          'sandbox',
+          'allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox allow-forms',
+        );
+        this.frame.loading = 'lazy';
         this.heroEl.insertBefore(this.frame, this.glyphEl);
       }
       if (this.frame.src !== src) this.frame.src = src;
