@@ -1,6 +1,6 @@
 {
   "name": "scatterboard-mcp",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Localhost bridge + MCP stdio server for Scatterboard; pairs a live app tab with AI agents",
   "license": "MIT",
   "type": "module",
