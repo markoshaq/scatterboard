@@ -91,9 +91,11 @@
   box-shadow: 0 0 0 2px var(--accent), 0 2px 8px var(--shadow-1);
 }
 
-/* Connect/endpoint drag hovers: the attach target gets the same ring. */
+/* Connect/endpoint drag hovers: the attach target gets the selection
+   ring. Outline, like .card.selected: a box-shadow ring here loses to
+   the per-type shadows that load later in the cascade. */
 .card.connect-target {
-  box-shadow: 0 0 0 2px var(--accent), 0 2px 8px var(--shadow-1);
+  outline: 2px solid var(--accent);
 }
 
 /* board card */

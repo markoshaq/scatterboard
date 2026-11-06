@@ -1,5 +1,6 @@
 import type { App } from '../app';
-import { boardRefOf, createBoard, createBoardCard, nextZ, survivingBoard, uid, UNSORTED, type Board, type Element, type ID } from '../state/schema';
+import { boardRefOf, createBoard, createBoardCard, nextZ, survivingBoard, uid, UNSORTED, type Board, type Element, type ID, type LineEnd } from '../state/schema';
+import { doneWithRecur } from '../state/recur';
 import type { Action } from '../state/actions';
 import { copyTextToClipboard, putBlob } from '../persist/blobs';
 import { prepareImage } from '../ingest/files';
@@ -46,7 +47,9 @@ export class Panels {
     this.a.editing.endEdit();
     this.a.store.dispatch({
       type: 'batch',
-      actions: els.map((e) => ({ type: 'element.patch' as const, id: e.id, patch: { parentId: UNSORTED } })),
+      // A fresh z per card: the panel's added/oldest sorts read z as
+      // filing order, and kept zs would file mid-list.
+      actions: els.map((e) => ({ type: 'element.patch' as const, id: e.id, patch: { parentId: UNSORTED, z: nextZ(this.a.doc) } })),
     });
     for (const e of els) this.a.sel.delete(e.id);
     this.a.filterIds.clear();
@@ -136,6 +139,7 @@ export class Panels {
             })
             .filter((r): r is NonNullable<typeof r> => !!r),
         recentIds: () => this.a.prefs.recentBoards ?? [],
+        rev: () => this.a.store.rev,
         onJump: (hit) => this.jumpToHit(hit),
         onClose: () => {},
       }),
@@ -150,7 +154,7 @@ export class Panels {
     }
     this.duePanel = openDuePanel({
       items: () => collectDue(this.a.doc),
-      onJump: (d) => this.jumpToHit({ boardId: d.boardId, elementId: d.elId, icon: '', snippet: '', modifiedAt: 0, unsorted: d.unsorted }),
+      onJump: (d) => this.a.jumpToDue(d),
       onDone: (d) => {
         const el = this.a.doc.elements[d.elId];
         const c = el && 'todo' in el.content ? el.content.todo : null;
@@ -158,7 +162,7 @@ export class Panels {
         this.a.store.dispatch({
           type: 'element.patch',
           id: d.elId,
-          patch: { content: { todo: { ...c, items: c.items.map((i) => (i.id === d.itemId ? { ...i, done: true } : i)) } } },
+          patch: { content: { todo: { ...c, items: doneWithRecur(c.items, d.itemId) } } },
         });
       },
     });
@@ -410,9 +414,14 @@ export class Panels {
 
 
   centerOn(r: Rect) {
-    this.a.vp.x = this.a.vp.vw / 2 - (r.x + r.w / 2) * this.a.vp.z;
-    this.a.vp.y = this.a.vp.vh / 2 - (r.y + r.h / 2) * this.a.vp.z;
-    this.a.vp.changed();
+    const vp = this.a.vp;
+    // snapTo also cancels a running zoom tween; direct x/y writes
+    // would be overwritten each frame until it settles.
+    vp.snapTo({
+      x: vp.vw / 2 - (r.x + r.w / 2) * vp.z,
+      y: vp.vh / 2 - (r.y + r.h / 2) * vp.z,
+      z: vp.z,
+    });
   }
 
 
@@ -430,8 +439,16 @@ export class Panels {
   // Shared sanitize for drag-restore and restore-all: dead or
   // foreign-board anchors would leave the card permanently invisible
   // (it skips the layer, the pins overlay, and marquee), cross-board
-  // sync groups and labels likewise cannot follow.
-  private restoredEl(src: Element, boardId: ID, pt: { x: number; y: number }, parentId: ID | null): Element {
+  // sync groups and labels likewise cannot follow. boardOf resolves
+  // where an element lands; restore-all passes its batch map so
+  // anchors and line ends trashed in the same batch still resolve.
+  private restoredEl(
+    src: Element,
+    boardId: ID,
+    pt: { x: number; y: number },
+    parentId: ID | null,
+    boardOf: (id: ID) => ID | undefined = (id) => this.a.doc.elements[id]?.boardId,
+  ): Element {
     const el: Element = {
       ...src,
       boardId,
@@ -440,8 +457,20 @@ export class Panels {
       y: Math.round(pt.y),
       z: nextZ(this.a.doc),
     };
-    if (el.anchorId !== undefined && this.a.doc.elements[el.anchorId]?.boardId !== boardId) {
+    if (el.anchorId !== undefined && boardOf(el.anchorId) !== boardId) {
       delete el.anchorId;
+    }
+    if ('line' in el.content) {
+      const line = el.content.line;
+      // Attached line ends may only reach elements on the same board;
+      // anything else becomes a free end at its stored coords.
+      const fix = (end: LineEnd): LineEnd =>
+        end.el !== undefined && boardOf(end.el) !== boardId ? { x: end.x, y: end.y } : end;
+      const from = fix(line.from);
+      const to = fix(line.to);
+      if (from !== line.from || to !== line.to) {
+        el.content = { ...el.content, line: { ...line, from, to } };
+      }
     }
     el.labels = el.labels.filter((l) => this.a.doc.labels[l]?.boardId === boardId);
     if (boardId !== src.boardId) delete el.syncGroup;
@@ -474,12 +503,15 @@ export class Panels {
   // trashed in the same batch keep their members. One undoable batch.
   restoreAllTrash() {
     if (this.a.lockedView()) return;
-    const entries = Object.entries(this.a.doc.trash);
+    // Source-z order: new z values are handed out in iteration order,
+    // so sorting here keeps stacking and column order intact.
+    const entries = Object.entries(this.a.doc.trash).sort((a, b) => a[1].el.z - b[1].el.z);
     if (!entries.length) return;
     const target = new Map<ID, ID>();
     for (const [id, entry] of entries) {
       target.set(id, this.a.doc.boards[entry.el.boardId] ? entry.el.boardId : (this.a.boardId ?? entry.el.boardId));
     }
+    const boardOf = (id: ID) => target.get(id) ?? this.a.doc.elements[id]?.boardId;
     const actions: Action[] = [];
     const created: ID[] = [];
     for (const [id, entry] of entries) {
@@ -490,7 +522,7 @@ export class Panels {
         const pb = target.get(p) ?? this.a.doc.elements[p]?.boardId;
         if (pb === boardId) parentId = p;
       }
-      const el = this.restoredEl(entry.el, boardId, { x: entry.el.x, y: entry.el.y }, parentId);
+      const el = this.restoredEl(entry.el, boardId, { x: entry.el.x, y: entry.el.y }, parentId, boardOf);
       actions.push({ type: 'element.create', el }, { type: 'trash.remove', id });
       if (boardId === this.a.boardId) created.push(el.id);
     }
@@ -568,9 +600,9 @@ export class Panels {
       }
       sig = `t:${n}:${m}`;
     } else if (this.panelKind === 'due') {
-      // Due rows follow the doc directly; a done-check or a new due
-      // item bumps the rev and re-renders the list.
-      sig = `d:${this.a.store.rev}`;
+      // Data sig, not rev: a card drag bumps the rev every frame while
+      // the due list only changes with due items themselves.
+      sig = `d:${collectDue(this.a.doc).map((d) => `${d.itemId}:${d.dueAt}`).join(',')}`;
     } else {
       // Data sig, not rev: card drags bump the rev every frame while
       // the board list only changes with board meta or card counts.

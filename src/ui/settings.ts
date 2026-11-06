@@ -19,8 +19,11 @@ interface SettingsApi {
   onBrowserLang(v: boolean): void;
   currency(): Currency | null;
   onCurrency(c: Currency | null): void;
-  flag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl' | 'agent' | 'spellcheck'): boolean;
-  onFlag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl' | 'agent' | 'spellcheck', v: boolean): void;
+  flag(key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl' | 'agent' | 'spellcheck' | 'reminders'): boolean;
+  onFlag(
+    key: 'noOverlap' | 'ink' | 'undoArrows' | 'autoEdit' | 'unfurl' | 'agent' | 'spellcheck' | 'reminders',
+    v: boolean,
+  ): void;
   // Whether the agent bridge socket is live right now.
   agentStatus(): boolean;
   // Stored bridge credentials exist (paired via an ?agent= link once).
@@ -37,7 +40,12 @@ interface SettingsApi {
   onSyncDirPick(): Promise<void>;
   onSyncDirReconnect(): Promise<void>;
   onSyncDirStop(): Promise<void>;
+  onBackupExport(): void;
   onSnapshots(): void;
+  encrypted(): boolean;
+  onEncrypt(anchor: HTMLElement): void;
+  onDecrypt(anchor: HTMLElement): void;
+  onLockNow(): void;
   // Toolbar palette editor: ordered keys with hidden flags, moves and
   // a reset back to the default order.
   railItems(): { key: string; label: string; hidden: boolean }[];
@@ -111,7 +119,10 @@ export function openAgentPopup(anchor: HTMLElement, api: AgentMenuApi): ToolPopu
   promptIcon.innerHTML = ICONS.copy;
   agentPrompt.append(promptText, promptIcon);
   agentPrompt.addEventListener('click', () => {
-    void navigator.clipboard
+    // navigator.clipboard is undefined in insecure contexts.
+    const clip = navigator.clipboard;
+    if (!clip) return;
+    void clip
       .writeText(t('agentSetupPrompt'))
       .then(() => {
         promptIcon.innerHTML = ICONS.check;
@@ -373,6 +384,11 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
     { label: t('guideFaint'), on: () => api.guideAlpha() === 0.5, pick: () => api.onGuideAlpha(0.5) },
     { label: t('guideHidden'), on: () => api.guideAlpha() === 0, pick: () => api.onGuideAlpha(0) },
   ], t('setGuides'));
+  toggle(t('setReminders'), () => api.flag('reminders'), (v) => api.onFlag('reminders', v));
+  const remHow = document.createElement('div');
+  remHow.className = 'ts-head agent-how';
+  remHow.textContent = t('remindersHow');
+  node.appendChild(remHow);
 
   group(t('setOnline'));
   toggle(t('setUnfurl'), () => api.flag('unfurl'), (v) => api.onFlag('unfurl', v));
@@ -388,7 +404,19 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
   syncHow.className = 'ts-head agent-how';
   node.appendChild(syncHow);
   if (!api.syncDirSupported()) {
-    syncHow.textContent = t('backupUnsupported');
+    const expRow = document.createElement('button');
+    expRow.type = 'button';
+    expRow.className = 'pop-row';
+    const expLab = document.createElement('span');
+    expLab.className = 'pop-label';
+    expLab.textContent = t('backupExportNow');
+    expRow.appendChild(expLab);
+    expRow.addEventListener('click', () => {
+      pop.close();
+      api.onBackupExport();
+    });
+    syncBox.appendChild(expRow);
+    syncHow.textContent = t('backupHintFallback');
   } else {
     const renderSync = () => {
       void api.syncDirStatus().then((s) => {
@@ -456,6 +484,46 @@ export function openSettings(anchor: HTMLElement, api: SettingsApi): ToolPopup {
     api.onSnapshots();
   });
   node.appendChild(snapRow);
+
+  group(t('setPrivacy'));
+  if (!api.encrypted()) {
+    const encRow = document.createElement('button');
+    encRow.type = 'button';
+    encRow.className = 'pop-row';
+    const encLab = document.createElement('span');
+    encLab.className = 'pop-label';
+    encLab.textContent = t('encEnable');
+    encRow.appendChild(encLab);
+    encRow.addEventListener('click', () => {
+      pop.close();
+      api.onEncrypt(anchor);
+    });
+    node.appendChild(encRow);
+  } else {
+    const lockRow = document.createElement('button');
+    lockRow.type = 'button';
+    lockRow.className = 'pop-row';
+    const lockLab = document.createElement('span');
+    lockLab.className = 'pop-label';
+    lockLab.textContent = t('encLockNow');
+    lockRow.appendChild(lockLab);
+    lockRow.addEventListener('click', () => {
+      pop.close();
+      api.onLockNow();
+    });
+    const decRow = document.createElement('button');
+    decRow.type = 'button';
+    decRow.className = 'pop-row';
+    const decLab = document.createElement('span');
+    decLab.className = 'pop-label';
+    decLab.textContent = t('encRemove');
+    decRow.appendChild(decLab);
+    decRow.addEventListener('click', () => {
+      pop.close();
+      api.onDecrypt(anchor);
+    });
+    node.append(lockRow, decRow);
+  }
 
   // Actions sit apart from the option groups, separated so they do not
   // read as more toggle rows.

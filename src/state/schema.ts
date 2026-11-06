@@ -50,6 +50,13 @@ interface ColumnDoc {
   title: string;
 }
 
+export type RecurFreq = 'day' | 'week' | 'month' | 'year';
+
+export interface RecurRule {
+  f: RecurFreq;
+  n: number;
+}
+
 export interface TodoItem {
   id: ID;
   text: string;
@@ -57,8 +64,12 @@ export interface TodoItem {
   dueAt?: number;
   // Whether dueAt's clock part is meaningful: day-only dues show no time.
   dueTime?: boolean;
+  recur?: RecurRule;
   assignee?: 'self';
   reactions?: string[];
+  // Id of the recurring item this entry was spawned from: stops a
+  // re-check from stacking a second successor.
+  spawned?: ID;
 }
 
 export interface TodoDoc {
@@ -81,6 +92,7 @@ interface SwatchDoc {
 
 export type LineMarker = 'none' | 'arrow' | 'dot';
 export type LineWeight = 'thin' | 'medium' | 'thick';
+export type LineRoute = 'straight' | 'elbow';
 
 export interface LineEnd {
   el?: ID;
@@ -95,6 +107,7 @@ interface LineDoc {
   toMarker: LineMarker;
   dashed: boolean;
   weight: LineWeight;
+  route?: LineRoute;
   label: string;
 }
 
@@ -297,7 +310,7 @@ export const SKETCH_W = 280;
 const TABLE_W = 300;
 export const SKETCH_PAD_W = 600;
 export const SKETCH_PAD_H = 450;
-const DEFAULT_SWATCH = '#3d84e0';
+export const DEFAULT_SWATCH = '#3d84e0';
 
 export function uid(): ID {
   return crypto.randomUUID().slice(0, 8) + Date.now().toString(36).slice(-4);
@@ -316,12 +329,21 @@ export function migrateDoc(doc: Doc): Doc {
   doc.labels ??= {};
   doc.trash ??= {};
   doc.templates ??= {};
+  for (const b of Object.values(doc.boards)) {
+    b.parentId ??= null;
+    b.grid ??= true;
+    const now = Date.now();
+    b.createdAt ??= now;
+    b.modifiedAt ??= now;
+  }
   let maxZ = 0;
   for (const el of Object.values(doc.elements)) {
     el.labels ??= [];
     // Canvas membership is parentId === null: an undefined parentId
     // would silently vanish the element into a bucket nobody renders.
     el.parentId ??= null;
+    // Lines written before the label field existed render "undefined".
+    if (el.type === 'line' && 'line' in el.content) el.content.line.label ??= '';
     if (el.z > maxZ) maxZ = el.z;
   }
   for (const t of Object.values(doc.trash)) {
@@ -534,7 +556,9 @@ export function strokesBBox(strokes: Stroke[]): { x: number; y: number; w: numbe
     x2 = -Infinity,
     y2 = -Infinity;
   for (const s of strokes) {
-    const maxW = s.widths?.length ? Math.max(s.size, ...s.widths) : s.size;
+    // Loop, not a spread: a >65k-point stroke would throw a RangeError.
+    let maxW = s.size;
+    if (s.widths) for (const w of s.widths) if (w > maxW) maxW = w;
     const pad = maxW / 2;
     for (const [px, py] of s.pts) {
       x1 = Math.min(x1, px - pad);
@@ -715,9 +739,11 @@ function saneLineEnd(v: unknown): v is LineEnd {
 
 const LINE_MARKERS_SANE = new Set(['none', 'arrow', 'dot']);
 const LINE_WEIGHTS_SANE = new Set(['thin', 'medium', 'thick']);
+const LINE_ROUTES_SANE = new Set(['straight', 'elbow']);
 const CELL_TYPES_SANE = new Set(['auto', 'number', 'currency', 'percent', 'text', 'datetime', 'checkbox']);
 const ALIGNS_H_SANE = new Set(['left', 'center', 'right']);
 const ALIGNS_V_SANE = new Set(['top', 'middle', 'bottom']);
+const RECUR_FREQS_SANE = new Set(['day', 'week', 'month', 'year']);
 
 // Structural check for raw content carried by dispatch and import
 // payloads: exactly one key matching the element type, and every
@@ -752,8 +778,14 @@ export function saneContent(v: unknown, type: ElementType): v is TypeContent {
             isBool(it.done) &&
             optNum(it.dueAt) &&
             optBool(it.dueTime) &&
+            (it.recur === undefined ||
+              (isObj(it.recur) &&
+                RECUR_FREQS_SANE.has(it.recur.f as string) &&
+                isNum(it.recur.n) &&
+                it.recur.n >= 1)) &&
             (it.assignee === undefined || it.assignee === 'self') &&
-            (it.reactions === undefined || (Array.isArray(it.reactions) && it.reactions.every(isStr))),
+            (it.reactions === undefined || (Array.isArray(it.reactions) && it.reactions.every(isStr))) &&
+            optStr(it.spawned),
         )
       );
     case 'swatch':
@@ -767,7 +799,8 @@ export function saneContent(v: unknown, type: ElementType): v is TypeContent {
         (c.toMarker === undefined || LINE_MARKERS_SANE.has(c.toMarker as string)) &&
         optBool(c.dashed) &&
         (c.weight === undefined || LINE_WEIGHTS_SANE.has(c.weight as string)) &&
-        optStr(c.label)
+        (c.route === undefined || LINE_ROUTES_SANE.has(c.route as string)) &&
+        isStr(c.label)
       );
     case 'comment':
       return (
@@ -810,7 +843,9 @@ export function saneContent(v: unknown, type: ElementType): v is TypeContent {
         (c.strokes === undefined || saneStrokes(c.strokes))
       );
     case 'file':
-      return isObj(c) && isStr(c.blobRef) && isStr(c.name) && isNum(c.size) && isStr(c.mime) && isStr(c.ext);
+      // An empty blobRef imports a card that can never preview or
+      // download.
+      return isObj(c) && isStr(c.blobRef) && c.blobRef !== '' && isStr(c.name) && isNum(c.size) && isStr(c.mime) && isStr(c.ext);
     case 'document':
       return (
         isObj(c) &&
@@ -825,11 +860,14 @@ export function saneContent(v: unknown, type: ElementType): v is TypeContent {
       return isObj(c) && saneStrokes(c.strokes);
     case 'table': {
       if (!isObj(c) || !isStr(c.title) || !isStr(c.caption) || !Array.isArray(c.cells)) return false;
-      if (c.widths !== undefined && (!Array.isArray(c.widths) || !c.widths.every(isNum))) return false;
       // cells must be a non-empty rectangular grid: a ragged import
       // would silently drop or pad columns at render.
       const cols = Array.isArray(c.cells[0]) ? c.cells[0].length : 0;
       if (!cols) return false;
+      // widths is one entry per column: a mismatch desyncs the grid
+      // template from the cell grid.
+      if (c.widths !== undefined && (!Array.isArray(c.widths) || c.widths.length !== cols || !c.widths.every(isNum)))
+        return false;
       return c.cells.every(
         (row) =>
           Array.isArray(row) &&

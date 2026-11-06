@@ -19,6 +19,7 @@ export type ToolId =
   | 'line-end'
   | 'line-label'
   | 'line-dashed'
+  | 'line-route'
   | 'line-weight'
   | 'show-value'
   | 'to-board'
@@ -133,6 +134,7 @@ const TOOL_DEFS: Record<ToolId, { label: string; icon: string }> = {
   'line-end': { label: t('lineEnd'), icon: ICONS.lineEnd },
   'line-label': { label: t('lineLabel'), icon: ICONS.labels },
   'line-dashed': { label: t('lineDashed'), icon: ICONS.dashed },
+  'line-route': { label: t('lineRoute'), icon: ICONS.route },
   'line-weight': { label: t('lineWeight'), icon: ICONS.weight },
   'show-value': { label: t('showValue'), icon: ICONS.showValue },
   'to-board': { label: t('toBoard'), icon: ICONS.toBoard },
@@ -169,12 +171,13 @@ const UNIVERSAL: ToolId[] = ['color', 'labels', 'title', 'comment', 'reactions']
 const SINGLE_TOOLS: Record<ElementType, ToolId[]> = {
   note: [...UNIVERSAL, 'more'],
   todo: [...UNIVERSAL, 'more'],
-  heading: [...UNIVERSAL, 'more'],
+  // Heading renders no card colour: the picker would store a dead value.
+  heading: ['labels', 'title', 'comment', 'reactions', 'more'],
   board: ['color', 'icon', 'labels', 'reactions', 'comment', 'title', 'more'],
   swatch: [...UNIVERSAL, 'show-value', 'more'],
   column: [...UNIVERSAL, 'to-board', 'more'],
   comment: ['color', 'more'],
-  line: ['color', 'line-start', 'line-end', 'line-label', 'line-dashed', 'line-weight', 'more'],
+  line: ['color', 'line-start', 'line-end', 'line-label', 'line-dashed', 'line-route', 'line-weight', 'more'],
   link: [],
   embed: [],
   image: ['color', 'labels', 'reactions', 'comment', 'draw-on', 'img-edit', 'img-bg', 'caption', 'more'],

@@ -368,6 +368,9 @@ dashed: S(
   <path d="M5 12h14" />
 `,
   ),
+route: S(
+    '<path d="M4 19h5a3 3 0 0 0 3-3V8a3 3 0 0 1 3-3h5"/><path d="m17 2 3 3-3 3"/>',
+  ),
 weight: S(
     `
 <svg

@@ -1,12 +1,13 @@
 import type { Store } from './state/store';
-import { boardRefOf, createAnnotation, createColumn, createComment, createDocument, createEmbed, createHeading, createLine, createLink, createNote, createSketch, createSwatch, createTable, createTodo, documentDoc, headingDoc, imageDoc, linkDoc, migrateDoc, sketchDoc, uid, EDITOR_TYPES, GRID, IMAGE_W, UNSORTED, type Doc, type Element, type ElementType, type ID, type EmbedKind, type ImageDoc, type PresentOpts } from './state/schema';
+import { boardRefOf, createAnnotation, createColumn, createComment, createDocument, createEmbed, createHeading, createLine, createLink, createNote, createSketch, createSwatch, createTable, createTodo, documentDoc, headingDoc, imageDoc, lineDoc, linkDoc, migrateDoc, sketchDoc, survivingBoard, uid, EDITOR_TYPES, GRID, IMAGE_W, UNSORTED, type Doc, type Element, type ElementType, type ID, type EmbedKind, type ImageDoc, type PresentOpts } from './state/schema';
 import type { Action, ElementPatch } from './state/actions';
 import { getClipboard, setClipboard } from './state/clipboard';
-import type { DocStorage, Lang, Prefs } from './persist/storage';
-import { blobTotalSize, clearBlobs, copyTextToClipboard, putBlob } from './persist/blobs';
+import type { DocStorage, Lang, PersistedWorkspace, Prefs } from './persist/storage';
+import { blobTotalSize, clearBlobs, copyTextToClipboard, putBlob, rekeyBlobs } from './persist/blobs';
+import { clearEncMeta, getBox, hasBox, saveEncMeta, setBox, setupPassphrase, unlockWithPassphrase } from './persist/crypto';
 import { clearExtra } from './persist/kv';
 import { initTabSync } from './persist/tabs';
-import { createSnapshot, deleteSnapshot, listSnapshots, readSnapshot } from './persist/snapshots';
+import { createSnapshot, deleteSnapshot, listSnapshots, readSnapshot, rekeySnapshots } from './persist/snapshots';
 import { syncDirSupported } from './persist/syncdir';
 import { ingestFiles, ingestPaste, prepareImage, type IngestApi } from './ingest/files';
 import { scrubContent } from './ui/sanitize';
@@ -21,7 +22,7 @@ import { Rail } from './ui/rail';
 import { attachPointer } from './canvas/input';
 import { attachShortcuts } from './ui/shortcuts';
 import { normRect, pointInRect, rectsIntersect, unionRect } from './canvas/hit';
-import { hitLines, resolveLine, type LineHit } from './canvas/lines';
+import { hitLines, linePath, resolveLine, type LineHit } from './canvas/lines';
 import { lang as activeLang, t } from './strings';
 import { choice, hint, toast } from './ui/toast';
 import type { EditorHandle } from './editor/doceditor';
@@ -49,9 +50,12 @@ import { Overlays } from './app/overlays';
 import { Deletion } from './app/deletion';
 import { Comments } from './app/comments';
 import { FolderSync } from './app/syncdir';
+import { Reminders } from './app/reminders';
 import { Minimap } from './ui/minimap';
-import { dueSoonCount } from './ui/duepanel';
+import { dueSoonCount, type DueItem } from './ui/duepanel';
 import { openSnapshotsPanel } from './ui/snapshotpanel';
+import { openSnapBrowsePanel, restoreSnapshotBoardActions, restoreSnapshotCardActions } from './ui/snapbrowse';
+import { openEncryptPopup } from './ui/encryptpop';
 import { fmtDate } from './locale';
 const SAVE_DEBOUNCE = 700;
 
@@ -71,6 +75,7 @@ export class App {
   // Folder backup (File System Access): mirrors the workspace into a
   // user-picked directory after each save; see app/syncdir.ts.
   readonly fsync = new FolderSync(this);
+  readonly reminders = new Reminders(this);
 
   store: Store;
 
@@ -108,6 +113,15 @@ export class App {
   private saveState: 'saved' | 'saving' = 'saved';
 
   private saveKind: 0 | 1 | 2 = 0;
+
+  // Serialized write chain: every adapter.save queues on saveTail so
+  // concurrent saveNow callers (debounce, markExported, flush,
+  // encryption transitions) can never complete out of order.
+  // savePending counts writes still queued or running; 'saved' is only
+  // reported once it drains with nothing debounced behind it.
+  private saveTail: Promise<void> = Promise.resolve();
+
+  private savePending = 0;
 
   private saveChip = false;
 
@@ -174,7 +188,14 @@ export class App {
 
   filterIds = new Set<ID>();
 
-  pointer: { x: number; y: number } | null = null;
+  // Last pointer position kept in client space: the board point is
+  // derived on read so a paste after a pan/zoom with no intervening
+  // move still lands under the cursor.
+  pointerClient: { x: number; y: number } | null = null;
+
+  get pointer(): { x: number; y: number } | null {
+    return this.pointerClient ? this.vp.toBoard(this.pointerClient.x, this.pointerClient.y) : null;
+  }
 
   presenting = false;
 
@@ -331,6 +352,9 @@ export class App {
         // Ending the session is what closes the undo group; dropping
         // editingId alone would leak it and swallow history.
         if (this.editingId === id) this.editing.endEdit();
+        // A mounted element editor whose card vanished (undo, cascade,
+        // agent delete) must close too; its callbacks are all stale.
+        if (this.overlayId === id) this.applyRoute();
       }
       // Board patches (title/icon/color) are read by card views but
       // carry no element id, so they force a full view pass.
@@ -407,8 +431,17 @@ export class App {
     const board = this.doc.boards[id];
     if (!board) return;
     const sameBoard = id === this.boardId;
+    // A lazy editor chunk in flight must not mount over the new board:
+    // pushState navigation never fires hashchange, so bump the guard.
+    this.editorSeq++;
     this.exitPresent();
     this.editing.endEdit();
+    // A gesture in flight (marquee, card/line/endpoint drag, connect,
+    // resize, pan) must not outlive the board it started on: cancel
+    // each through its own pointercancel path, and drop board draw
+    // mode the same way.
+    this.gestures.cancelGestures();
+    this.exitDrawMode();
     this.draft = null;
     this.endDraft = null;
     this.overlays.commitLabelEdit();
@@ -501,11 +534,18 @@ export class App {
     // Editor modules are lazy chunks; the seq guard drops a stale open
     // if the route moved on while the chunk was loading.
     const seq = ++this.editorSeq;
+    // seq alone cannot see deletes, converts or pushState navigation
+    // while the lazy chunk loads: re-check element and route too.
+    const stale = () => {
+      const cur = this.doc.elements[el.id];
+      const em = location.hash.match(/^#\/e\/([^/?#]+)/);
+      return !cur || cur.type !== el.type || cur.boardId !== this.boardId || em?.[1] !== el.id;
+    };
     let handle: EditorHandle | null = null;
     if (el.type === 'document') {
       if (!documentDoc(el)) return;
       const { openDocumentEditor } = await import('./editor/doceditor');
-      if (seq !== this.editorSeq) return;
+      if (seq !== this.editorSeq || stale()) return;
       this.store.beginGroup();
       let ed: ReturnType<typeof openDocumentEditor>;
       try {
@@ -545,7 +585,7 @@ export class App {
       };
     } else if (el.type === 'sketch') {
       const { openSketchEditor } = await import('./editor/draweditors');
-      if (seq !== this.editorSeq) return;
+      if (seq !== this.editorSeq || stale()) return;
       handle = openSketchEditor(el, {
         ink: this.prefs.ink,
         patch: (doc) => {
@@ -560,7 +600,7 @@ export class App {
     } else if (el.type === 'image') {
       if (!imageDoc(el)) return;
       const { openImageEditor } = await import('./editor/imgeditor');
-      if (seq !== this.editorSeq) return;
+      if (seq !== this.editorSeq || stale()) return;
       const ed = openImageEditor(el, imgModeFromHash(), {
         doc: () => {
           const cur = this.doc.elements[el.id];
@@ -622,8 +662,8 @@ export class App {
     this.clearSelection();
     const { openBoardDraw } = await import('./editor/draweditors');
     // The lazy editor chunk may race a route change that opened an
-    // editor or re-entered draw mode in the meantime.
-    if (this.boardDraw || this.overlay) return;
+    // editor, switched boards or engaged the present lock meanwhile.
+    if (this.boardDraw || this.overlay || !this.boardId || this.lockedView()) return;
     this.boardDraw = openBoardDraw({
       vp: this.vp,
       ink: this.prefs.ink,
@@ -689,6 +729,7 @@ export class App {
   exitPresent() {
     if (!this.presenting) return;
     this.presenting = false;
+    this.layer.pin.clear();
     this.applyPresentClasses();
     this.requestRender();
   }
@@ -969,16 +1010,22 @@ export class App {
       const l = resolveLine(el, this.doc, rectOf);
       if (!l) continue;
       const d = this.endDraft;
+      let pts = l.pts;
       if (d && d.id === el.id) {
+        // A dragged end is free, not attached: drop its exit side and
+        // rebuild the path around the pointer position.
         if (d.which === 'from') {
           l.x1 = d.x;
           l.y1 = d.y;
+          l.side1 = undefined;
         } else {
           l.x2 = d.x;
           l.y2 = d.y;
+          l.side2 = undefined;
         }
+        pts = linePath(l.x1, l.y1, l.side1, l.x2, l.y2, l.side2, lineDoc(el)?.route);
       }
-      out.push({ el: l.el, x1: l.x1, y1: l.y1, x2: l.x2, y2: l.y2, selected: this.sel.has(el.id), dim: this.dims(el.id) });
+      out.push({ el: l.el, x1: l.x1, y1: l.y1, x2: l.x2, y2: l.y2, pts, selected: this.sel.has(el.id), dim: this.dims(el.id) });
     }
     this.linesCache = { key, lines: out };
     return out;
@@ -1075,6 +1122,9 @@ export class App {
       location.hash = `#/e/${el.id}${q ? `?${q.slice(1)}` : ''}`;
       return;
     }
+    // Image and file cards have no editable surface: a session would
+    // open an empty undo group around nothing.
+    if (el.type === 'image' || el.type === 'file') return;
     this.editing.beginEdit(id, { x: e.clientX, y: e.clientY }, el.type === 'table' ? 'cell-edit' : undefined);
   }
 
@@ -1495,6 +1545,9 @@ export class App {
     const i = els.findIndex((c) => this.sel.has(c.e.id));
     const target = els[i < 0 ? (dir === 1 ? 0 : els.length - 1) : (i + dir + els.length) % els.length]!.e;
     this.selectOnly(target.id);
+    // Pin the landing card mounted: the fit tween takes ~190ms to bring
+    // a far target on screen, and a culled view cannot take focus.
+    this.layer.pin = new Set([target.id]);
     this.vp.fit(this.layer.rectOf(target), this.fitInsets());
     this.render();
     this.layer.view(target.id)?.node.focus({ preventScroll: true });
@@ -1717,7 +1770,7 @@ export class App {
     const w = Math.max(GRID, Math.round((el.w ?? IMAGE_W) / GRID) * GRID);
     const h = Math.max(GRID, Math.round(w / c.aspect / GRID) * GRID);
     const aspect = w / h;
-    let content: { image: ImageDoc } | undefined;
+    let crop: { ref: string; w: number; h: number } | undefined;
     if (Math.abs(aspect - c.aspect) > 0.001) {
       try {
         const { loadBitmap, cropImage, canvasBlob } = await import('./editor/imgops');
@@ -1734,19 +1787,25 @@ export class App {
         if (!blob) return;
         const ref = uid();
         await putBlob(ref, blob);
-        const next = { ...c, blobRef: ref, aspect, natW: cw, natH: ch };
-        delete next.strokes;
-        content = { image: next };
+        crop = { ref, w: cw, h: ch };
       } catch {
         toast(t('imageMissing'), 'err');
         return;
       }
     }
     // Re-read the element after the async work: the card may have been
-    // deleted or moved, and the grid snap applies to where it is now.
+    // deleted, moved or edited, and the grid snap applies to where it
+    // is now. The image patch merges onto the fresh doc so caption,
+    // alt or name edits made during the crop are not clobbered.
     const curEl = this.doc.elements[el.id];
     const cur = curEl ? imageDoc(curEl) : null;
     if (!curEl || !cur || this.lockedView()) return;
+    let content: { image: ImageDoc } | undefined;
+    if (crop) {
+      const next = { ...cur, blobRef: crop.ref, aspect, natW: crop.w, natH: crop.h };
+      delete next.strokes;
+      content = { image: next };
+    }
     const patch: ElementPatch = {
       x: Math.round(curEl.x / GRID) * GRID,
       y: Math.round(curEl.y / GRID) * GRID,
@@ -1835,6 +1894,17 @@ export class App {
 
   openSearch() {
     this.panels.openSearch();
+  }
+
+  jumpToDue(d: DueItem) {
+    this.panels.jumpToHit({
+      boardId: d.boardId,
+      elementId: d.elId,
+      icon: '',
+      snippet: '',
+      modifiedAt: 0,
+      unsorted: d.unsorted,
+    });
   }
 
 
@@ -1986,9 +2056,13 @@ export class App {
           ? this.prefs[k] !== false
           : this.prefs[k] === true,
       onFlag: (k, v) => {
+        if (k === 'reminders' && v && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+          void Notification.requestPermission().catch(() => {});
+        }
         this.prefs[k] = v;
         save();
         if (k === 'spellcheck') document.body.spellcheck = v;
+        if (k === 'reminders' && v) this.reminders.tick();
         this.requestRender();
         if (k === 'agent') void import('./agent/index').then((m) => m.setAgentEnabled(this, v));
       },
@@ -2061,8 +2135,61 @@ export class App {
       onSyncDirPick: () => this.fsync.pick(),
       onSyncDirReconnect: () => this.fsync.reconnect(),
       onSyncDirStop: () => this.fsync.stop(),
+      onBackupExport: () => void this.exporter.exportJson(),
       onSnapshots: () => this.openSnapshots(),
+      encrypted: () => hasBox(),
+      onEncrypt: (a) =>
+        openEncryptPopup(a, {
+          mode: 'enable',
+          onExport: () => void this.exporter.exportJson(),
+          onEnable: (pass) => this.enableEncryption(pass),
+        }),
+      onDecrypt: (a) =>
+        openEncryptPopup(a, {
+          mode: 'disable',
+          onDisable: (pass) => this.disableEncryption(pass),
+        }),
+      onLockNow: () => void this.lockNow(),
     });
+  }
+
+
+  private async enableEncryption(passphrase: string) {
+    const oldBox = getBox();
+    const { box, meta } = await setupPassphrase(passphrase);
+    await saveEncMeta(meta);
+    setBox(box);
+    this.saveKind = 2;
+    await this.saveNow();
+    await rekeyBlobs(oldBox, box);
+    await rekeySnapshots(oldBox, box);
+    this.fsync.rekey();
+    toast(t('encEnabledToast'), 'ok');
+  }
+
+
+  private async disableEncryption(passphrase: string): Promise<boolean> {
+    const verified = await unlockWithPassphrase(passphrase);
+    if (!verified) return false;
+    const oldBox = getBox() ?? verified;
+    setBox(null);
+    this.saveKind = 2;
+    await this.saveNow();
+    await rekeyBlobs(oldBox, null);
+    await rekeySnapshots(oldBox, null);
+    // Key metadata only goes away once plaintext is safely persisted:
+    // a failure above leaves sealed data still unlockable.
+    await clearEncMeta();
+    this.fsync.rekey();
+    toast(t('encRemovedToast'), 'ok');
+    return true;
+  }
+
+
+  private async lockNow() {
+    await this.flush();
+    setBox(null);
+    this.reloadDiscarding();
   }
 
 
@@ -2084,8 +2211,51 @@ export class App {
       onRestore: (id) => {
         choice(t('snapRestoreQ'), t('snapRestoreAct'), () => void this.restoreSnapshot(id));
       },
+      onBrowse: (id) => {
+        void this.browseSnapshot(id);
+      },
       onDelete: (id) => {
         void deleteSnapshot(id);
+      },
+    });
+  }
+
+
+  private async browseSnapshot(id: ID) {
+    const w = await readSnapshot(id).catch(() => null);
+    if (!w) {
+      toast(t('snapFail'), 'err');
+      return;
+    }
+    const snapDoc = migrateDoc(w.doc);
+    this.panels.closePanel();
+    openSnapBrowsePanel({
+      doc: snapDoc,
+      snippetFor: (el) => this.panels.snippetFor(el),
+      onRestoreBoard: (boardId) => {
+        if (this.lockedView()) return;
+        const host = survivingBoard(this.doc, undefined, this.boardId);
+        const res = host ? restoreSnapshotBoardActions(this.doc, snapDoc, boardId, host) : null;
+        if (!res) {
+          toast(t('snapFail'), 'err');
+          return;
+        }
+        this.store.dispatch({ type: 'batch', actions: res.actions });
+        this.openBoard(res.boardId);
+        toast(t('snapRestored'), 'ok');
+      },
+      onRestoreCard: (el) => {
+        if (this.lockedView()) return;
+        const host = survivingBoard(this.doc, undefined, this.boardId);
+        const res = host ? restoreSnapshotCardActions(this.doc, el, host) : null;
+        if (!res || !host) {
+          toast(t('snapFail'), 'err');
+          return;
+        }
+        this.store.dispatch({ type: 'batch', actions: res.actions });
+        if (this.boardId !== host) this.openBoard(host);
+        this.setSelection([res.id]);
+        toast(t('snapRestored'), 'ok');
       },
     });
   }
@@ -2097,9 +2267,13 @@ export class App {
       toast(t('snapFail'), 'err');
       return;
     }
+    // Freeze autosave before the restore write: a pending saveNow
+    // landing after it would silently overwrite the restored doc.
+    this.beginExternalSave();
     try {
-      await this.adapter.save({ version: 1, doc: migrateDoc(w.doc), savedAt: Date.now(), prefs: w.prefs ?? this.prefs });
+      await this.saveExternal({ version: 1, doc: migrateDoc(w.doc), savedAt: Date.now(), prefs: w.prefs ?? this.prefs });
     } catch {
+      this.endExternalSave();
       toast(t('snapFail'), 'err');
       return;
     }
@@ -2167,7 +2341,10 @@ export class App {
       this.topbar.setSaveState('saving');
     }
     if (this.saveTimer !== null) clearTimeout(this.saveTimer);
-    this.saveTimer = window.setTimeout(() => this.saveNow(), SAVE_DEBOUNCE);
+    this.saveTimer = window.setTimeout(() => {
+      this.saveTimer = null;
+      void this.saveNow();
+    }, SAVE_DEBOUNCE);
   }
 
 
@@ -2176,7 +2353,22 @@ export class App {
     void this.saveNow();
   }
 
-  private async saveNow() {
+  // Every save request enqueues one write on the tail chain; the write
+  // re-reads saveKind when it runs, so a queued write always persists
+  // the newest required state. skipFlush freezes the path entirely:
+  // an external write (snapshot/folder restore, foreign-save reload)
+  // is about to supersede this doc.
+  private saveNow(): Promise<void> {
+    if (this.skipFlush) return Promise.resolve();
+    this.savePending++;
+    // Swallow rejections: the tail must keep draining and callers
+    // treat failures internally (writeSave reports via saveFails).
+    const p = this.saveTail.then(() => this.writeSave()).catch(() => {});
+    this.saveTail = p;
+    return p;
+  }
+
+  private async writeSave() {
     const kind = this.saveKind;
     this.saveKind = 0;
     const board = this.board();
@@ -2202,13 +2394,20 @@ export class App {
         choice(t('saveFail'), t('exportAs'), () => void this.exporter.exportJson());
       }
       return;
+    } finally {
+      this.savePending--;
     }
     this.saveFails = 0;
     this.saveWarned = false;
-    this.saveState = 'saved';
-    if (this.saveChip) {
-      this.saveChip = false;
-      this.topbar.setSaveState('saved');
+    // 'saved' only once the queue is empty and nothing is debounced:
+    // a kind-1 write completing while a doc save is pending must not
+    // report saved, or flush() could slip past unwritten data.
+    if (this.savePending === 0 && this.saveKind === 0 && this.saveTimer === null) {
+      this.saveState = 'saved';
+      if (this.saveChip) {
+        this.saveChip = false;
+        this.topbar.setSaveState('saved');
+      }
     }
   }
 
@@ -2247,7 +2446,38 @@ export class App {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
-    if (this.saveState === 'saving') await this.saveNow();
+    // Pending work gets a queued write; a write already in flight or
+    // queued must also complete before flush returns.
+    if (this.saveState === 'saving' || this.saveKind > 0) await this.saveNow();
+    else await this.saveTail;
+  }
+
+  // External workspace writes (snapshot/folder restores) must land
+  // after any in-flight autosave and stay last: freeze the save path
+  // first so a debounced or queued saveNow can't slip a stale doc in
+  // behind the restore, then chain the write behind saveTail.
+  beginExternalSave() {
+    if (this.saveTimer !== null) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    this.skipFlush = true;
+  }
+
+  // Re-arm autosave when the external write never landed; pending
+  // edits need their debounce back.
+  endExternalSave() {
+    this.skipFlush = false;
+    this.scheduleSave();
+  }
+
+  saveExternal(w: PersistedWorkspace): Promise<void> {
+    const p = this.saveTail.then(() => this.adapter.save(w));
+    this.saveTail = p.then(
+      () => {},
+      () => {},
+    );
+    return p;
   }
 }
 

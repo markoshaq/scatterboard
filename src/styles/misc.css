@@ -319,3 +319,31 @@
   width: 180px;
   height: 120px;
 }
+
+.enc-err {
+  font-size: calc(12px * var(--ui));
+  color: var(--danger);
+}
+
+.lock-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--canvas, #f4f3ee);
+  padding: 16px;
+}
+
+.lock-card {
+  width: 280px;
+  max-width: 100%;
+  background: var(--card, #fff);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px var(--shadow-2, rgba(0, 0, 0, 0.14));
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

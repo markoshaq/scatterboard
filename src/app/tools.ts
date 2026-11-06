@@ -1,9 +1,11 @@
 import type { App } from '../app';
-import { annotationDoc, boardRefOf, columnTitle, createBoard, createBoardCard, createComment, createDocument, createLabel, createLine, createNote, createSketch, documentDoc, embedDoc, headingDoc, lineDoc, linkDoc, nextZ, strokesBBox, swatchDoc, todoDoc, SKETCH_PAD_H, SKETCH_PAD_W, type Element, type CellType, type ID, type Label, type LineMarker, type LineWeight, type Stroke } from '../state/schema';
+import { annotationDoc, boardRefOf, columnTitle, createBoard, createBoardCard, createComment, createDocument, createLabel, createLine, createNote, createSketch, documentDoc, embedDoc, headingDoc, lineDoc, linkDoc, nextZ, strokesBBox, swatchDoc, todoDoc, DEFAULT_SWATCH, SKETCH_PAD_H, SKETCH_PAD_W, type Element, type CellType, type ID, type Label, type LineMarker, type LineRoute, type LineWeight, type Stroke } from '../state/schema';
 import type { Action, ElementPatch } from '../state/actions';
 import { blobUrl, copyTextToClipboard, downloadBlobRef, getBlob } from '../persist/blobs';
 import { TodoCard } from '../cards/todo';
 import { TableCard } from '../cards/table';
+import { serializeCsv } from '../cards/table/csv';
+import { slugFileName } from '../export/download';
 import { toolMenuItems, type ToolId } from '../ui/rail';
 import { ICONS } from '../ui/icons';
 import { unionRect } from '../canvas/hit';
@@ -163,6 +165,9 @@ export class RailTools {
         break;
       case 'line-dashed':
         this.toggleDashed(sel[0]!);
+        break;
+      case 'line-route':
+        openMenuPopup(anchor, this.routeItems(sel[0]!));
         break;
       case 'line-weight':
         openMenuPopup(anchor, this.weightItems(sel[0]!));
@@ -329,6 +334,8 @@ export class RailTools {
       { label: t('addColLeft'), icon: ICONS.addCol, hint: 'Opt+Left', onPick: () => v.insertColumn(f.c) },
       { label: t('addRowBelow'), icon: ICONS.addRow, hint: 'Opt+Down', onPick: () => v.insertRow(f.r + 1) },
       { label: t('addColRight'), icon: ICONS.addCol, hint: 'Opt+Right', onPick: () => v.insertColumn(f.c + 1) },
+      { label: t('sortAsc'), onPick: () => v.sortColumn(f.c, 'asc') },
+      { label: t('sortDesc'), onPick: () => v.sortColumn(f.c, 'desc') },
       { label: t('clearCell'), icon: ICONS.eraser, onPick: () => v.clearFocusedCell() },
       { label: t('deleteRow'), icon: ICONS.trash, onPick: () => v.deleteFocusedRow() },
       { label: t('deleteCol'), icon: ICONS.trash, onPick: () => v.deleteFocusedColumn() },
@@ -352,11 +359,13 @@ export class RailTools {
 
   setColor(color: string | undefined) {
     this.colorBurst(() => {
-      const actions: Action[] = this.a.selectedEls().map((e) => ({
-        type: 'element.patch',
-        id: e.id,
-        patch: { color },
-      }));
+      const actions: Action[] = this.a.selectedEls().map((e) => {
+        // A swatch's colour is its content: el.color never renders.
+        const c = swatchDoc(e);
+        return c
+          ? { type: 'element.patch' as const, id: e.id, patch: { content: { swatch: { ...c, color: color ?? DEFAULT_SWATCH } } } }
+          : { type: 'element.patch' as const, id: e.id, patch: { color } };
+      });
       if (actions.length) this.a.store.dispatch({ type: 'batch', actions });
     });
   }
@@ -544,6 +553,13 @@ export class RailTools {
       }
       if ('note' in c) {
         items.push({ label: t('convertToDocument'), icon: ICONS.document, onPick: () => this.convertToDocument(el) });
+      }
+      if ('table' in c) {
+        items.push({
+          label: t('csvDownload'),
+          icon: ICONS.download,
+          onPick: () => downloadTextFile(`${slugFileName(c.table.title || 'table')}.csv`, serializeCsv(c.table.cells), 'text/csv'),
+        });
       }
       if (el.syncGroup) {
         items.push({
@@ -786,6 +802,27 @@ export class RailTools {
   }
 
 
+  routeItems(el: Element): MenuItem[] {
+    const c = lineDoc(el);
+    const set = (route: LineRoute) => {
+      if (this.a.lockedView()) return;
+      const e = this.a.doc.elements[el.id];
+      const cur = e ? lineDoc(e) : null;
+      if (!cur) return;
+      this.a.store.dispatch({
+        type: 'element.patch',
+        id: el.id,
+        patch: { content: { line: { ...cur, route } } },
+      });
+    };
+    const opts: [LineRoute, string][] = [
+      ['straight', t('routeStraight')],
+      ['elbow', t('routeElbow')],
+    ];
+    return opts.map(([r, label]) => ({ label, checked: (c?.route ?? 'straight') === r, onPick: () => set(r) }));
+  }
+
+
   toggleShowValue(el: Element) {
     const c = swatchDoc(el);
     if (!c) return;
@@ -925,8 +962,13 @@ export class RailTools {
     // The doc title has no note field: fold it into the body (text and
     // html) so it survives the swap.
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const text = c.title ? `${c.title}\n${c.text}` : c.text;
-    const html = c.title && c.html !== undefined ? `<h1>${esc(c.title)}</h1>${c.html}` : c.html;
+    // Title and caption have no note fields: fold both into the body.
+    const head = [c.title, c.caption].filter(Boolean).join('\n');
+    const text = head ? `${head}\n${c.text}` : c.text;
+    const html =
+      head && c.html !== undefined
+        ? `${c.title ? `<h1>${esc(c.title)}</h1>` : ''}${c.caption ? `<p>${esc(c.caption)}</p>` : ''}${c.html}`
+        : c.html;
     const note = createNote(this.a.doc, this.a.boardId, el.x, el.y, text);
     if (el.w !== undefined) note.w = el.w;
     this.carryCardFields(el, note);
