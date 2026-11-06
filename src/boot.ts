@@ -4,7 +4,9 @@ import { EDITOR_TYPES, migrateDoc, survivingBoard, type Doc } from './state/sche
 import { LocalStorageAdapter, migrateStorageKeys } from './persist/local';
 import { downloadTextFile } from './draw/strokes';
 import { SqliteAdapter } from './persist/sqlite';
-import { purgeOrphanBlobs } from './persist/blobs';
+import { clearBlobs, purgeOrphanBlobs } from './persist/blobs';
+import { clearExtra } from './persist/kv';
+import { waitForUnlock } from './ui/lockscreen';
 import { choice, toast } from './ui/toast';
 import { t } from './strings';
 
@@ -29,7 +31,19 @@ export async function boot() {
   // Ask for durable storage so the doc survives quota pressure;
   // browsers may refuse silently, the adapter stays best-effort either way.
   void navigator.storage?.persist?.().catch(() => {});
-  const persisted = await adapter.load();
+  let persisted = await adapter.load();
+  if (adapter.locked?.()) {
+    document.getElementById('boot-load')?.remove();
+    await waitForUnlock(document.getElementById('app')!, async () => {
+      localStorage.removeItem('scatterboard:lang');
+      localStorage.removeItem('scatterboard:theme');
+      await adapter.clear();
+      await clearBlobs();
+      await clearExtra();
+      location.reload();
+    });
+    persisted = await adapter.load();
+  }
   const fresh = !(persisted && persisted.version === 1 && Object.keys(persisted.doc.boards).length);
   // The welcome seed chunk only loads when a fresh doc is needed;
   // ?seed=N (dev only) builds the profiling board instead.
@@ -70,7 +84,11 @@ export async function boot() {
   })().catch(() => {});
   // Folder backup: restores the stored directory handle and offers a
   // restore when the mirror is newer than this workspace.
-  void app.fsync.init().catch(() => {});
+  void app.fsync
+    .init()
+    .catch(() => {})
+    .finally(() => app.fsync.maybeNagBackup());
+  app.reminders.init();
   if (fresh && perfN === null) app.welcomeHint();
   // A persisted blob that failed to parse was quarantined by the
   // adapter; offer a rescue download before the seed's autosave lands.
@@ -118,7 +136,15 @@ export async function boot() {
   // Routing and save-on-hide must be wired before anything that can
   // throw: a failed lazy import below must not orphan them.
   window.addEventListener('hashchange', () => app.applyRoute());
-  window.addEventListener('pagehide', () => void app.flush());
+  window.addEventListener('pagehide', () => {
+    app.reminders.dispose();
+    void app.flush();
+  });
+  window.addEventListener('pageshow', (e) => {
+    // A bfcache restore re-runs pageshow without a fresh boot; the
+    // reminders timer killed on pagehide must come back with it.
+    if (e.persisted) app.reminders.init();
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') void app.flush();
   });
@@ -144,21 +170,23 @@ export async function boot() {
   if (q.has('share')) {
     const shared = q.get('url') ?? q.get('text') ?? q.get('title');
     if (shared) app.fileCaptured(shared.slice(0, 4000));
-    for (const k of ['share', 'url', 'text', 'title']) q.delete(k);
     consumed = true;
   }
   if (q.has('capture')) {
     app.openShortcutCapture();
-    q.delete('capture');
     consumed = true;
   }
   if (q.has('newboard')) {
     app.openShortcutNewBoard();
-    q.delete('newboard');
     consumed = true;
   }
   if (consumed) {
-    const qs = q.toString();
-    history.replaceState(null, '', `${location.pathname}${qs ? `?${qs}` : ''}${location.hash}`);
+    // Re-read the live query: the agent init above already stripped
+    // ?do=/?agent=/?port=, and writing the stale capture back would
+    // re-add them so a reload replays the command link.
+    const qs = new URLSearchParams(location.search);
+    for (const k of ['share', 'url', 'text', 'title', 'capture', 'newboard']) qs.delete(k);
+    const s = qs.toString();
+    history.replaceState(null, '', `${location.pathname}${s ? `?${s}` : ''}${location.hash}`);
   }
 }

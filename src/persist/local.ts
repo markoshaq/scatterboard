@@ -1,3 +1,4 @@
+import { locked, pack, unpack } from './envelope';
 import type { PersistedWorkspace, StorageAdapter } from './storage';
 
 const KEY = 'scatterboard:v1';
@@ -36,17 +37,28 @@ export function migrateStorageKeys() {
 
 export class LocalStorageAdapter implements StorageAdapter {
   private corruptRaw: string | null = null;
+  private isLocked = false;
 
   corrupt(): string | null {
     return this.corruptRaw;
   }
 
+  locked(): boolean {
+    return this.isLocked;
+  }
+
   async load(): Promise<PersistedWorkspace | null> {
     let raw: string | null = null;
+    this.isLocked = false;
     try {
       raw = localStorage.getItem(KEY);
       if (!raw) return null;
-      const w = JSON.parse(raw) as PersistedWorkspace;
+      if (locked(raw)) {
+        this.isLocked = true;
+        return null;
+      }
+      const w = await unpack(raw);
+      if (!w) throw new Error('invalid workspace');
       // Position rows may postdate the doc serialize; newest wins.
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
@@ -75,7 +87,7 @@ export class LocalStorageAdapter implements StorageAdapter {
   }
 
   async save(w: PersistedWorkspace): Promise<void> {
-    localStorage.setItem(KEY, JSON.stringify(w));
+    localStorage.setItem(KEY, await pack(w));
   }
 
   saveBoardPos(id: string, pos: { x: number; y: number; z: number }) {
@@ -103,6 +115,7 @@ export class LocalStorageAdapter implements StorageAdapter {
       if (
         k === KEY ||
         k === LAST_BOARD ||
+        k === CORRUPT_KEY ||
         k?.startsWith(POS_PREFIX) ||
         // The pref mirrors must go too: after a reset, boot resolves
         // lang/theme from the browser/OS, not a stale explicit choice.

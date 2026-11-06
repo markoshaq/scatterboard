@@ -58,6 +58,11 @@ export async function clearExtra(): Promise<void> {
   }
   await new Promise<void>((res) => {
     const req = indexedDB.deleteDatabase(DB_NAME);
-    req.onsuccess = req.onerror = req.onblocked = () => res();
+    req.onsuccess = req.onerror = () => res();
+    // Resolving on a blocked delete would fake success while a second
+    // tab keeps the old store alive to resurrect on reload.
+    req.onblocked = () => {
+      console.warn(`scatterboard: kv store delete of ${DB_NAME} is blocked by another tab`);
+    };
   });
 }

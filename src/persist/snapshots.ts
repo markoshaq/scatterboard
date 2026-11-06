@@ -1,5 +1,7 @@
 import type { Doc } from '../state/schema';
 import { blobRefsInDoc } from './blobs';
+import { isEnvelope, type CryptoBox } from './crypto';
+import { pack, unpack } from './envelope';
 import { kvDel, kvGet, kvKeys, kvPut } from './kv';
 import type { PersistedWorkspace, Prefs } from './storage';
 
@@ -28,7 +30,9 @@ export async function listSnapshots(): Promise<SnapshotMeta[]> {
   const out: SnapshotMeta[] = [];
   for (const key of await kvKeys(PREFIX)) {
     const e = await kvGet<SnapshotEntry>(key).catch(() => undefined);
-    if (e) out.push({ id: e.id, name: e.name, createdAt: e.createdAt, auto: e.auto, refs: e.refs });
+    // Legacy/malformed entries may lack refs; default so one bad
+    // snapshot cannot poison the keep set the orphan purge relies on.
+    if (e) out.push({ id: e.id, name: e.name, createdAt: e.createdAt, auto: e.auto, refs: e.refs ?? [] });
   }
   return out.sort((a, b) => b.createdAt - a.createdAt);
 }
@@ -42,7 +46,7 @@ export async function createSnapshot(doc: Doc, prefs: Prefs, name: string, auto:
     auto,
     refs: [...blobRefsInDoc(doc)],
   };
-  await kvPut(`${PREFIX}${meta.id}`, { ...meta, json: JSON.stringify(w) });
+  await kvPut(`${PREFIX}${meta.id}`, { ...meta, json: await pack(w) });
   await pruneSnapshots();
   return meta;
 }
@@ -51,10 +55,28 @@ export async function readSnapshot(id: string): Promise<PersistedWorkspace | nul
   const e = await kvGet<SnapshotEntry>(`${PREFIX}${id}`).catch(() => undefined);
   if (!e?.json) return null;
   try {
-    const w = JSON.parse(e.json) as PersistedWorkspace;
+    const w = await unpack(e.json);
     return w && typeof w === 'object' && w.doc && typeof w.doc === 'object' && w.doc.boards ? w : null;
   } catch {
     return null;
+  }
+}
+
+export async function rekeySnapshots(oldBox: CryptoBox | null, newBox: CryptoBox | null): Promise<void> {
+  for (const key of await kvKeys(PREFIX)) {
+    const e = await kvGet<SnapshotEntry>(key).catch(() => undefined);
+    if (!e?.json) continue;
+    let plain = e.json;
+    if (isEnvelope(plain)) {
+      if (!oldBox) continue;
+      try {
+        plain = await oldBox.open(plain);
+      } catch {
+        continue;
+      }
+    }
+    const json = newBox ? await newBox.seal(plain) : plain;
+    await kvPut(key, { ...e, json });
   }
 }
 
@@ -66,7 +88,7 @@ export function deleteSnapshot(id: string): Promise<void> {
 // purge so restoring a snapshot never meets reclaimed media.
 export async function snapshotBlobRefs(): Promise<Set<string>> {
   const out = new Set<string>();
-  for (const s of await listSnapshots()) for (const r of s.refs) out.add(r);
+  for (const s of await listSnapshots()) for (const r of s.refs ?? []) out.add(r);
   return out;
 }
 

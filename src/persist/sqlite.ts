@@ -1,3 +1,4 @@
+import { locked, pack, unpack } from './envelope';
 import type { LocalStorageAdapter } from './local';
 import type { DocStorage, PersistedWorkspace } from './storage';
 
@@ -106,7 +107,14 @@ class WorkerDb {
 
   call(type: string, args?: Record<string, unknown>, dbId?: string): Promise<WReply> {
     const messageId = this.nextId++;
-    const p = new Promise<WReply>((res, rej) => this.pending.set(messageId, { resolve: res, reject: rej }));
+    const p = new Promise<WReply>((res, rej) => {
+      this.pending.set(messageId, { resolve: res, reject: rej });
+      // The ready watchdog only covers boot: a worker that dies
+      // mid-session must not wedge the write queue forever.
+      window.setTimeout(() => {
+        if (this.pending.delete(messageId)) rej(new Error('sqlite worker timeout'));
+      }, 30000);
+    });
     this.worker.postMessage({ type, messageId, args, dbId });
     return p;
   }
@@ -136,9 +144,14 @@ export class SqliteAdapter implements DocStorage {
   private codec: JsonCodec | null | undefined;
   private pos = new Map<string, { x: number; y: number; z: number }>();
   private corruptRaw: string | null = null;
+  private isLocked = false;
 
   corrupt(): string | null {
     return this.corruptRaw;
+  }
+
+  locked(): boolean {
+    return this.isLocked;
   }
   // Fires once when a write fails and saves degrade to localStorage.
   onDegraded?: () => void;
@@ -179,16 +192,21 @@ export class SqliteAdapter implements DocStorage {
     return (rows[0]?.value as string) ?? null;
   }
 
-  private put(key: string, value: string) {
-    this.queue = this.queue.then(async () => {
+  private put(key: string, value: string): Promise<void> {
+    // The task rejects on failure so awaited callers see a real save
+    // error instead of a phantom success; the shared queue keeps
+    // moving so later puts are not wedged by the rejection.
+    const task = this.queue.then(async () => {
       try {
         await this.db!.exec(this.dbId, 'INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)', [key, value]);
-      } catch {
+      } catch (e) {
         if (!this.broken) this.onDegraded?.();
         this.broken = true;
+        throw e;
       }
     });
-    return this.queue;
+    this.queue = task.catch(() => {});
+    return task;
   }
 
   // Copy kv rows out of the pre-rename OPFS file, then delete it.
@@ -251,20 +269,44 @@ export class SqliteAdapter implements DocStorage {
   }
 
   async load(): Promise<PersistedWorkspace | null> {
+    this.isLocked = false;
     try {
       const raw = await this.get(WS_KEY);
+      if (locked(raw)) {
+        this.isLocked = true;
+        return null;
+      }
       let w: PersistedWorkspace | null = null;
       if (raw) {
         const c = this.json();
-        w = (c ? await c.parse(raw) : JSON.parse(raw)) as PersistedWorkspace;
+        w = await unpack(raw, c ? (s) => c.parse(s) : undefined).catch(() => null);
       }
       // A previous session may have degraded to localStorage after a
       // failed put(): whichever copy saved later wins, and a winning
       // local copy is pushed back into sqlite so the stores reconverge.
       const lw = await this.local.load().catch(() => null);
+      if (this.local.locked()) {
+        this.isLocked = true;
+        return null;
+      }
       if (lw && (!w || (lw.savedAt ?? 0) > (w.savedAt ?? 0))) {
         w = lw;
-        void this.put(WS_KEY, JSON.stringify(lw));
+        // The local copy won a degraded session: its pos/lastBoard
+        // rows are newer than sqlite's and must not regress.
+        const lb = this.local.lastBoard();
+        if (lb) this.last = lb;
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k?.startsWith(LS_POS)) continue;
+          try {
+            this.pos.set(k.slice(LS_POS.length), JSON.parse(localStorage.getItem(k)!) as { x: number; y: number; z: number });
+          } catch {
+            // Bad row: ignored.
+          }
+        }
+        void pack(lw)
+          .then((p) => this.put(WS_KEY, p))
+          .catch(() => {});
       }
       if (!w || typeof w.doc !== 'object' || !w.doc) {
         // Parseable-or-nothing: a corrupt payload is quarantined to a
@@ -293,7 +335,7 @@ export class SqliteAdapter implements DocStorage {
       await this.local.save(w);
       return;
     }
-    const json = JSON.stringify(w);
+    const json = await pack(w);
     this.bytes = new Blob([json]).size;
     await this.put(WS_KEY, json);
   }
@@ -304,7 +346,7 @@ export class SqliteAdapter implements DocStorage {
       this.local.saveBoardPos(id, pos);
       return;
     }
-    return this.put(`${POS_PREFIX}${id}`, JSON.stringify(pos));
+    return this.put(`${POS_PREFIX}${id}`, JSON.stringify(pos)).catch(() => {});
   }
 
   docBytes(): number {
@@ -321,7 +363,7 @@ export class SqliteAdapter implements DocStorage {
       this.local.setLastBoard(id);
       return;
     }
-    void this.put(LAST_KEY, id);
+    void this.put(LAST_KEY, id).catch(() => {});
   }
 
   async clear() {

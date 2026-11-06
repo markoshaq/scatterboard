@@ -1,5 +1,6 @@
 import type { Doc } from '../state/schema';
 import { blobRefsInDoc, getBlob, putBlob } from './blobs';
+import { getBox, isEnvelope, type SealedBlob } from './crypto';
 import { kvDel, kvGet, kvPut } from './kv';
 import type { Prefs } from './storage';
 
@@ -84,22 +85,30 @@ export function parseBackup(text: string): BackupPayload | null {
   }
 }
 
-export async function readBackup(dir: FileSystemDirectoryHandle): Promise<BackupPayload | null> {
+export async function readBackup(dir: FileSystemDirectoryHandle): Promise<BackupPayload | 'locked' | null> {
   try {
     const fh = await dir.getFileHandle(DOC_FILE);
     const f = await fh.getFile();
-    return parseBackup(await f.text());
+    const text = await f.text();
+    if (isEnvelope(text)) {
+      const box = getBox();
+      if (!box) return 'locked';
+      return parseBackup(await box.open(text));
+    }
+    return parseBackup(text);
   } catch {
     return null;
   }
 }
 
+type MediaEntry = string | { type: string; enc?: 1 };
+
 // Media files are named by blobRef (ids are content-stable per upload)
 // with a small index.json mapping ref to mime type for the restore.
-async function mediaTypes(media: FileSystemDirectoryHandle): Promise<Record<string, string>> {
+async function mediaTypes(media: FileSystemDirectoryHandle): Promise<Record<string, MediaEntry>> {
   try {
     const fh = await media.getFileHandle(MEDIA_INDEX);
-    const m = JSON.parse(await (await fh.getFile()).text()) as Record<string, string>;
+    const m = JSON.parse(await (await fh.getFile()).text()) as Record<string, MediaEntry>;
     return m && typeof m === 'object' ? m : {};
   } catch {
     return {};
@@ -113,18 +122,50 @@ export async function writeBackup(
   mirrored: Set<string>,
 ): Promise<void> {
   const w: BackupPayload = { kind: KIND, version: 1, savedAt: Date.now(), doc, prefs };
-  await writeFile(dir, DOC_FILE, JSON.stringify(w));
+  const box = getBox();
+  const raw = JSON.stringify(w);
+  await writeFile(dir, DOC_FILE, box ? await box.seal(raw) : raw);
   const media = await dir.getDirectoryHandle(MEDIA_DIR, { create: true });
   const types = await mediaTypes(media);
   let typesDirty = false;
-  for (const ref of blobRefsInDoc(doc)) {
-    if (mirrored.has(ref)) continue;
-    const blob = await getBlob(ref).catch(() => undefined);
+  const live = new Set(blobRefsInDoc(doc));
+  for (const ref of live) {
+    const blob = mirrored.has(ref) ? (types[ref] === undefined ? await getBlob(ref).catch(() => undefined) : undefined) : await getBlob(ref).catch(() => undefined);
+    if (mirrored.has(ref)) {
+      // A file mirrored without an index entry (primeMirrored marks
+      // every listing) restores as octet-stream: repair its type.
+      if (types[ref] === undefined && blob) {
+        types[ref] = box ? { type: blob.type, enc: 1 } : blob.type;
+        typesDirty = true;
+      }
+      continue;
+    }
     if (!blob) continue;
-    await writeFile(media, ref, blob);
-    types[ref] = blob.type;
+    if (box) {
+      const sealed = await box.sealBytes(await blob.arrayBuffer(), blob.type);
+      await writeFile(media, ref, JSON.stringify(sealed));
+      types[ref] = { type: blob.type, enc: 1 };
+    } else {
+      await writeFile(media, ref, blob);
+      types[ref] = blob.type;
+    }
     typesDirty = true;
     mirrored.add(ref);
+  }
+  // Dead blobs leave the mirror: an entry deleted from the doc would
+  // otherwise stay in the backup forever.
+  for await (const name of (media as FileSystemDirectoryHandle & { keys(): AsyncIterableIterator<string> }).keys()) {
+    if (name === MEDIA_INDEX || live.has(name)) continue;
+    try {
+      await media.removeEntry(name);
+      mirrored.delete(name);
+      if (types[name] !== undefined) {
+        delete types[name];
+        typesDirty = true;
+      }
+    } catch {
+      /* a locked or raced file is retried next save */
+    }
   }
   if (typesDirty) await writeFile(media, MEDIA_INDEX, JSON.stringify(types));
 }
@@ -139,13 +180,24 @@ export async function restoreMedia(dir: FileSystemDirectoryHandle, doc: Doc): Pr
     return;
   }
   const types = await mediaTypes(media);
+  const box = getBox();
   for (const ref of blobRefsInDoc(doc)) {
     const have = await getBlob(ref).catch(() => undefined);
     if (have) continue;
     try {
       const fh = await media.getFileHandle(ref);
       const f = await fh.getFile();
-      await putBlob(ref, new Blob([await f.arrayBuffer()], { type: types[ref] || f.type || 'application/octet-stream' }));
+      const entry = types[ref];
+      const isEnc = typeof entry === 'object' && entry !== null && entry.enc === 1;
+      const mime = (typeof entry === 'string' ? entry : entry?.type) || f.type || 'application/octet-stream';
+      if (isEnc) {
+        if (!box) continue;
+        const sealed = JSON.parse(await f.text()) as SealedBlob;
+        const { bytes, type } = await box.openBytes(sealed);
+        await putBlob(ref, new Blob([bytes], { type: type || mime }));
+      } else {
+        await putBlob(ref, new Blob([await f.arrayBuffer()], { type: mime }));
+      }
     } catch {
       /* missing media file: placeholder renders */
     }

@@ -43,6 +43,10 @@ export interface Prefs {
   minimap?: boolean;
   // Last successful board export, for the About backup hint.
   lastExportAt?: number;
+  // Last time the periodic backup export nudge was dismissed.
+  backupNagAt?: number;
+  // Due-date reminders while the app is open (off by default).
+  reminders?: boolean;
   // Online extra (on by default): fetch link-card previews.
   unfurl?: boolean;
   // Local agent (off by default): let a localhost bridge drive the
@@ -66,6 +70,8 @@ export interface StorageAdapter {
   // Raw bytes of a workspace that failed to parse at the last load():
   // boot offers a rescue download instead of seeding over the bytes.
   corrupt?(): string | null;
+  // True when load() found an encrypted envelope while no key is set.
+  locked?(): boolean;
 }
 
 // The app's full adapter surface: storage plus the size meter and the

@@ -1,5 +1,6 @@
 import type { Doc, ID } from '../state/schema';
 import { blobRefOf, iconBlobRef } from '../state/schema';
+import { getBox, isSealedBlob, type CryptoBox } from './crypto';
 
 // Binary assets live in IndexedDB, outside the doc JSON. blobRefs are
 // plain element content; the store is best-effort: a missing blob renders
@@ -20,7 +21,12 @@ export async function clearBlobs() {
   for (const name of [DB_NAME, OLD_DB_NAME]) {
     await new Promise<void>((res) => {
       const req = indexedDB.deleteDatabase(name);
-      req.onsuccess = req.onerror = req.onblocked = () => res();
+      req.onsuccess = req.onerror = () => res();
+      // A second open tab holds the DB: the delete stays queued until
+      // it closes rather than resolving as if it succeeded.
+      req.onblocked = () => {
+        console.warn(`scatterboard: blob store delete of ${name} is blocked by another tab`);
+      };
     });
   }
 }
@@ -107,17 +113,66 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
 
 const urls = new Map<ID, string>();
 const inflight = new Map<ID, Promise<string | null>>();
+// putBlob resolves before the owning element lands in the doc; the
+// orphan purge must not reclaim a ref written in this grace window.
+const recentWrites = new Map<ID, number>();
+const RECENT_WRITE_MS = 60000;
 // Object URLs pin whole blobs in memory: cap the cache and evict
 // least-recently-used. An evicted URL stays valid for already-loaded
 // images; a later ask just re-reads IndexedDB.
 const URL_CAP = 64;
 
 export async function putBlob(id: ID, blob: Blob): Promise<void> {
+  recentWrites.set(id, Date.now());
+  const box = getBox();
+  if (box) {
+    const sealed = await box.sealBytes(await blob.arrayBuffer(), blob.type);
+    await run('readwrite', (s) => s.put(sealed, id));
+    return;
+  }
   await run('readwrite', (s) => s.put(blob, id));
 }
 
-export function getBlob(id: ID): Promise<Blob | undefined> {
-  return run('readonly', (s) => s.get(id) as IDBRequest<Blob | undefined>);
+export async function getBlob(id: ID): Promise<Blob | undefined> {
+  const v = await run('readonly', (s) => s.get(id) as IDBRequest<unknown>);
+  if (v === undefined) return undefined;
+  if (v instanceof Blob) return v;
+  if (isSealedBlob(v)) {
+    const box = getBox();
+    if (!box) return undefined;
+    try {
+      const { bytes, type } = await box.openBytes(v);
+      return new Blob([bytes], { type });
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+export async function rekeyBlobs(oldBox: CryptoBox | null, newBox: CryptoBox | null): Promise<void> {
+  for (const id of await listBlobIds()) {
+    const v = await run('readonly', (s) => s.get(id) as IDBRequest<unknown>).catch(() => undefined);
+    if (v === undefined) continue;
+    let blob: Blob | undefined;
+    if (v instanceof Blob) {
+      blob = v;
+    } else if (isSealedBlob(v) && oldBox) {
+      try {
+        const { bytes, type } = await oldBox.openBytes(v);
+        blob = new Blob([bytes], { type });
+      } catch {
+        continue;
+      }
+    }
+    if (!blob) continue;
+    if (newBox) {
+      const sealed = await newBox.sealBytes(await blob.arrayBuffer(), blob.type);
+      await run('readwrite', (s) => s.put(sealed, id));
+    } else {
+      await run('readwrite', (s) => s.put(blob, id));
+    }
+  }
 }
 
 async function deleteBlob(id: ID): Promise<void> {
@@ -195,8 +250,11 @@ export async function purgeOrphanBlobs(doc: Doc, keep?: Set<ID>): Promise<void> 
     // so liveness is re-derived right before each delete rather than
     // once up front (a blob written mid-purge must survive). `keep`
     // holds refs live snapshots still need even when the doc does not.
+    const now = Date.now();
+    for (const [id, ts] of recentWrites) if (now - ts > RECENT_WRITE_MS) recentWrites.delete(id);
     for (const id of await listBlobIds()) {
       if (keep?.has(id)) continue;
+      if (recentWrites.has(id)) continue;
       if (!blobRefsInDoc(doc).has(id)) await deleteBlob(id);
     }
   } catch {
@@ -220,6 +278,7 @@ export async function blobTotalSize(): Promise<number> {
         }
         const v = cur.value;
         if (v instanceof Blob) total += v.size;
+        else if (isSealedBlob(v)) total += Math.floor((v.ct.length * 3) / 4);
         cur.continue();
       };
       req.onerror = () => rej(req.error);
