@@ -6,10 +6,11 @@ import { ensureBlockChildren, isBlankSurface, richKeydown } from '../ui/richtext
 import type { CardCtx } from './factory';
 import type { CardView } from './note';
 import { cardBg } from '../ui/theme';
-import { fmtCurrency, fmtDate, fmtNumber } from '../locale';
+import { fmtCurrency, fmtDate, fmtNumber, localeTag } from '../locale';
 import { COL_PAD } from './measure';
 import { TableGrips, type GripHost } from './table/grips';
 import { TableFx, type FxHost } from './table/fxpop';
+import { sortTableRows } from './table/csv';
 
 // .card.table padding is 10px per side; column resize clamps at 40px.
 const TB_PAD = 10;
@@ -93,6 +94,7 @@ export class TableCard implements CardView, GripHost, FxHost {
     // While a session is open, clicks on the grid and fields stay inside
     // the card: focus moves instead of ending the session or dragging.
     this.gridEl.addEventListener('pointerdown', (e) => {
+      this.downAt = { x: e.clientX, y: e.clientY };
       if (this.editing) e.stopPropagation();
     });
     this.gridEl.addEventListener('click', (e) => {
@@ -261,6 +263,8 @@ export class TableCard implements CardView, GripHost, FxHost {
   // --- keys ---
 
   private onCellKeydown(e: KeyboardEvent) {
+    // IME composition keys belong to the input method, not the cell.
+    if (e.isComposing) return;
     const cellEl = (e.target as HTMLElement).closest('.tb-cell') as HTMLElement | null;
     if (!cellEl || !this.focus) return;
     const editingThis = this.editingCell && +cellEl.dataset.r! === this.focus.r && +cellEl.dataset.c! === this.focus.c;
@@ -580,6 +584,24 @@ export class TableCard implements CardView, GripHost, FxHost {
     this.dispatch(next);
   }
 
+  // A1 refs are positional, so sorting changes what formulas point at.
+  sortColumn(ci: number, dir: 'asc' | 'desc') {
+    const c = this.content();
+    if (!c) return;
+    const f = this.focus;
+    const row = f ? c.cells[f.r] : null;
+    const cells = sortTableRows(c.cells, ci, dir, localeTag());
+    if (f && row) {
+      // Rows are copied, cells are not: identity still tracks the
+      // focused record to its sorted position.
+      f.r = cells.findIndex((r) => r.length === row.length && row.every((cell, j) => r[j] === cell));
+      if (f.r === -1) f.r = 0;
+      this.wantDomFocus = true;
+    }
+    this.editingCell = false;
+    this.dispatch({ ...c, cells });
+  }
+
   // Fill widths with rendered column px on first resize/reorder touch
   // so a single drag never jumps the other columns.
   private materializeWidths(): number[] {
@@ -677,6 +699,16 @@ export class TableCard implements CardView, GripHost, FxHost {
     }
     const rows = c.cells.length;
     const cols = c.cells[0]?.length ?? 0;
+    // Structural edits undone elsewhere leave focus out of bounds;
+    // clamp it to the grid that actually exists now.
+    if (this.focus) {
+      if (!rows || !cols) this.focus = null;
+      else if (this.focus.r >= rows || this.focus.c >= cols) {
+        this.focus.r = Math.min(this.focus.r, rows - 1);
+        this.focus.c = Math.min(this.focus.c, cols - 1);
+        this.wantDomFocus = true;
+      }
+    }
     if (rows !== this.cellEls.length || cols !== (this.cellEls[0]?.length ?? 0)) {
       this.buildGrid(rows, cols);
     }
@@ -750,6 +782,7 @@ export class TableCard implements CardView, GripHost, FxHost {
     }
     if (el.dataset.kind === 'checkbox') {
       el.dataset.kind = '';
+      delete el.dataset.shown;
       el.textContent = '';
     }
     const rich = !isFormula(cell.text) && (type === 'auto' || type === 'text') && cell.html;

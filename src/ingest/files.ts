@@ -1,5 +1,6 @@
 import type { Action } from '../state/actions';
-import { createFile, createImage, uid, type Doc, type Element, type ID } from '../state/schema';
+import { createFile, createImage, createTable, uid, type Doc, type Element, type ID } from '../state/schema';
+import { csvToTableDoc, parseCsv } from '../cards/table/csv';
 import { putBlob } from '../persist/blobs';
 import { t } from '../strings';
 import { toast } from '../ui/toast';
@@ -107,6 +108,21 @@ export async function ingestFiles(files: Iterable<File>, at: { x: number; y: num
         return el;
       } catch {
         /* undecodable image falls through to a file card */
+      }
+    }
+    if (file.type === 'text/csv' || /\.csv$/i.test(file.name)) {
+      try {
+        const rows = parseCsv(await file.text());
+        const title = file.name.replace(/\.csv$/i, '');
+        const table = csvToTableDoc(rows, title);
+        if (table.cells.length > 0 && table.cells[0]!.length > 0) {
+          const el = createTable(api.doc, api.boardId, pt.x, pt.y);
+          el.content = { table };
+          el.parentId = parentId;
+          return el;
+        }
+      } catch {
+        /* invalid CSV falls through to a file card */
       }
     }
     const ref = uid();
