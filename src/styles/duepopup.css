@@ -114,6 +114,25 @@
   flex: 1;
 }
 
+.dp-recur {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-4);
+}
+
+.dp-recur span {
+  flex: none;
+}
+
+.dp-recur select {
+  flex: 1;
+}
+
+.dp-recur select:disabled {
+  color: var(--faint);
+}
+
 .dp-clear {
   border: 0;
   background: none;

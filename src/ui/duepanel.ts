@@ -49,9 +49,11 @@ function startOfDay(d: Date): number {
 
 type DueGroup = 'overdue' | 'today' | 'week' | 'later';
 
-function groupOf(dueAt: number, now: number): DueGroup {
-  if (dueAt < now) return 'overdue';
-  const diff = Math.round((startOfDay(new Date(dueAt)) - startOfDay(new Date())) / 86400000);
+function groupOf(d: DueItem, now: number): DueGroup {
+  // Untimed dues cover their whole day: late only once it has passed.
+  const late = d.dueTime ? d.dueAt < now : startOfDay(new Date(d.dueAt)) < startOfDay(new Date(now));
+  if (late) return 'overdue';
+  const diff = Math.round((startOfDay(new Date(d.dueAt)) - startOfDay(new Date(now))) / 86400000);
   if (diff === 0) return 'today';
   if (diff <= 7) return 'week';
   return 'later';
@@ -59,8 +61,10 @@ function groupOf(dueAt: number, now: number): DueGroup {
 
 // Items the topbar chip counts: overdue plus anything due today.
 export function dueSoonCount(doc: Doc): number {
-  const endToday = startOfDay(new Date()) + 86400000;
-  return collectDue(doc).filter((d) => d.dueAt < endToday).length;
+  const n = new Date();
+  // Date arithmetic, not +86400000: end-of-today survives DST shifts.
+  const endToday = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1).getTime();
+  return collectDue(doc).filter((d) => (d.dueTime ? d.dueAt : startOfDay(new Date(d.dueAt))) < endToday).length;
 }
 
 export interface DuePanel extends PanelHandle {
@@ -85,7 +89,7 @@ export function openDuePanel(opts: {
     const now = Date.now();
     let group: DueGroup | null = null;
     for (const d of items) {
-      const g = groupOf(d.dueAt, now);
+      const g = groupOf(d, now);
       if (g !== group) {
         group = g;
         const head = document.createElement('div');

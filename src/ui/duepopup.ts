@@ -1,3 +1,4 @@
+import type { RecurFreq, RecurRule } from '../state/schema';
 import { dayNames, monthName, t } from '../strings';
 import { bindVvh, claimToolPopup, closeToolPopup, cycleKeys, focusBack, focusInto, haspopup, outro, popDismiss, pushDismiss, releaseToolPopup, sheetGrab } from './popup';
 import { mobileShell } from './util';
@@ -5,6 +6,7 @@ import { mobileShell } from './util';
 export interface DueValue {
   dueAt?: number;
   hasTime?: boolean;
+  recur?: RecurRule;
 }
 
 export interface DuePopupHandle {
@@ -21,6 +23,7 @@ interface PopupState {
   hour: number;
   minute: number;
   pm: boolean;
+  recur: RecurRule | null;
   viewY: number;
   viewM: number;
 }
@@ -40,6 +43,7 @@ export function openDuePopup(opts: {
     hour: 9,
     minute: 0,
     pm: false,
+    recur: opts.current.recur ? { ...opts.current.recur } : null,
     viewY: 0,
     viewM: 0,
   };
@@ -79,6 +83,11 @@ export function openDuePopup(opts: {
 
   function dueTimestamp(): number | undefined {
     if (!st.day) return undefined;
+    if (!st.hasTime) {
+      // Day-only dues anchor at start-of-day; reminders fire at 9am
+      // on the day and the display stays date-only.
+      return new Date(st.day.getFullYear(), st.day.getMonth(), st.day.getDate()).getTime();
+    }
     let h = st.hour % 12;
     if (st.pm) h += 12;
     return new Date(st.day.getFullYear(), st.day.getMonth(), st.day.getDate(), h, st.minute).getTime();
@@ -90,6 +99,7 @@ export function openDuePopup(opts: {
     if (dueAt !== undefined) {
       out.dueAt = dueAt;
       out.hasTime = st.hasTime;
+      if (st.recur) out.recur = st.recur;
     }
     opts.onCommit(out);
   }
@@ -153,10 +163,12 @@ export function openDuePopup(opts: {
       cell.className = 'dp-day';
       cell.textContent = String(d);
       const at = new Date(st.viewY, st.viewM, d).getTime();
+      // A stored overdue date stays marked even though it cannot be
+      // re-picked.
+      if (st.day && sameDay(st.day, st.viewY, st.viewM, d)) cell.classList.add('sel');
       if (at < todayAt) {
         cell.disabled = true;
       } else {
-        if (st.day && sameDay(st.day, st.viewY, st.viewM, d)) cell.classList.add('sel');
         cell.addEventListener('click', () => {
           st.day = new Date(st.viewY, st.viewM, d);
           renderCal();
@@ -228,12 +240,42 @@ export function openDuePopup(opts: {
       foot.appendChild(row);
     }
 
+    const rrow = document.createElement('label');
+    rrow.className = 'dp-recur';
+    const rlbl = document.createElement('span');
+    rlbl.textContent = t('recurLabel');
+    const rsel = document.createElement('select');
+    rsel.setAttribute('aria-label', t('recurLabel'));
+    rsel.disabled = !st.day;
+    const rOpts: [RecurFreq | '', string][] = [
+      ['', t('recurNever')],
+      ['day', t('recurDaily')],
+      ['week', t('recurWeekly')],
+      ['month', t('recurMonthly')],
+      ['year', t('recurYearly')],
+    ];
+    for (const [val, label] of rOpts) {
+      const o = document.createElement('option');
+      o.value = val;
+      o.textContent = label;
+      if ((st.recur?.f ?? '') === val) o.selected = true;
+      rsel.appendChild(o);
+    }
+    rsel.addEventListener('change', () => {
+      const f = rsel.value as RecurFreq | '';
+      st.recur = f ? { f, n: 1 } : null;
+      if (st.day) commit();
+    });
+    rrow.append(rlbl, rsel);
+    foot.appendChild(rrow);
+
     const clear = document.createElement('button');
     clear.type = 'button';
     clear.className = 'dp-clear';
     clear.textContent = t('clear');
     clear.addEventListener('click', () => {
       st.day = null;
+      st.recur = null;
       commit();
       close();
     });
@@ -248,6 +290,7 @@ export function openDuePopup(opts: {
     releaseToolPopup(handle);
     popDismiss(handle);
     window.removeEventListener('pointerdown', onDocDown, true);
+    window.visualViewport?.removeEventListener('resize', place);
     opts.anchor.setAttribute('aria-expanded', 'false');
     if (restoreFocus) focusBack(node, opts.anchor);
     outro(node);
@@ -260,18 +303,26 @@ export function openDuePopup(opts: {
   renderCal();
   renderFoot();
 
+  // Measure against the real node, not an estimate: the popup must
+  // stay attached under a resize or an opening keyboard.
+  function place() {
+    const r = opts.anchor.getBoundingClientRect();
+    const vw = window.visualViewport?.width ?? innerWidth;
+    const vh = window.visualViewport?.height ?? innerHeight;
+    node.style.left = `${Math.max(8, Math.min(r.left, vw - node.offsetWidth - 8))}px`;
+    node.style.top = `${Math.max(8, Math.min(r.bottom + 6, vh - node.offsetHeight - 8))}px`;
+  }
+
   if (sheet) {
     // Same bottom-sheet contract as tool popups: CSS docks it, the
     // grab strip pulls it down to dismiss, JS never positions it.
     sheetGrab(node, () => closePop(false));
-  } else {
-    const r = opts.anchor.getBoundingClientRect();
-    const vw = window.visualViewport?.width ?? innerWidth;
-    const vh = window.visualViewport?.height ?? innerHeight;
-    node.style.left = `${Math.max(8, Math.min(r.left, vw - 260))}px`;
-    node.style.top = `${Math.max(8, Math.min(r.bottom + 6, vh - 340))}px`;
   }
   document.body.appendChild(node);
+  if (!sheet) {
+    place();
+    window.visualViewport?.addEventListener('resize', place);
+  }
   window.addEventListener('pointerdown', onDocDown, true);
 
   const handle: DuePopupHandle = { node, close };

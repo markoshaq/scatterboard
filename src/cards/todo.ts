@@ -1,5 +1,6 @@
 import type { Element, TodoDoc, TodoItem } from '../state/schema';
 import { NOTE_MAX_W, todoDoc, uid } from '../state/schema';
+import { doneWithRecur } from '../state/recur';
 import { relDue, t } from '../strings';
 import { openDuePopup, type DuePopupHandle, type DueValue } from '../ui/duepopup';
 import { openReactionsPopup } from '../ui/toolpopups';
@@ -31,6 +32,7 @@ export class TodoCard implements CardView {
   private itemsEl: HTMLElement;
   private rows = new Map<string, Row>();
   private popup: DuePopupHandle | null = null;
+  private reacts: { close(): void } | null = null;
   private pendingFocus: string | null = null;
   private downAt = { x: 0, y: 0 };
   private lastTitle: string | null = null;
@@ -130,7 +132,7 @@ export class TodoCard implements CardView {
   private toggleDone(iid: string) {
     const c = this.content();
     if (!c) return;
-    this.dispatch({ ...c, items: c.items.map((i) => (i.id === iid ? { ...i, done: !i.done } : i)) });
+    this.dispatch({ ...c, items: doneWithRecur(c.items, iid) });
   }
 
   private toggleTitle() {
@@ -146,10 +148,11 @@ export class TodoCard implements CardView {
     if (!c) return;
     const items = c.items.map((i) => {
       if (i.id !== iid) return i;
-      const { dueAt: _d, dueTime: _t, ...rest } = i;
+      const { dueAt: _d, dueTime: _t, recur: _r, ...rest } = i;
       const next: TodoItem = { ...rest };
       if (v.dueAt !== undefined) next.dueAt = v.dueAt;
       if (v.hasTime) next.dueTime = true;
+      if (v.recur && v.dueAt !== undefined) next.recur = v.recur;
       return next;
     });
     this.dispatch({ ...c, items });
@@ -162,7 +165,8 @@ export class TodoCard implements CardView {
   private rowWidth(item: TodoItem): number {
     const line = item.text.split('\n').reduce((a, l) => Math.max(a, l.length), 0);
     const textW = Math.min(150, Math.max(48, line * 7));
-    const label = item.dueAt !== undefined ? relDue(item.dueAt, item.dueTime === true) : '';
+    const base = item.dueAt !== undefined ? relDue(item.dueAt, item.dueTime === true) : '';
+    const label = base && item.recur ? `${base} ↻` : base;
     const dueW = label ? Math.round(label.length * 5.6) + 16 : 20;
     const youW = item.assignee ? 28 : 0;
     const reactsW = (item.reactions?.length ?? 0) * 16;
@@ -188,6 +192,7 @@ export class TodoCard implements CardView {
     const current: DueValue = {};
     if (item.dueAt !== undefined) current.dueAt = item.dueAt;
     if (item.dueTime) current.hasTime = true;
+    if (item.recur) current.recur = item.recur;
     this.popup = openDuePopup({
       anchor: row.due,
       current,
@@ -214,7 +219,8 @@ export class TodoCard implements CardView {
     const row = this.rows.get(iid);
     const item = c?.items.find((i) => i.id === iid);
     if (!row || !item || !c) return;
-    openReactionsPopup(
+    this.reacts?.close();
+    this.reacts = openReactionsPopup(
       row.reactBtn,
       () => new Set(this.content()?.items.find((i) => i.id === iid)?.reactions ?? []),
       (emoji) => {
@@ -385,9 +391,15 @@ export class TodoCard implements CardView {
       }
       r.reactBtn.classList.toggle('has-due', reacts.length > 0);
       const hasDue = item.dueAt !== undefined;
+      // Untimed dues cover their whole day: late only once it passes.
+      const late =
+        hasDue &&
+        !item.done &&
+        (item.dueTime ? item.dueAt! < now : new Date(item.dueAt!).setHours(0, 0, 0, 0) < new Date(now).setHours(0, 0, 0, 0));
       r.due.classList.toggle('has-due', hasDue);
-      r.due.classList.toggle('overdue', hasDue && !item.done && item.dueAt! < now);
-      const label = hasDue ? relDue(item.dueAt!, item.dueTime === true) : CAL_ICON;
+      r.due.classList.toggle('overdue', late);
+      const base = hasDue ? relDue(item.dueAt!, item.dueTime === true) : '';
+      const label = hasDue ? (item.recur ? `${base} ↻` : base) : CAL_ICON;
       if (r.due.dataset.lbl !== label) {
         r.due.dataset.lbl = label;
         // A dated chip's name must contain its visible text; the bare
@@ -459,6 +471,8 @@ export class TodoCard implements CardView {
     for (const r of this.rows.values()) r.text.contentEditable = 'false';
     this.popup?.close();
     this.popup = null;
+    this.reacts?.close();
+    this.reacts = null;
     if (this.node.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
     getSelection()?.removeAllRanges();
     return '';
@@ -466,6 +480,7 @@ export class TodoCard implements CardView {
 
   destroy() {
     this.popup?.close();
+    this.reacts?.close();
     this.ctx.events.unobserveNode?.(this);
     this.node.remove();
   }
