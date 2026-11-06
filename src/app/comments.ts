@@ -17,7 +17,12 @@ export class Comments {
     };
     const markSeen = () => {
       const n = commentOf()?.items.length ?? 0;
-      this.a.prefs.commentSeen = { ...(this.a.prefs.commentSeen ?? {}), [id]: n };
+      // Dead keys accumulate forever otherwise: drop ids the doc no
+      // longer holds while writing this one.
+      const seen = { ...(this.a.prefs.commentSeen ?? {}) };
+      for (const k of Object.keys(seen)) if (!this.a.doc.elements[k]) delete seen[k];
+      seen[id] = n;
+      this.a.prefs.commentSeen = seen;
       this.a.scheduleSave();
       this.a.overlays.syncPins();
     };

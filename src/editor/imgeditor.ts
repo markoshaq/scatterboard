@@ -46,7 +46,6 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
     b.textContent = label;
     b.addEventListener('click', () => {
       if (m === cur) return;
-      if (cur === 'draw') commitDraw();
       ctx.nav(m);
     });
     chipBtns.set(m, b);
@@ -71,20 +70,33 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
   let toolsEl: HTMLElement | null = null;
   let pad: DrawPad | null = null;
 
+  // A missing/corrupt blob dead-ends every mode: kill the chips and
+  // offer Cancel so the user is not stranded on Esc/Back alone.
+  function missing() {
+    loading.textContent = t('imageMissing');
+    for (const b of chipBtns.values()) b.disabled = true;
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'im-chip';
+    cancel.textContent = t('drawCancel');
+    cancel.addEventListener('click', () => ctx.exit());
+    chips.appendChild(cancel);
+  }
+
   // The blob loads once; every mode mounts from the same bitmap.
   const c0 = imageDoc(el);
   if (c0) {
     void (async () => {
       const blob = await getBlob(c0.blobRef).catch(() => undefined);
       if (!blob) {
-        loading.textContent = t('imageMissing');
+        missing();
         return;
       }
       png = blob.type !== 'image/jpeg';
       try {
         bmp = await createImageBitmap(blob);
       } catch {
-        loading.textContent = t('imageMissing');
+        missing();
         return;
       }
       url = URL.createObjectURL(blob);
@@ -298,6 +310,7 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
       render();
     }
 
+    let dragEnd: (() => void) | null = null;
     wrap.addEventListener('pointerdown', (e) => {
       if (!cropping || e.button !== 0) return;
       e.preventDefault();
@@ -313,12 +326,14 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
         render();
       };
       const up = () => {
+        dragEnd = null;
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
         window.removeEventListener('pointercancel', up);
         if (crop && (crop.w < 4 || crop.h < 4)) crop = null;
         render();
       };
+      dragEnd = up;
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);
       window.addEventListener('pointercancel', up);
@@ -336,12 +351,16 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
       rotQ = (rotQ + 1) % 4;
       rebuild();
     });
+    // Mirrors apply in source space before the rotation: after an odd
+    // quarter-turn a screen-horizontal flip is a source vertical one.
     mkBtn(bar, ICONS.flipH, t('imFlipH'), () => {
-      flipH = !flipH;
+      if (rotQ % 2 === 1) flipV = !flipV;
+      else flipH = !flipH;
       rebuild();
     });
     mkBtn(bar, ICONS.flipV, t('imFlipV'), () => {
-      flipV = !flipV;
+      if (rotQ % 2 === 1) flipH = !flipH;
+      else flipV = !flipV;
       rebuild();
     });
     mkSep(bar);
@@ -357,7 +376,8 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
     });
 
     render();
-    return () => {};
+    // A mode swap mid crop-drag must not leak the window listeners.
+    return () => dragEnd?.();
   }
 
   // Background: checkerboard preview with a remove-background toggle;
@@ -437,6 +457,9 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
   return {
     setMode(m: ImgMode) {
       if (m === cur) return;
+      // Route-driven swaps (applyRoute on hashchange) must commit draw
+      // strokes too, not just the chip clicks that used to own it.
+      if (cur === 'draw') commitDraw();
       cur = m;
       mount();
     },

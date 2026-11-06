@@ -79,7 +79,31 @@ export class BoardExport {
     if (!boardId) return null;
     this.a.editing.endEdit();
     const inLimit = (e: Element) => !only || only.has(e.id) || (e.anchorId !== undefined && only.has(e.anchorId));
-    const u = unionRect(this.a.layer.elements().filter(inLimit).map((e) => this.a.layer.rectOf(e)));
+    // Members cannot mount standalone: pull their parent chain into
+    // the mount set so the member renders inside its column, while the
+    // crop still bounds to the picked set alone.
+    const mountIds = only ? new Set(only) : null;
+    if (only && mountIds) {
+      for (const id of only) {
+        for (
+          let p = this.a.doc.elements[id]?.parentId;
+          p && p !== UNSORTED;
+          p = this.a.doc.elements[p]?.parentId ?? null
+        ) {
+          mountIds.add(p);
+        }
+      }
+    }
+    const inShot = (e: Element) => inLimit(e) || (mountIds !== null && mountIds.has(e.id));
+    const boundEls = this.a.layer.elements().filter(inLimit);
+    if (only) {
+      // Members are not in elements(): the crop still needs their rects.
+      for (const id of only) {
+        const e = this.a.doc.elements[id];
+        if (e && !boundEls.includes(e)) boundEls.push(e);
+      }
+    }
+    const u = unionRect(boundEls.map((e) => this.a.layer.rectOf(e)));
     const pad = 80;
     // An explicit region crops exactly; otherwise the bounds cover
     // every card plus padding (or a default 800x600 for empty boards).
@@ -99,7 +123,7 @@ export class BoardExport {
     fvp.z = 1;
     const off = new CardsLayer(this.a.doc, fvp, SHOT_EVENTS, () => this.a.store.rev);
     off.boardId = boardId;
-    off.limit = only ?? null;
+    off.limit = mountIds;
     const stage = document.createElement('div');
     stage.style.cssText = 'position:fixed;left:-100000px;top:0;width:0;height:0;overflow:visible;pointer-events:none';
     stage.appendChild(off.node);
@@ -131,10 +155,15 @@ export class BoardExport {
       // after the snapshot.
       const chips = new ChipsLayer(this.a.doc, { onChip: () => {} });
       chips.sync(this.a.overlays.chipTargets(true, off));
-      this.a.overlays.anno.sync(this.a.overlays.annoItems(true).filter((i) => inLimit(i.el)));
+      this.a.overlays.anno.sync(this.a.overlays.annoItems(true).filter((i) => inShot(i.el)));
       this.a.overlays.pins.sync(this.a.overlays.pinItems(off, true).map((p) => ({ ...p, seat: null })));
       this.a.overlays.syncLabelPills(lines, true);
-      dom = buildShotDom(off.node, [this.a.overlays.anno.node, this.a.overlays.pins.node, this.a.overlays.labelHost, chips.node], bounds);
+      dom = buildShotDom(
+        off.node,
+        [this.a.overlays.anno.node, this.a.overlays.pins.node, this.a.overlays.labelHost, chips.node],
+        bounds,
+        (id) => this.a.doc.elements[id]?.z,
+      );
       await inlineBlobImages(dom);
       if (this.a.boardId !== boardId) return null;
     } finally {
@@ -152,12 +181,12 @@ export class BoardExport {
       dom,
       cards: this.a.layer
         .elements()
-        .filter((e) => e.type !== 'line' && e.type !== 'annotation' && e.anchorId === undefined && inLimit(e))
+        .filter((e) => e.type !== 'line' && e.type !== 'annotation' && e.anchorId === undefined && inShot(e))
         .map((e): FallbackCard => ({ rect: this.a.layer.rectOf(e), label: this.a.panels.snippetFor(e), color: e.color })),
-      annotations: this.a.layer.elements().filter((e) => e.type === 'annotation' && inLimit(e)),
+      annotations: this.a.layer.elements().filter((e) => e.type === 'annotation' && inShot(e)),
       pins: this.a.layer
         .elements()
-        .filter((e) => e.type === 'comment' && e.anchorId !== undefined && inLimit(e))
+        .filter((e) => e.type === 'comment' && e.anchorId !== undefined && inShot(e))
         .map((e) => this.a.layer.rectOf(e)),
     };
     try {
@@ -316,6 +345,9 @@ export class BoardExport {
 
   async exportJson() {
     if (!this.a.boardId) return;
+    // Commit any open edit session first: PNG/PDF/linear all do this,
+    // and a mid-edit export would serialize pre-edit content.
+    this.a.editing.endEdit();
     const { exportBoard } = await import('../export/boardio');
     const text = exportBoard(this.a.doc, this.a.boardId);
     if (!text) {

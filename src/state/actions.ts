@@ -59,6 +59,9 @@ export function emptyChange(): Change {
 export function applyAction(doc: Doc, a: Action, change: Change): Action {
   switch (a.type) {
     case 'element.create':
+      // A create on a live id must not clobber it: the inverse delete
+      // would erase the pre-existing element on undo.
+      if (doc.elements[a.el.id]) return { type: 'batch', actions: [] };
       doc.elements[a.el.id] = a.el;
       change.elements.add(a.el.id);
       return { type: 'element.delete', el: a.el };
@@ -85,6 +88,7 @@ export function applyAction(doc: Doc, a: Action, change: Change): Action {
       return { type: 'element.patch', id: a.id, patch: before };
     }
     case 'board.create':
+      if (doc.boards[a.board.id]) return { type: 'batch', actions: [] };
       doc.boards[a.board.id] = a.board;
       change.boards.add(a.board.id);
       return { type: 'board.delete', board: a.board };
@@ -108,6 +112,7 @@ export function applyAction(doc: Doc, a: Action, change: Change): Action {
       return { type: 'board.patch', id: a.id, patch: before };
     }
     case 'label.create':
+      if (doc.labels[a.label.id]) return { type: 'batch', actions: [] };
       doc.labels[a.label.id] = a.label;
       change.labels.add(a.label.id);
       return { type: 'label.delete', label: a.label };
@@ -129,6 +134,7 @@ export function applyAction(doc: Doc, a: Action, change: Change): Action {
       return { type: 'label.patch', id: a.id, patch: before };
     }
     case 'trash.add':
+      if (doc.trash[a.id]) return { type: 'batch', actions: [] };
       doc.trash[a.id] = a.entry;
       change.trash.add(a.id);
       return { type: 'trash.remove', id: a.id };
@@ -140,6 +146,7 @@ export function applyAction(doc: Doc, a: Action, change: Change): Action {
       return { type: 'trash.add', id: a.id, entry };
     }
     case 'template.create':
+      if (doc.templates[a.tpl.id]) return { type: 'batch', actions: [] };
       doc.templates[a.tpl.id] = a.tpl;
       change.templates.add(a.tpl.id);
       return { type: 'template.delete', tpl: a.tpl };

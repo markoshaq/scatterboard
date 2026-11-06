@@ -94,6 +94,24 @@ describe('LocalStorageAdapter', () => {
     expect(await a.load()).toBeNull();
   });
 
+  it('quarantines a parseable but malformed workspace', async () => {
+    const a = new LocalStorageAdapter();
+    localStorage.setItem('scatterboard:v1', '{"version":1,"doc":{}}');
+    expect(await a.load()).toBeNull();
+    expect(a.corrupt()).toBe('{"version":1,"doc":{}}');
+    expect(localStorage.getItem('scatterboard:v1')).toBeNull();
+    expect(localStorage.getItem('scatterboard:v1.corrupt')).toBe('{"version":1,"doc":{}}');
+  });
+
+  it('quarantines an unknown workspace version instead of reseeding', async () => {
+    const a = new LocalStorageAdapter();
+    const raw = JSON.stringify({ version: 2, doc: { boards: {}, elements: {} }, savedAt: 1 });
+    localStorage.setItem('scatterboard:v1', raw);
+    expect(await a.load()).toBeNull();
+    expect(a.corrupt()).toBe(raw);
+    expect(localStorage.getItem('scatterboard:v1.corrupt')).toBe(raw);
+  });
+
   it('overlays saveBoardPos rows onto the loaded doc', async () => {
     const a = new LocalStorageAdapter();
     const w = workspace();

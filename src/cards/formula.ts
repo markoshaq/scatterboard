@@ -80,8 +80,28 @@ function cellVal(cells: TableCell[][], r: number, c: number, st: St): Val {
     }
     return v;
   }
-  const n = parseFloat(text.replace(/[$,%]/g, ''));
-  return Number.isFinite(n) ? n : text;
+  return coerceNum(text);
+}
+
+// Loose numeric coercion for referenced cells: currency marks and %
+// drop, and ','/'.' disambiguate as decimal mark vs thousands
+// grouping ("1,000" -> 1000, "1,5" -> 1.5, "1.234,56" -> 1234.56).
+function coerceNum(text: string): number | string {
+  let s = text.trim().replace(/[$€£¥%]/g, '').replace(/\s/g, '');
+  if (s === '') return text;
+  const dots = s.split('.').length - 1;
+  const commas = s.split(',').length - 1;
+  if (dots && commas) {
+    const dec = s.lastIndexOf('.') > s.lastIndexOf(',') ? '.' : ',';
+    s = s.replaceAll(dec === '.' ? ',' : '.', '');
+    if (dec === ',') s = s.replace(',', '.');
+  } else if (commas) {
+    s = /^[+-]?\d{1,3}(,\d{3})+$/.test(s) ? s.replaceAll(',', '') : s.replace(',', '.');
+  } else if (dots > 1) {
+    s = s.replaceAll('.', '');
+  }
+  if (!NUM.test(s)) return text;
+  return parseFloat(s);
 }
 
 function cellNum(cells: TableCell[][], r: number, c: number, st: St): number {
@@ -192,8 +212,13 @@ function remapRefs(text: string, map: (r: number, c: number) => { r: number; c: 
   if (!isFormula(text)) return text;
   const seg = (s: string) =>
     s.replace(/([A-Za-z]+)([0-9]+)/g, (m, ls: string, ds: string, off: number, src: string) => {
-      // Call position is a function name (=LOG10(2)), not a cell ref.
-      if (src.charAt(off + m.length) === '(') return m;
+      // A letter+digit run is a ref only as a whole A1-shaped token:
+      // 1E5 exponents, >2-letter names and LOG10 ( call positions are
+      // left alone.
+      const prev = src.charAt(off - 1);
+      if (prev && /[A-Za-z0-9_.$]/.test(prev)) return m;
+      if (!/^[A-Za-z]{1,2}$/.test(ls) || !/^[1-9][0-9]{0,2}$/.test(ds)) return m;
+      if (/^\s*\(/.test(src.slice(off + m.length))) return m;
       const p = map(parseInt(ds, 10) - 1, colOf(ls));
       return `${colName(p.c)}${p.r + 1}`;
     });

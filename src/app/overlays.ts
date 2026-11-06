@@ -124,7 +124,7 @@ export class Overlays {
       pill.classList.toggle('covered', !editing && this.coveredByCard(m.x, m.y));
       if (editing) {
         if (pill.contentEditable !== 'true') {
-          pill.dataset.text = c.label;
+          pill.dataset.text = c.label || '';
           pill.contentEditable = 'true';
           pill.classList.add('editing');
           pill.focus();
@@ -138,9 +138,10 @@ export class Overlays {
           pill.classList.remove('editing');
         }
         // dataset.shown skips the innerText layout read per pill.
-        if (pill.dataset.shown !== c.label) {
-          pill.dataset.shown = c.label;
-          pill.innerText = c.label;
+        const shown = c.label || '';
+        if (pill.dataset.shown !== shown) {
+          pill.dataset.shown = shown;
+          pill.innerText = shown;
         }
       }
     }

@@ -61,7 +61,11 @@ export class Deletion {
     this.a.sel.clear();
     this.a.filterIds.clear();
     // The batch landed as one undo entry; offer the way back inline.
-    choice(t('trashedToast'), t('drawUndo'), () => this.a.store.undo());
+    // The toast can outlive a later present-mode edit lock, so the
+    // deferred callback re-checks it like every other mutation path.
+    choice(t('trashedToast'), t('drawUndo'), () => {
+      if (!this.a.lockedView()) this.a.store.undo();
+    });
   }
 
   // Board cards/shortcuts still pointing at boards about to be deleted.

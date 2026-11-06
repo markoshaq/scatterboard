@@ -88,16 +88,21 @@ export class Editing {
   endEdit() {
     if (!this.a.editingId) return;
     const id = this.a.editingId;
-    const view = this.a.layer.view(id);
-    const el = this.a.doc.elements[id];
-    if (view?.editing) {
-      const text = view.endEdit();
-      const html = view.readHtml?.();
-      if (el) this.commitEditText(el, text, html);
+    // A thrown commit must not leak the session: editingId stuck set
+    // would absorb every later dispatch into the open group.
+    try {
+      const view = this.a.layer.view(id);
+      const el = this.a.doc.elements[id];
+      if (view?.editing) {
+        const text = view.endEdit();
+        const html = view.readHtml?.();
+        if (el) this.commitEditText(el, text, html);
+      }
+    } finally {
+      this.a.editingId = null;
+      this.a.store.endGroup('edit');
+      this.a.requestRender();
     }
-    this.a.editingId = null;
-    this.a.store.endGroup('edit');
-    this.a.requestRender();
   }
 
 
@@ -313,22 +318,28 @@ export class Editing {
       const el = this.a.doc.elements[id];
       const cur = el ? linkDoc(el) : null;
       if (!el || !cur || cur.url !== url) return;
-      this.a.store.dispatch({
-        type: 'element.patch',
-        id: el.id,
-        patch: {
-          content: {
-            link: {
-              ...cur,
-              title: autoTitled(cur.title, url) ? (res.title ?? cur.title) : cur.title,
-              // Fetched fields only fill empty slots: a user edit made
-              // while the request was in flight must not be clobbered.
-              ...(res.desc !== undefined && cur.desc === undefined ? { desc: res.desc } : {}),
-              ...(res.image !== undefined && cur.image === undefined ? { image: res.image } : {}),
+      // A fetch lands long after the edit that started it: a tag keeps
+      // the patch out of whatever undo group is open then, so undoing
+      // a user's edit cannot silently remove the fetched metadata.
+      this.a.store.dispatch(
+        {
+          type: 'element.patch',
+          id: el.id,
+          patch: {
+            content: {
+              link: {
+                ...cur,
+                title: autoTitled(cur.title, url) ? (res.title ?? cur.title) : cur.title,
+                // Fetched fields only fill empty slots: a user edit made
+                // while the request was in flight must not be clobbered.
+                ...(res.desc !== undefined && cur.desc === undefined ? { desc: res.desc } : {}),
+                ...(res.image !== undefined && cur.image === undefined ? { image: res.image } : {}),
+              },
             },
           },
         },
-      });
+        'enrich',
+      );
     });
   }
 
@@ -346,11 +357,14 @@ export class Editing {
       if (!res?.title || this.a.lockedView()) return;
       const cur = auto();
       if (!cur) return;
-      this.a.store.dispatch({
-        type: 'element.patch',
-        id,
-        patch: { content: { embed: { ...cur, title: res.title } } },
-      });
+      this.a.store.dispatch(
+        {
+          type: 'element.patch',
+          id,
+          patch: { content: { embed: { ...cur, title: res.title } } },
+        },
+        'enrich',
+      );
     });
   }
 

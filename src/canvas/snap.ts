@@ -18,6 +18,11 @@ export function snapDelta(moving: Rect, statics: Rect[], z: number): SnapResult 
   let dy = 0;
   const guides: Guide[] = [];
 
+  // Guides describe the snapped rect: spans are emitted after dx/dy are
+  // settled, so a drag snapped on both axes draws aligned guides.
+  let vGuide: { at: number; r: Rect | null } | null = null;
+  let hGuide: { at: number; r: Rect | null } | null = null;
+
   if (SNAP_TO_CARDS) {
     const mx = [moving.x, moving.x + moving.w / 2, moving.x + moving.w];
     const my = [moving.y, moving.y + moving.h / 2, moving.y + moving.h];
@@ -39,11 +44,11 @@ export function snapDelta(moving: Rect, statics: Rect[], z: number): SnapResult 
     }
     if (bestX) {
       dx = bestX.d;
-      guides.push({ axis: 'v', at: bestX.at, from: Math.min(moving.y, bestX.r.y), to: Math.max(moving.y + moving.h, bestX.r.y + bestX.r.h) });
+      vGuide = { at: bestX.at, r: bestX.r };
     }
     if (bestY) {
       dy = bestY.d;
-      guides.push({ axis: 'h', at: bestY.at, from: Math.min(moving.x, bestY.r.x), to: Math.max(moving.x + moving.w, bestY.r.x + bestY.r.w) });
+      hGuide = { at: bestY.at, r: bestY.r };
     }
   }
 
@@ -53,7 +58,7 @@ export function snapDelta(moving: Rect, statics: Rect[], z: number): SnapResult 
       const d = gx - moving.x;
       if (Math.abs(d) <= t) {
         dx = d;
-        guides.push({ axis: 'v', at: gx, from: moving.y - 4, to: moving.y + moving.h + 4 });
+        vGuide = { at: gx, r: null };
       }
     }
     if (dy === 0) {
@@ -61,9 +66,28 @@ export function snapDelta(moving: Rect, statics: Rect[], z: number): SnapResult 
       const d = gy - moving.y;
       if (Math.abs(d) <= t) {
         dy = d;
-        guides.push({ axis: 'h', at: gy, from: moving.x - 4, to: moving.x + moving.w + 4 });
+        hGuide = { at: gy, r: null };
       }
     }
+  }
+
+  const sx = moving.x + dx;
+  const sy = moving.y + dy;
+  if (vGuide) {
+    guides.push({
+      axis: 'v',
+      at: vGuide.at,
+      from: vGuide.r ? Math.min(sy, vGuide.r.y) : sy - 4,
+      to: vGuide.r ? Math.max(sy + moving.h, vGuide.r.y + vGuide.r.h) : sy + moving.h + 4,
+    });
+  }
+  if (hGuide) {
+    guides.push({
+      axis: 'h',
+      at: hGuide.at,
+      from: hGuide.r ? Math.min(sx, hGuide.r.x) : sx - 4,
+      to: hGuide.r ? Math.max(sx + moving.w, hGuide.r.x + hGuide.r.w) : sx + moving.w + 4,
+    });
   }
 
   return { dx, dy, guides };

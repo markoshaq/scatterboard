@@ -37,7 +37,9 @@ function snippet(text: string, q: string): string | null {
   if (i < 0) return null;
   const start = Math.max(0, i - 24);
   const end = Math.min(text.length, i + q.length + 34);
-  return `${start > 0 ? '...' : ''}${text.slice(start, end).replace(/\s+/g, ' ').trim()}${end < text.length ? '...' : ''}`;
+  // Drop half surrogate pairs a hard slice could leave at the edges.
+  const snip = text.slice(start, end).replace(/^[\uDC00-\uDFFF]/, '').replace(/[\uD800-\uDBFF]$/, '');
+  return `${start > 0 ? '...' : ''}${snip.replace(/\s+/g, ' ').trim()}${end < text.length ? '...' : ''}`;
 }
 
 function matchText(text: string | undefined, q: string): string | null {
@@ -170,6 +172,7 @@ export function openSearchPanel(opts: {
   boardTitle(): string;
   recents(): RecentBoard[];
   recentIds(): ID[];
+  rev(): number;
   onJump(hit: SearchHit): void;
   onClose(): void;
 }): PanelHandle {
@@ -246,7 +249,7 @@ export function openSearchPanel(opts: {
       }
       return;
     }
-    const cacheKey = `${scope.value}|${q}`;
+    const cacheKey = `${scope.value}|${q}|${opts.rev()}`;
     if (cacheKey !== cacheQ) {
       cacheQ = cacheKey;
       cacheHits = opts.search(q, scope.value as SearchScope);
@@ -285,7 +288,8 @@ export function openSearchPanel(opts: {
   const nav = (dir: 1 | -1) => {
     const rows = [...results.querySelectorAll<HTMLElement>('.sp-hit')];
     if (!rows.length) return;
-    navIdx = (navIdx + dir + rows.length) % rows.length;
+    // From -1 (nothing picked) ArrowUp lands on the last row, not past it.
+    navIdx = navIdx < 0 ? (dir === 1 ? 0 : rows.length - 1) : (navIdx + dir + rows.length) % rows.length;
     rows.forEach((r, i) => {
       r.classList.toggle('nav', i === navIdx);
     });

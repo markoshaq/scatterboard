@@ -57,6 +57,8 @@ function harness() {
     scheduleSave: () => {},
     editing: { endEdit: () => {} },
     layer: { rectOf: (el: Element) => ({ x: el.x, y: el.y, w: el.w ?? 240, h: 80 }) },
+    panels: { deleteBoardCascade: () => {} },
+    applyPrefs: () => {},
     exporter: {
       snapshotPng: async () => null,
       boardRaster: async () => null,

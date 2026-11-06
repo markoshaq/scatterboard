@@ -74,3 +74,34 @@ export function dragGhost(
   window.addEventListener('pointerup', up);
   window.addEventListener('pointercancel', cancel);
 }
+
+// Missed-release guard for window-tracked pointer gestures: a release
+// outside the browser window delivers no pointerup, and the next move
+// for that pointer arrives with buttons 0. After the gesture's pointer
+// leaves mid-gesture, the first buttons-0 move calls onLost once (treat
+// as cancel). Call lost() inside the pointermove filter and dispose()
+// in the gesture's own cleanup.
+export function releaseGuard(pid: number, onLost: (ev: PointerEvent) => void) {
+  let outside = false;
+  let done = false;
+  const out = (ev: PointerEvent) => {
+    if (ev.pointerId === pid && !ev.relatedTarget) outside = true;
+  };
+  document.addEventListener('pointerout', out);
+  const dispose = () => {
+    document.removeEventListener('pointerout', out);
+  };
+  const lost = (ev: PointerEvent) => {
+    if (done) return true;
+    if (ev.buttons !== 0) {
+      outside = false;
+      return false;
+    }
+    if (!outside) return false;
+    done = true;
+    dispose();
+    onLost(ev);
+    return true;
+  };
+  return { lost, dispose };
+}

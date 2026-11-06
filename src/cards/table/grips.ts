@@ -1,4 +1,6 @@
 import type { Element, TableDoc } from '../../state/schema';
+import { t } from '../../strings';
+import { openMenuPopup } from '../../ui/toolpopups';
 import type { CardCtx } from '../factory';
 
 // What the grip layer reads or mutates on the card.
@@ -13,6 +15,7 @@ export interface GripHost {
   setColWidth(ci: number, w: number): void;
   moveRow(src: number, dst: number): void;
   moveColumn(src: number, dst: number): void;
+  sortColumn(ci: number, dir: 'asc' | 'desc'): void;
 }
 
 // Column edge resize + header-strip reorder grips, mounted only while
@@ -53,7 +56,10 @@ export class TableGrips {
     // and buildGrid call with force since they keep the same sig.
     const el = this.host.ctx.doc.elements[this.host.id];
     const zb = Math.round((this.host.ctx.zoom?.() ?? 1) * 50);
-    const sig = `${c.cells.length}|${cols}|${(c.widths ?? []).join(',')}|${el ? this.host.renderedW(el) : 0}|${zb}`;
+    // Row geometry shifts with content edits: include it or the strip
+    // drifts out of alignment with the cells it tracks.
+    const rowGeom = this.host.cellEls.map((r) => `${r[0]?.offsetTop ?? 0}x${r[0]?.offsetHeight ?? 0}`).join(',');
+    const sig = `${c.cells.length}|${cols}|${(c.widths ?? []).join(',')}|${el ? this.host.renderedW(el) : 0}|${zb}|${rowGeom}`;
     if (!force && this.grips && sig === this.gripSig) return;
     this.gripSig = sig;
     if (!this.grips) {
@@ -120,6 +126,9 @@ export class TableGrips {
     grip.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      // One grip drag at a time: a second pointer would share gripDrag
+      // and leak its window listeners into a stale reorder.
+      if (this.gripDrag) return;
       grip.setPointerCapture(e.pointerId);
       this.gripDrag = true;
       const pid = e.pointerId;
@@ -158,6 +167,7 @@ export class TableGrips {
     edge.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (this.gripDrag) return;
       const x0 = e.clientX;
       edge.setPointerCapture(e.pointerId);
       this.gripDrag = true;
@@ -184,6 +194,7 @@ export class TableGrips {
     grip.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (this.gripDrag) return;
       grip.setPointerCapture(e.pointerId);
       const row0 = this.host.cellEls[0];
       if (!row0) return;
@@ -211,7 +222,22 @@ export class TableGrips {
         window.removeEventListener('pointercancel', up);
         grip.classList.remove('tb-grip-drag');
         this.gripDrag = false;
-        if (ev.type === 'pointerup' && moved && Math.abs(ev.clientX - e.clientX) > 4) this.host.moveColumn(ci, dst);
+        const dragged = moved && Math.abs(ev.clientX - e.clientX) > 4;
+        if (ev.type === 'pointerup' && dragged) {
+          this.host.moveColumn(ci, dst);
+        } else if (ev.type === 'pointerup' && !dragged) {
+          // Anchor to a rect, not the grip: sync(true) below rebuilds the
+          // strip and detaches the element the popup would track.
+          openMenuPopup(
+            grip.getBoundingClientRect(),
+            [
+              { label: t('sortAsc'), onPick: () => this.host.sortColumn(ci, 'asc') },
+              { label: t('sortDesc'), onPick: () => this.host.sortColumn(ci, 'desc') },
+            ],
+            true,
+            true,
+          );
+        }
         this.sync(true);
       };
       window.addEventListener('pointermove', move);

@@ -1078,16 +1078,17 @@ export function searchIcons(q: string): BoardIcon[] {
 export function letterIcons(title: string): string[] {
   const words = title.trim().split(/\s+/).filter(Boolean);
   const out: string[] = [];
+  // First char by code point: w[0]/charAt(0) halve a surrogate pair.
+  const first = (w: string) => String.fromCodePoint(w.codePointAt(0)!).toUpperCase();
   if (words.length) {
     const mono = words
       .slice(0, 2)
-      .map((w) => w[0])
-      .join('')
-      .toUpperCase();
+      .map(first)
+      .join('');
     if (mono) out.push(mono);
   }
   for (const w of words.slice(0, 6)) {
-    const c = w[0]!.toUpperCase();
+    const c = first(w);
     if (!out.includes(c)) out.push(c);
   }
   for (let d = 0; d <= 9; d++) out.push(String(d));
@@ -1125,5 +1126,5 @@ export function mountBoardIcon(host: HTMLElement, icon: string | undefined, titl
     });
     return;
   }
-  host.textContent = title.trim().charAt(0).toUpperCase() || '?';
+  host.textContent = String.fromCodePoint(title.trim().codePointAt(0) ?? 0).toUpperCase() || '?';
 }

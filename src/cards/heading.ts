@@ -39,6 +39,8 @@ export class HeadingCard implements CardView {
       this.events.onTextInput(this.id, this.lastText, this.lastHtml);
     });
     this.textEl.addEventListener('keydown', (e) => {
+      // IME composition keys belong to the input method, not the card.
+      if (e.isComposing) return;
       if (richKeydown(this.textEl, e, { openLink: () => this.events.onLinkPopup(this.id) })) return;
       if (e.key === 'Enter') {
         e.preventDefault();

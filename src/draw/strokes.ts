@@ -94,7 +94,12 @@ function strokeDist(s: Stroke, x: number, y: number): number {
 export function hitStroke(strokes: Stroke[], x: number, y: number, tol: number): number {
   for (let i = strokes.length - 1; i >= 0; i--) {
     const s = strokes[i]!;
-    const w = s.widths?.length ? Math.max(...s.widths) : s.size;
+    // Loop, not a spread: a >65k-point stroke would throw a RangeError.
+    let w = s.size;
+    if (s.widths?.length) {
+      w = s.widths[0]!;
+      for (const ww of s.widths) if (ww > w) w = ww;
+    }
     if (strokeDist(s, x, y) <= w / 2 + tol) return i;
   }
   return -1;

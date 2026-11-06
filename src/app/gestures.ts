@@ -6,11 +6,33 @@ import type { Rect } from '../canvas/viewport';
 import { snapDelta } from '../canvas/snap';
 import { resolveLine } from '../canvas/lines';
 import { ColumnCard } from '../cards/column';
+import { releaseGuard } from '../ui/util';
 import { NOTE_MAX_W, NOTE_MIN_W } from '../state/schema';
 export class Gestures {
   constructor(private a: App) {}
 
   dropColId: ID | null = null;
+
+  // Pointer ids of every in-flight gesture (card drag, resize, pan,
+  // line drags, connect; input.ts registers its marquee/touch ones the
+  // same way). openBoard synthesizes a pointercancel for each so no
+  // window listener outlives the board it started on; each gesture's
+  // own cancel path does the cleanup. trackGesture returns the
+  // unregister for the gesture's cleanup path.
+  private activePids = new Set<number>();
+
+  trackGesture(pid: number): () => void {
+    this.activePids.add(pid);
+    return () => {
+      this.activePids.delete(pid);
+    };
+  }
+
+  cancelGestures() {
+    for (const pid of [...this.activePids]) {
+      window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: pid }));
+    }
+  }
 
   // Member reorder drag-in-progress: the card is lifted onto the
   // pointer, a marker bar marks the slot, and z commits on endDrag.
@@ -379,31 +401,39 @@ export class Gestures {
       // its neighbour z values so multi-drops keep pointer order.
       const slot = this.dropInsert?.colId === colId ? this.dropInsert : null;
       this.clearDropHint();
-      const actions: Action[] = [...this.a.sel]
-        .map((id) => this.a.doc.elements[id])
-        .filter(
-          (e): e is Element =>
-            !!e &&
-            e.type !== 'line' &&
-            e.type !== 'annotation' &&
-            e.parentId !== colId &&
-            !e.locked &&
-            !(e.type === 'comment' && e.anchorId !== undefined),
-        )
-        .map((e, i, arr) => {
-          let z: number;
-          if (slot) {
-            const lo = slot.prevZ ?? (slot.nextZ ?? 0) - 1;
-            const hi = slot.nextZ ?? lo + arr.length + 1;
-            z = lo + ((hi - lo) * (i + 1)) / (arr.length + 1);
-          } else {
-            // Appends take a fresh z off the doc sequence; a slot drop
-            // spreads between its neighbours and leaves seq alone.
-            z = nextZ(this.a.doc);
-          }
-          return { type: 'element.patch', id: e.id, patch: { parentId: colId, z } };
-        });
-      if (actions.length) this.a.store.dispatch({ type: 'batch', actions });
+      // The hinted column may have been deleted, converted or
+      // reparented between the last updateDropTarget and pointerup:
+      // filing into a ghost id would orphan the cards invisibly.
+      const target = this.a.doc.elements[colId];
+      if (target?.type === 'column' && target.boardId === this.a.boardId && target.parentId === null) {
+        const actions: Action[] = [...this.a.sel]
+          .map((id) => this.a.doc.elements[id])
+          .filter(
+            (e): e is Element =>
+              !!e &&
+              e.type !== 'line' &&
+              e.type !== 'annotation' &&
+              e.parentId !== colId &&
+              !e.locked &&
+              !(e.type === 'comment' && e.anchorId !== undefined),
+          )
+          .map((e, i, arr) => {
+            let z: number;
+            if (slot) {
+              const lo = slot.prevZ ?? (slot.nextZ ?? 0) - 1;
+              const hi = slot.nextZ ?? lo + arr.length + 1;
+              z = lo + ((hi - lo) * (i + 1)) / (arr.length + 1);
+            } else {
+              // Appends take a fresh z off the doc sequence; a slot drop
+              // spreads between its neighbours and leaves seq alone.
+              z = nextZ(this.a.doc);
+            }
+            return { type: 'element.patch', id: e.id, patch: { parentId: colId, z } };
+          });
+        if (actions.length) this.a.store.dispatch({ type: 'batch', actions });
+      } else {
+        this.pushOverlaps();
+      }
     } else {
       this.pushOverlaps();
     }
@@ -487,17 +517,21 @@ export class Gestures {
     const el = this.a.doc.elements[id];
     if (!el || el.parentId || el.locked) return;
     const pid = e.pointerId;
+    const untrack = this.trackGesture(pid);
+    const guard = releaseGuard(pid, (ev) => done(ev));
     const start = this.a.boardPoint(e);
     const w0 = el.w ?? defaultWidth(el);
     this.a.store.beginGroup();
     const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
+      if (ev.pointerId !== pid || guard.lost(ev)) return;
       const cur = this.a.boardPoint(ev);
       const w = Math.round(Math.min(NOTE_MAX_W, Math.max(NOTE_MIN_W, w0 + (cur.x - start.x))));
       this.a.store.dispatch({ type: 'element.patch', id, patch: { w } });
     };
     const done = (ev: PointerEvent) => {
       if (ev.pointerId !== pid) return;
+      untrack();
+      guard.dispose();
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', done);
       window.removeEventListener('pointercancel', done);
@@ -513,16 +547,20 @@ export class Gestures {
 
   startPan(e: PointerEvent) {
     const pid = e.pointerId;
+    const untrack = this.trackGesture(pid);
+    const guard = releaseGuard(pid, (ev) => up(ev));
     let lx = e.clientX;
     let ly = e.clientY;
     const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
+      if (ev.pointerId !== pid || guard.lost(ev)) return;
       this.a.vp.panBy(ev.clientX - lx, ev.clientY - ly);
       lx = ev.clientX;
       ly = ev.clientY;
     };
     const up = (ev: PointerEvent) => {
       if (ev.pointerId !== pid) return;
+      untrack();
+      guard.dispose();
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
@@ -569,12 +607,14 @@ export class Gestures {
     const rl = resolveLine(el, this.a.doc, (x) => this.a.layer.rectOf(x));
     if (!rl) return;
     const pid = e.pointerId;
+    const untrack = this.trackGesture(pid);
+    const guard = releaseGuard(pid, (ev) => cancel(ev));
     const startX = e.clientX;
     const startY = e.clientY;
     const p0 = this.a.boardPoint(e);
     let moved = false;
     const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
+      if (ev.pointerId !== pid || guard.lost(ev)) return;
       if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < Gestures.DRAG_SLOP) return;
       if (!moved) {
         moved = true;
@@ -594,6 +634,8 @@ export class Gestures {
       });
     };
     const cleanup = () => {
+      untrack();
+      guard.dispose();
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
@@ -645,13 +687,15 @@ export class Gestures {
     if (this.a.lockedView()) return;
     const el = this.a.doc.elements[id];
     const c = el ? lineDoc(el) : null;
-    if (!el || !c) return;
+    if (!el || !c || el.locked) return;
     const pid = e.pointerId;
+    const untrack = this.trackGesture(pid);
+    const guard = releaseGuard(pid, (ev) => cancel(ev));
     const startX = e.clientX;
     const startY = e.clientY;
     let moved = false;
     const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
+      if (ev.pointerId !== pid || guard.lost(ev)) return;
       if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < Gestures.DRAG_SLOP) return;
       if (!moved) {
         moved = true;
@@ -663,6 +707,8 @@ export class Gestures {
       this.a.requestRender();
     };
     const cleanup = () => {
+      untrack();
+      guard.dispose();
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
@@ -726,11 +772,13 @@ export class Gestures {
     const r = this.a.layer.rectOf(src);
     const from = { x: r.x + r.w, y: r.y + r.h / 2 };
     const pid = e.pointerId;
+    const untrack = this.trackGesture(pid);
+    const guard = releaseGuard(pid, (ev) => cancel(ev));
     const p0 = this.a.boardPoint(e);
     this.a.draft = { x1: from.x, y1: from.y, x2: p0.x, y2: p0.y };
     this.a.requestRender();
     const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
+      if (ev.pointerId !== pid || guard.lost(ev)) return;
       const p = this.a.boardPoint(ev);
       this.a.draft = { x1: from.x, y1: from.y, x2: p.x, y2: p.y };
       const t = this.cardAtPoint(ev.clientX, ev.clientY);
@@ -738,6 +786,8 @@ export class Gestures {
       this.a.requestRender();
     };
     const cleanup = () => {
+      untrack();
+      guard.dispose();
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);

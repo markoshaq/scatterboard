@@ -323,6 +323,8 @@ function agentHost(d: Doc, boardId: ID): AgentHost {
     scheduleSave: () => {},
     editing: { endEdit: () => {} },
     layer: { rectOf: (e: Element) => ({ x: e.x, y: e.y, w: e.w ?? 240, h: 80 }) },
+    panels: { deleteBoardCascade: () => {} },
+    applyPrefs: () => {},
     exporter: {
       snapshotPng: async () => null,
       boardRaster: async () => null,

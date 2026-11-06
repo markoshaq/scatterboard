@@ -22,7 +22,13 @@ export function remapElements(
   opts: RemapOpts = {},
 ): { clones: Element[]; idMap: Map<ID, ID> } {
   const idMap = new Map<ID, ID>();
-  for (const e of els) idMap.set(e.id, uid());
+  // Duplicate input ids cannot share one clone id: each occurrence gets
+  // its own new id and references remap to the first occurrence.
+  const newIds = els.map((e) => {
+    const id = uid();
+    if (!idMap.has(e.id)) idMap.set(e.id, id);
+    return id;
+  });
   // New z values follow the sources' stacking order, not input order
   // (selection order is click order; doc order is insertion order).
   const zs = new Array<number>(els.length);
@@ -33,7 +39,7 @@ export function remapElements(
     const boardId = targetBoard(e);
     const clone: Element = {
       ...e,
-      id: idMap.get(e.id)!,
+      id: newIds[i]!,
       boardId,
       x: e.x + dx,
       y: e.y + dy,

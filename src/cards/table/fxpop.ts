@@ -17,6 +17,9 @@ export class TableFx {
   constructor(private host: FxHost) {}
 
   get isOpen() {
+    // Outside-dismissed popups (Esc, pointerdown) bypass close(); drop
+    // the stale record so Enter is never routed into a detached node.
+    if (this.fx && !this.fx.node.isConnected) this.fx = null;
     return !!this.fx;
   }
 
@@ -26,6 +29,7 @@ export class TableFx {
   }
 
   open(cellEl: HTMLElement) {
+    if (this.fx && !this.fx.node.isConnected) this.fx = null;
     if (this.fx) {
       this.render(cellEl);
       return;

@@ -76,6 +76,19 @@ export function openBoardDraw(ctx: BoardDrawCtx): EditorHandle {
   svgWrap.style.transform = `translate(${ctx.vp.x}px, ${ctx.vp.y}px) scale(${ctx.vp.z})`;
   veil.appendChild(svgWrap);
   document.body.appendChild(veil);
+  // An in-flight zoom tween at entry keeps mutating vp while project()
+  // reads it live: track the transform or early strokes land offset.
+  let raf = 0;
+  let lx = NaN, ly = NaN, lz = NaN;
+  const follow = () => {
+    const { x, y, z } = ctx.vp;
+    if (x !== lx || y !== ly || z !== lz) {
+      lx = x; ly = y; lz = z;
+      svgWrap.style.transform = `translate(${x}px, ${y}px) scale(${z})`;
+    }
+    raf = requestAnimationFrame(follow);
+  };
+  raf = requestAnimationFrame(follow);
 
   const pad = new DrawPad({ ink: ctx.ink, onSave: ctx.onSave, onCancel: ctx.onCancel });
   pad.mount({
@@ -88,6 +101,7 @@ export function openBoardDraw(ctx: BoardDrawCtx): EditorHandle {
 
   return {
     close() {
+      cancelAnimationFrame(raf);
       pad.destroy();
       veil.remove();
     },

@@ -82,7 +82,7 @@ export class FileCard implements CardView {
     // PDFs get a static first-page preview above the icon row. The
     // iframe is pointer-inert so card click/drag still works.
     const pdf = c.mime === 'application/pdf' || (!c.mime && /\.pdf$/i.test(c.name));
-    if (pdf && this.previewRef !== c.blobRef) {
+    if (pdf && c.blobRef !== '' && this.previewRef !== c.blobRef) {
       this.previewRef = c.blobRef;
       if (!this.previewEl) {
         this.previewEl = document.createElement('div');
@@ -90,6 +90,9 @@ export class FileCard implements CardView {
         const f = document.createElement('iframe');
         f.className = 'fc-frame';
         f.tabIndex = -1;
+        // Fully sandboxed: the blob URL is same-origin, so a mistyped
+        // blob must not get script or DOM access to the app context.
+        f.setAttribute('sandbox', '');
         f.setAttribute('aria-hidden', 'true');
         f.setAttribute('loading', 'lazy');
         this.previewEl.appendChild(f);
@@ -101,7 +104,7 @@ export class FileCard implements CardView {
       void blobUrl(ref).then((u) => {
         if (u && this.previewRef === ref) f.src = u;
       });
-    } else if (!pdf && this.previewRef) {
+    } else if ((!pdf || c.blobRef === '') && this.previewRef) {
       this.previewRef = '';
       this.previewEl?.remove();
       this.previewEl = null;

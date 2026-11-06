@@ -118,7 +118,8 @@ export function toMarkdown(title: string, items: Item[]): string {
     else if (it.k === 'link') {
       // <url> is the CommonMark destination form: a ')' inside the url
       // would otherwise close the link early.
-      parts.push(it.text && it.text !== it.url ? `[${it.text}](<${it.url}>)` : it.url);
+      // Brackets in the label must escape or they corrupt the link.
+      parts.push(it.text && it.text !== it.url ? `[${it.text.replace(/[\[\]]/g, '\\$&')}](<${it.url}>)` : it.url);
     }
     else if (it.k === 'quote') parts.push(`> ${it.text}`);
     else if (it.k === 'table') {

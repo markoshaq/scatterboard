@@ -206,6 +206,9 @@ export class LinkCard implements CardView {
     const url = parseUrlText(this.urlInput.value);
     if (c?.url || !url) {
       this.urlInput.value = '';
+      // Esc blur lands here too: still leave the edit session, or the
+      // card stays editing with its store group open.
+      if (this.editing) this.ctx.events.onEditEnd(this.id);
       return;
     }
     this.dispatch({ ...c!, url, title: urlTitle(url) ?? hostOf(url) });
@@ -319,13 +322,14 @@ export class LinkCard implements CardView {
     this.node.classList.toggle('empty', !hasUrl);
     this.node.classList.toggle('has-cap', !!c.caption);
     this.heroEl.style.display = hasUrl && c.showPreview ? '' : 'none';
-    if (!hasUrl) {
-      // Clearing the url hides the hero; drop a live embed frame so it
-      // does not keep playing audio invisibly.
+    if (!hasUrl || !c.showPreview) {
+      // A hidden hero (url cleared or preview off) must not keep a
+      // live embed frame playing audio invisibly, nor pin the card
+      // mounted via the playing flag.
       this.frame?.remove();
       this.frame = null;
       this.playing = false;
-      return;
+      if (!hasUrl) return;
     }
     const host = hostOf(c.url);
     if (this.chipEl.textContent !== host) {

@@ -328,8 +328,13 @@ const MD_TRIGGERS: Record<string, BlockStyle | 'ul' | 'ol' | 'hr'> = {
 function mdAutoformat(root: HTMLElement): boolean {
   const s = getSelection();
   if (!s?.isCollapsed || !s.rangeCount) return false;
-  ensureBlockChildren(root);
-  const block = blockOf(root, s.anchorNode, s.anchorOffset);
+  // Cheap first pass: ensureBlockChildren mutates the DOM, so it runs
+  // only when the surface is too bare for blockOf to find a block.
+  let block = blockOf(root, s.anchorNode, s.anchorOffset);
+  if (!block) {
+    ensureBlockChildren(root);
+    block = blockOf(root, s.anchorNode, s.anchorOffset);
+  }
   if (!block || block.tagName === 'PRE' || block.closest('ul, ol')) return false;
   const range = s.getRangeAt(0);
   const pre = range.cloneRange();
@@ -367,6 +372,9 @@ interface RichKeyHandlers {
 
 // Editing-time keymap. Returns true when the key was consumed.
 export function richKeydown(root: HTMLElement, e: KeyboardEvent, handlers: RichKeyHandlers): boolean {
+  // Keys arriving mid-IME-composition belong to the input method, not
+  // the editor keymap (a confirm Space must not trigger autoformat).
+  if (e.isComposing) return false;
   const meta = e.metaKey || e.ctrlKey;
   if (e.key === 'Tab' && !meta) {
     e.preventDefault();

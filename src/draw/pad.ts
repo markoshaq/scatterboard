@@ -388,7 +388,7 @@ export class DrawPad {
         pressures.push(ev.pressure);
         times.push(ev.timeStamp);
       }
-      this.live!.setAttribute('d', strokeD(stroke));
+      this.live?.setAttribute('d', strokeD(stroke));
     };
     const up = (ev: PointerEvent) => {
       if (ev.pointerId !== pid) return;
@@ -500,6 +500,10 @@ export class DrawPad {
   private onKey = (e: KeyboardEvent) => {
     const tEl = e.target as HTMLElement;
     if (tEl.isContentEditable || tEl.tagName === 'INPUT' || tEl.tagName === 'TEXTAREA') return;
+    // History ops rewrite `strokes` under an in-flight gesture: the
+    // live path and the pending `before` snapshot would corrupt the
+    // undo chain, so keys stay dead until the pointer lands.
+    if (this.gesturePid !== null) return;
     const meta = e.metaKey || e.ctrlKey;
     if (meta) {
       const k = e.key.toLowerCase();

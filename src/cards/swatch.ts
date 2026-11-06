@@ -113,7 +113,7 @@ export class SwatchCard implements CardView {
     this.valueEl = document.createElement('div');
     this.valueEl.className = 'sw-value';
     this.valueEl.dataset.noclick = '1';
-    this.valueEl.title = t('copyLink');
+    this.valueEl.title = t('copyColor');
     this.valueEl.addEventListener('click', (e) => {
       e.stopPropagation();
       const el = this.ctx.doc.elements[this.id];

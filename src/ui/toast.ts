@@ -92,7 +92,7 @@ export function choice(msg: string, actionLabel: string, onAction: () => void, o
   if (timeoutMs > 0) setTimeout(finish, timeoutMs);
 }
 
-export function hint(msg: string, onDone: () => void) {
+export function hint(msg: string, onDone?: () => void, onClick?: () => void) {
   const el = document.createElement('div');
   el.className = 'toast sticky';
   const span = document.createElement('span');
@@ -110,6 +110,14 @@ export function hint(msg: string, onDone: () => void) {
     done = true;
     dismissEl(el, onDone);
   };
+  if (onClick) {
+    span.style.cursor = 'pointer';
+    span.addEventListener('click', () => {
+      if (done) return;
+      done = true;
+      dismissEl(el, onClick);
+    });
+  }
   x.addEventListener('click', finish);
   setTimeout(finish, 14000);
 }

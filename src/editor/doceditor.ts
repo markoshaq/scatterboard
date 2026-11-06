@@ -294,11 +294,11 @@ export function openDocumentEditor(_el: Element, ctx: DocEditorCtx): EditorHandl
       },
       {
         label: t('exportMarkdown'),
-        onPick: () => downloadTextFile(`${file()}.md`, htmlToMarkdown(body), 'text/markdown'),
+        onPick: () => downloadTextFile(`${file()}.md`, htmlToMarkdown(body, name()), 'text/markdown'),
       },
       {
         label: t('exportPlain'),
-        onPick: () => downloadTextFile(`${file()}.txt`, plainTextOf(body)),
+        onPick: () => downloadTextFile(`${file()}.txt`, plainTextOf(body, name())),
       },
     ]);
   });

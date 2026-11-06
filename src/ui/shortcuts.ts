@@ -1,4 +1,5 @@
 import type { App } from '../app';
+import { dismissDepth } from './popup';
 
 function inTextField(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement;
@@ -14,6 +15,15 @@ export function attachShortcuts(app: App) {
     // Modal surfaces (element editor, board draw mode, shortcuts scrim)
     // own their keys.
     if (app.overlayOpen || document.querySelector('.short-scrim')) return;
+    // Esc belongs to the topmost dismissable surface before it means
+    // deselect or exit-presentation.
+    if (e.key === 'Escape' && dismissDepth()) return;
+    // A popup, panel or toast that holds focus owns its keys: board
+    // shortcuts must not act on the selection behind it.
+    if ((e.target as HTMLElement | null)?.closest?.('.tool-pop, .due-pop, .side-panel, .toast')) return;
+    // IME composition keys belong to the input method: an Esc or Enter
+    // that confirms a candidate must not end the edit session.
+    if (e.isComposing) return;
     const meta = e.metaKey || e.ctrlKey;
 
     // History nav works even mid-edit.
@@ -39,8 +49,6 @@ export function attachShortcuts(app: App) {
       } else if (e.key === 'Escape' && app.presenting) {
         e.preventDefault();
         app.exitPresent();
-      } else if (e.key === 'Escape' && (e.target as HTMLElement).tagName === 'BUTTON') {
-        app.clearSelection();
       } else if (e.key === 'Enter' && meta && app.editingId) {
         e.preventDefault();
         app.chainCreate();
@@ -55,7 +63,7 @@ export function attachShortcuts(app: App) {
       return;
     }
 
-    if (meta && e.altKey && e.key.toLowerCase() === 'v') {
+    if (meta && e.altKey && e.code === 'KeyV') {
       e.preventDefault();
       app.pasteStyles();
       return;
@@ -149,7 +157,7 @@ export function attachShortcuts(app: App) {
       return;
     }
 
-    if (e.altKey && !meta && e.key === '`') {
+    if (e.altKey && !meta && e.code === 'Backquote') {
       e.preventDefault();
       app.fileToUnsorted();
       return;

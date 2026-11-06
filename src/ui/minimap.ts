@@ -26,18 +26,29 @@ export class Minimap {
     this.cv = document.createElement('canvas');
     this.node.appendChild(this.cv);
     // Pointer events must not reach the board's pan/marquee handlers.
+    // Only a gesture that began on the minimap pans the board: board
+    // drags track on window, so a card drag crossing the corner must
+    // not hijack the view.
     this.node.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       e.preventDefault();
       this.node.setPointerCapture(e.pointerId);
+      this.panning = true;
       this.jump(e);
     });
     this.node.addEventListener('pointermove', (e) => {
-      if (e.buttons & 1) this.jump(e);
+      if (this.panning) this.jump(e);
     });
+    const stop = () => {
+      this.panning = false;
+    };
+    this.node.addEventListener('pointerup', stop);
+    this.node.addEventListener('pointercancel', stop);
     this.node.addEventListener('click', (e) => e.stopPropagation());
     this.node.addEventListener('dblclick', (e) => e.stopPropagation());
   }
+
+  private panning = false;
 
   // Map a minimap point back to board space and centre the view on it.
   private jump(e: PointerEvent) {
@@ -45,9 +56,9 @@ export class Minimap {
     const bx = (e.clientX - r.left - this.ox) / this.scale;
     const by = (e.clientY - r.top - this.oy) / this.scale;
     const vp = this.a.vp;
-    vp.x = vp.vw / 2 - bx * vp.z;
-    vp.y = vp.vh / 2 - by * vp.z;
-    vp.changed();
+    // snapTo also cancels a running zoom tween; direct x/y writes
+    // would be overwritten each frame until it settles.
+    vp.snapTo({ x: vp.vw / 2 - bx * vp.z, y: vp.vh / 2 - by * vp.z, z: vp.z });
   }
 
   draw() {
@@ -64,7 +75,14 @@ export class Minimap {
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, MAP_W, MAP_H);
-    if (!els.length) return;
+    if (!els.length) {
+      // An empty board still needs a sane transform for jump():
+      // board origin at map centre, unit scale.
+      this.scale = 1;
+      this.ox = MAP_W / 2;
+      this.oy = MAP_H / 2;
+      return;
+    }
     // The view rect joins the bounds so it can never slide off-map.
     const view = { x: -vp.x / vp.z, y: -vp.y / vp.z, w: vp.vw / vp.z, h: vp.vh / vp.z };
     const cards = unionRect(els.map((e) => this.a.layer.rectOf(e)))!;

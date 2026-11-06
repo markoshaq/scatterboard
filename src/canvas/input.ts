@@ -1,5 +1,6 @@
 import type { App } from '../app';
 import { boardRefOf, type ID } from '../state/schema';
+import { releaseGuard } from '../ui/util';
 import type { LineHit } from './lines';
 
 const DRAG_SLOP = 3;
@@ -114,13 +115,14 @@ export function attachPointer(root: HTMLElement, app: App) {
     window.open(a.href, '_blank', 'noopener');
   });
   root.addEventListener('dblclick', (e) => onDblClick(e, app));
-  root.addEventListener('wheel', (e) => onWheel(e, app), { passive: false });
+  root.addEventListener('wheel', (e) => onWheel(e, app, root), { passive: false });
   root.addEventListener('contextmenu', (e) => onContextMenu(e, app));
   root.addEventListener('pointermove', (e) => {
-    // Reused point object: no allocation per move.
-    app.pointer ??= { x: 0, y: 0 };
-    app.pointer.x = (e.clientX - app.vp.x) / app.vp.z;
-    app.pointer.y = (e.clientY - app.vp.y) / app.vp.z;
+    // Client coords, converted on read: a paste after pan/zoom without a
+    // move still lands under the cursor.
+    app.pointerClient ??= { x: 0, y: 0 };
+    app.pointerClient.x = e.clientX;
+    app.pointerClient.y = e.clientY;
   });
   // OS file drops: images become image cards, everything else file cards.
   root.addEventListener('dragover', (e) => {
@@ -203,10 +205,12 @@ export function startElementDrag(e: PointerEvent, app: App, cardId: ID) {
   // normal drag path below, so tap-then-drag still moves it.
   if (e.pointerType === 'touch' && !wasSelected) {
     const pid = e.pointerId;
+    const untrack = app.gestures.trackGesture(pid);
+    const guard = releaseGuard(pid, (ev) => done(ev));
     const sx = e.clientX;
     const sy = e.clientY;
     const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
+      if (ev.pointerId !== pid || guard.lost(ev)) return;
       if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < DRAG_SLOP + 5) return;
       cleanup();
       app.startPan(ev);
@@ -217,6 +221,8 @@ export function startElementDrag(e: PointerEvent, app: App, cardId: ID) {
       if (ev.type === 'pointerup') app.selectOnly(cardId);
     };
     const cleanup = () => {
+      untrack();
+      guard.dispose();
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', done);
       window.removeEventListener('pointercancel', done);
@@ -238,6 +244,8 @@ export function startElementDrag(e: PointerEvent, app: App, cardId: ID) {
     if (app.doc.elements[id]) origins.set(id, app.cardOrigin(id));
   }
   const pid = e.pointerId;
+  const untrack = app.gestures.trackGesture(pid);
+  const guard = releaseGuard(pid, (ev) => cancel(ev));
   const startX = e.clientX;
   const startY = e.clientY;
   let moved = false;
@@ -246,7 +254,7 @@ export function startElementDrag(e: PointerEvent, app: App, cardId: ID) {
   const start = app.boardPoint(e);
 
   const move = (ev: PointerEvent) => {
-    if (ev.pointerId !== pid) return;
+    if (ev.pointerId !== pid || guard.lost(ev)) return;
     if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_SLOP) return;
     moved = true;
     if (!grouped) {
@@ -264,6 +272,8 @@ export function startElementDrag(e: PointerEvent, app: App, cardId: ID) {
     app.dragMove(dragIds, origins, start, ev);
   };
   const cleanup = () => {
+    untrack();
+    guard.dispose();
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
     window.removeEventListener('pointercancel', cancel);
@@ -314,6 +324,8 @@ function onBackgroundDown(e: PointerEvent, app: App, hit: LineHit | null) {
   // no-move outcome.
   if (e.pointerType === 'touch') {
     const pid = e.pointerId;
+    const untrack = app.gestures.trackGesture(pid);
+    const guard = releaseGuard(pid, (ev) => done(ev));
     let panned = false;
     let marquee = false;
     const longPress = window.setTimeout(() => {
@@ -321,7 +333,7 @@ function onBackgroundDown(e: PointerEvent, app: App, hit: LineHit | null) {
       app.setMarquee({ x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y });
     }, 500);
     const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== pid) return;
+      if (ev.pointerId !== pid || guard.lost(ev)) return;
       if (marquee) {
         const cur = app.boardPoint(ev);
         app.setMarquee({ x1: pt.x, y1: pt.y, x2: cur.x, y2: cur.y });
@@ -345,6 +357,8 @@ function onBackgroundDown(e: PointerEvent, app: App, hit: LineHit | null) {
       if (!panned && ev.type === 'pointerup') app.clearSelection();
     };
     const cleanup = () => {
+      untrack();
+      guard.dispose();
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', done);
       window.removeEventListener('pointercancel', done);
@@ -355,16 +369,20 @@ function onBackgroundDown(e: PointerEvent, app: App, hit: LineHit | null) {
     return;
   }
   const pid = e.pointerId;
+  const untrack = app.gestures.trackGesture(pid);
+  const guard = releaseGuard(pid, (ev) => cancel(ev));
   const start = pt;
   let moved = false;
   const move = (ev: PointerEvent) => {
-    if (ev.pointerId !== pid) return;
+    if (ev.pointerId !== pid || guard.lost(ev)) return;
     if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < DRAG_SLOP) return;
     moved = true;
     const cur = app.boardPoint(ev);
     app.setMarquee({ x1: start.x, y1: start.y, x2: cur.x, y2: cur.y });
   };
   const cleanup = () => {
+    untrack();
+    guard.dispose();
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
     window.removeEventListener('pointercancel', cancel);
@@ -408,8 +426,35 @@ function onDblClick(e: MouseEvent, app: App) {
   app.createNoteAt(p.x, p.y, { x: e.clientX, y: e.clientY });
 }
 
-function onWheel(e: WheelEvent, app: App) {
-  e.preventDefault();
+// A wheel over a scrollable surface inside a card (comment threads)
+// scrolls it instead of panning the board. Only a surface that can
+// still move in the wheel's direction claims the event.
+function wheelScrolls(e: WheelEvent, bound: HTMLElement): boolean {
+  let dx = e.deltaX;
+  let dy = e.deltaY;
+  if (e.deltaMode === 1) {
+    dx *= 16;
+    dy *= 16;
+  }
+  if (e.shiftKey && dx === 0) {
+    dx = dy;
+    dy = 0;
+  }
+  for (let n = e.target as HTMLElement | null; n && n !== bound; n = n.parentElement) {
+    const cs = getComputedStyle(n);
+    if (dy !== 0 && (cs.overflowY === 'auto' || cs.overflowY === 'scroll')) {
+      const room = n.scrollHeight - n.clientHeight;
+      if (room > 0 && ((dy < 0 && n.scrollTop > 0) || (dy > 0 && n.scrollTop < room - 1))) return true;
+    }
+    if (dx !== 0 && (cs.overflowX === 'auto' || cs.overflowX === 'scroll')) {
+      const room = n.scrollWidth - n.clientWidth;
+      if (room > 0 && ((dx < 0 && n.scrollLeft > 0) || (dx > 0 && n.scrollLeft < room - 1))) return true;
+    }
+  }
+  return false;
+}
+
+function onWheel(e: WheelEvent, app: App, bound: HTMLElement) {
   let dx = e.deltaX;
   let dy = e.deltaY;
   if (e.deltaMode === 1) {
@@ -417,10 +462,13 @@ function onWheel(e: WheelEvent, app: App) {
     dy *= 16;
   }
   if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
     const factor = Math.exp(-dy * 0.002);
     app.vp.zoomAt(factor, e.clientX, e.clientY);
     return;
   }
+  if (wheelScrolls(e, bound)) return;
+  e.preventDefault();
   if (e.shiftKey && dx === 0) {
     dx = dy;
     dy = 0;

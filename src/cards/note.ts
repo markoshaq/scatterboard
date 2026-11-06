@@ -160,14 +160,18 @@ export class NoteCard implements CardView {
         document.caretPositionFromPoint?.(pos.x, pos.y) ??
         (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }).caretRangeFromPoint?.(pos.x, pos.y);
       if (range) {
-        const sel = getSelection()!;
-        sel.removeAllRanges();
-        const r = document.createRange();
         const p = 'offsetNode' in range ? (range as { offsetNode: Node; offset: number }) : { offsetNode: range.startContainer, offset: range.startOffset };
-        r.setStart(p.offsetNode, p.offset);
-        r.collapse(true);
-        sel.addRange(r);
-        return;
+        // A click on padding or the handle resolves to a caret outside
+        // the text surface; only plant it inside.
+        if (this.textEl.contains(p.offsetNode)) {
+          const sel = getSelection()!;
+          sel.removeAllRanges();
+          const r = document.createRange();
+          r.setStart(p.offsetNode, p.offset);
+          r.collapse(true);
+          sel.addRange(r);
+          return;
+        }
       }
     }
     const sel = getSelection()!;

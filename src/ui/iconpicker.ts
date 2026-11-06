@@ -74,11 +74,14 @@ export function openIconPicker(anchor: HTMLElement | DOMRect, api: IconPickerApi
     return b;
   }
 
+  // Ids index the sections, not their labels: a non-Latin label slug
+  // would collapse every group to the same 'bip-g--' id.
+  let secN = 0;
   function section(label: string): { head: HTMLElement; grid: HTMLElement } {
     const head = document.createElement('div');
     head.className = 'bip-group';
     head.textContent = label;
-    head.id = `bip-g-${label.replace(/\W+/g, '-')}`;
+    head.id = `bip-g-${secN++}`;
     const grid = document.createElement('div');
     grid.className = 'bip-grid';
     grid.setAttribute('role', 'listbox');

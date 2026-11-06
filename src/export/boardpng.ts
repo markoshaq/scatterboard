@@ -46,13 +46,15 @@ function collectCss(): string {
   }
   // The shot root is a div, not body, so re-anchor the body-scoped
   // selectors (all theme vars live on body / body.dark) to .board-shot.
-  // Only selector-start positions match: after { } , or at text start.
-  return out.replace(/(^|[{},])(\s*)body(?=[\s.#:[,{>~+]|$)/gm, '$1$2.board-shot');
+  // Only selector-start positions match: after { } , or at text start,
+  // and only with a rule body ahead, so a 'body' inside a declaration
+  // value (font-family lists, content strings) stays literal.
+  return out.replace(/(^|[{},])(\s*)body(?=[^{};]*\{)/gm, '$1$2.board-shot');
 }
 
 // Wrap the cloned card/overlay layers into a positioned snapshot root
 // covering `bounds` in board coordinates.
-export function buildShotDom(cards: HTMLElement, overlays: HTMLElement[], bounds: Rect): HTMLElement {
+export function buildShotDom(cards: HTMLElement, overlays: HTMLElement[], bounds: Rect, zOf?: (id: string) => number | undefined): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = `board-shot${document.body.classList.contains('dark') ? ' dark' : ''}`;
   wrap.style.cssText =
@@ -65,8 +67,21 @@ export function buildShotDom(cards: HTMLElement, overlays: HTMLElement[], bounds
   style.textContent = collectCss();
   const inner = document.createElement('div');
   inner.style.cssText = `position:absolute;left:${-Math.round(bounds.x)}px;top:${-Math.round(bounds.y)}px;width:0;height:0`;
-  inner.appendChild(cards.cloneNode(true) as HTMLElement);
-  for (const n of overlays) inner.appendChild(n.cloneNode(true) as HTMLElement);
+  const cardsClone = cards.cloneNode(true) as HTMLElement;
+  if (zOf) {
+    // Overlay children (pins, anno svgs, pills, chips) honour el.z:
+    // merge them into the card stack instead of painting the whole
+    // layer above the cards. Unmarked nodes trail in DOM order.
+    const kids = [...cardsClone.children] as HTMLElement[];
+    const extras = overlays.flatMap((n) => [...(n.cloneNode(true) as HTMLElement).children] as HTMLElement[]);
+    const key = (n: HTMLElement) => (n.dataset.id !== undefined ? (zOf(n.dataset.id) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER);
+    cardsClone.textContent = '';
+    cardsClone.append(...[...kids, ...extras].sort((a, b) => key(a) - key(b)));
+    inner.appendChild(cardsClone);
+  } else {
+    inner.appendChild(cardsClone);
+    for (const n of overlays) inner.appendChild(n.cloneNode(true) as HTMLElement);
+  }
   // An iframe inside a foreignObject stops HTML from rasterizing (embed
   // players). Swap each for an empty div so the card chrome survives.
   for (const frame of inner.querySelectorAll('iframe')) {
@@ -206,14 +221,17 @@ function drawSceneLine(ctx: CanvasRenderingContext2D, l: SceneLine) {
   ctx.strokeStyle = ink;
   ctx.lineWidth = w;
   ctx.setLineDash(c.dashed ? [5, 5] : []);
+  const pts = l.pts;
   ctx.beginPath();
-  ctx.moveTo(l.x1, l.y1);
-  ctx.lineTo(l.x2, l.y2);
+  ctx.moveTo(pts[0]!.x, pts[0]!.y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y);
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.fillStyle = ink;
-  drawMarker(ctx, l.x1, l.y1, Math.atan2(l.y1 - l.y2, l.x1 - l.x2), c.fromMarker, w);
-  drawMarker(ctx, l.x2, l.y2, Math.atan2(l.y2 - l.y1, l.x2 - l.x1), c.toMarker, w);
+  const p2 = pts[1] ?? { x: l.x2, y: l.y2 };
+  const pb = pts[pts.length - 2] ?? { x: l.x1, y: l.y1 };
+  drawMarker(ctx, l.x1, l.y1, Math.atan2(pts[0]!.y - p2.y, pts[0]!.x - p2.x), c.fromMarker, w);
+  drawMarker(ctx, l.x2, l.y2, Math.atan2(pts[pts.length - 1]!.y - pb.y, pts[pts.length - 1]!.x - pb.x), c.toMarker, w);
 }
 
 // Default card surface for the canvas fallback: the --card css var the

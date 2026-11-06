@@ -44,6 +44,24 @@ function harness(d: Doc) {
 }
 
 describe('CardsLayer culling', () => {
+  it('survives a parentId cycle in a corrupt doc', () => {
+    const d = doc();
+    const a = createColumn(d, 'home', 0, 0);
+    const b = createColumn(d, 'home', 300, 0);
+    a.parentId = b.id;
+    b.parentId = a.id;
+    d.elements[a.id] = a;
+    d.elements[b.id] = b;
+    const { layer, bump } = harness(d);
+    bump();
+    // rectOf/heightOf must not recurse forever; sync's editing-ancestor
+    // walk terminates on the seen set.
+    const ra = layer.rectOf(a);
+    expect(Number.isFinite(ra.x + ra.y + ra.w + ra.h)).toBe(true);
+    expect(Number.isFinite(layer.heightOf(a))).toBe(true);
+    layer.sync(new Set([a.id]), a.id, false);
+  });
+
   it('mounts only cards inside the padded view', () => {
     const d = doc();
     const near = createNote(d, 'home', 100, 100, 'near');

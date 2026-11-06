@@ -217,11 +217,10 @@ export class Topbar {
             if (done) return;
             done = true;
             const v = input.value.trim();
-            if (commit && v && v !== c.title) {
-              this.events.onCrumbRename!(c.id, v);
-              return; // the store change re-renders the crumbs
-            }
+            // Restore the label even when the rename re-renders: a
+            // no-change signature would leave the input orphaned.
             input.replaceWith(txt);
+            if (commit && v && v !== c.title) this.events.onCrumbRename!(c.id, v);
           };
           input.addEventListener('keydown', (ev) => {
             ev.stopPropagation();

@@ -50,6 +50,9 @@ export class CardsLayer {
   // Elements deleted by user action (never by undo/redo replay, culls
   // or board switches): they get the .card-out exit before destroy.
   private exits = new Set<ID>();
+  // Ids force-mounted regardless of culling: a present-step target is
+  // focused before its fit tween finishes flying it into view.
+  pin = new Set<ID>();
 
   constructor(doc: Doc, vp: Viewport, events: CardEvents, revOf: () => number) {
     this.doc = doc;
@@ -161,19 +164,43 @@ export class CardsLayer {
     return colBodyTop(col, w);
   }
 
+  // Cycle guards: a parentId/anchorId loop (corrupt doc only - the UI
+  // never creates one and agent validation rejects them) would
+  // otherwise recurse rectOf/heightOf forever.
+  private rectBusy = new Set<ID>();
+  private heightBusy = new Set<ID>();
+
   heightOf(el: El, w?: number): number {
     const cached = this.heights.get(el.id);
     if (cached !== undefined) return cached;
-    return fallbackHeight(el, (m, mw) => this.heightOf(m, mw), (id) => this.members(id), w);
+    // A column parented (transitively) under itself would recurse
+    // through its own member list forever; fall back to a plain
+    // estimate for the corrupt entry.
+    if (this.heightBusy.has(el.id)) return 80;
+    this.heightBusy.add(el.id);
+    try {
+      return fallbackHeight(el, (m, mw) => this.heightOf(m, mw), (id) => this.members(id), w);
+    } finally {
+      this.heightBusy.delete(el.id);
+    }
   }
 
   rectOf(el: El): Rect {
     this.ensureIndex();
     const hit = this.rects.get(el.id);
     if (hit) return hit;
-    const r = this.computeRect(el);
-    this.rects.set(el.id, r);
-    return r;
+    // Re-entrant on a parent/anchor cycle: report the card's own rect.
+    if (this.rectBusy.has(el.id)) {
+      return { x: el.x, y: el.y, w: el.w ?? defaultWidth(el), h: this.heightOf(el) };
+    }
+    this.rectBusy.add(el.id);
+    try {
+      const r = this.computeRect(el);
+      this.rects.set(el.id, r);
+      return r;
+    } finally {
+      this.rectBusy.delete(el.id);
+    }
   }
 
   private computeRect(el: El): Rect {
@@ -253,13 +280,21 @@ export class CardsLayer {
     for (const el of els) {
       if (el.type === 'line' || el.type === 'annotation') continue;
       if (el.type === 'comment' && el.anchorId !== undefined) continue;
+      // Unmeasured cards cull against an inflated rect: fallback
+      // height estimates run low on wrapped content, and an
+      // under-estimate culls a card whose real extent is visible.
+      const r = this.rectOf(el);
+      const cullR = this.heights.has(el.id) ? r : { ...r, h: r.h * 2 + 160 };
       // A playing embed keeps its iframe alive off-screen: culling
       // would reload it on every pan back.
-      if (rectsIntersect(this.rectOf(el), visible) || this.views.get(el.id)?.playing) wanted.add(el.id);
+      if (this.pin.has(el.id) || rectsIntersect(cullR, visible) || this.views.get(el.id)?.playing) wanted.add(el.id);
     }
     // An in-flight edit keeps its element mounted even when culled;
-    // walking parents keeps a member's column alive too.
-    for (let id = editingId; id; id = this.doc.elements[id]?.parentId ?? null) {
+    // walking parents keeps a member's column alive too. The seen set
+    // stops a parentId loop in a corrupt doc.
+    const chainSeen = new Set<ID>();
+    for (let id = editingId; id && !chainSeen.has(id); id = this.doc.elements[id]?.parentId ?? null) {
+      chainSeen.add(id);
       wanted.add(id);
     }
     for (const [id, view] of this.views) {

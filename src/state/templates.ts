@@ -66,7 +66,7 @@ export function builtinTemplates(): Template[] {
       },
     }),
   ]);
-  sprint.elements[3]!.parentId = 's-c1';
+  sprint.elements[4]!.parentId = 's-c1';
 
   const mood = tpl('builtin:mood', 'Moodboard', [
     el('m-h', 'heading', 0, 0, 300, { heading: { text: 'Moodboard', level: 1 } }),
@@ -132,9 +132,9 @@ export function instantiateActions(
 ): { actions: Action[]; cardId?: ID; boardId: ID } {
   const partial: Partial<Board> & { title: string } = {
     title: template.board.title || template.name,
-    grid: template.board.grid,
     parentId: hostId,
   };
+  if (template.board.grid !== undefined) partial.grid = template.board.grid;
   if (template.board.icon !== undefined) partial.icon = template.board.icon;
   if (template.board.color !== undefined) partial.color = template.board.color;
   const board = createBoard(partial);

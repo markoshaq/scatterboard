@@ -9,8 +9,17 @@ const BLOCKS = new Set([
   'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
 ]);
 
+// Literal text escapes the chars markdown would reparse (*, `, [, ],
+// #, >, ~, angle brackets) plus list markers at a line start, so the
+// export round-trips instead of changing meaning.
+function escMd(s: string): string {
+  return s
+    .replace(/([\\`*_[\]<>#~])/g, '\\$1')
+    .replace(/(^|\n)([-+]|\d{1,9}[.)])(?= )/g, '$1\\$2');
+}
+
 function inlineMd(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
+  if (node.nodeType === Node.TEXT_NODE) return escMd(node.textContent ?? '');
   if (!(node instanceof HTMLElement)) return '';
   const inner = () => [...node.childNodes].map(inlineMd).join('');
   switch (node.tagName) {
@@ -26,10 +35,17 @@ function inlineMd(node: Node): string {
       return `~~${inner()}~~`;
     case 'U':
       return inner();
-    case 'CODE':
-      return `\`${node.textContent ?? ''}\``;
+    case 'CODE': {
+      const text = node.textContent ?? '';
+      // A backtick inside the code needs a wider fence; a leading or
+      // trailing backtick also needs a pad space inside the fence.
+      const fence = text.includes('`') ? '``' : '`';
+      const pad = /^`|`$/.test(text) ? ' ' : '';
+      return `${fence}${pad}${text}${pad}${fence}`;
+    }
     case 'A': {
-      const href = node.getAttribute('href') ?? '';
+      // Parens and backslashes in the destination break the link.
+      const href = (node.getAttribute('href') ?? '').replace(/([\\()])/g, '\\$1');
       return href ? `[${inner()}](${href})` : inner();
     }
     case 'BR':
@@ -62,8 +78,11 @@ function blockMd(el: HTMLElement, depth: number): string {
     case 'H5':
     case 'H6':
       return `### ${inner()}`;
-    case 'PRE':
-      return `\`\`\`\n${el.textContent ?? ''}\n\`\`\``;
+    case 'PRE': {
+      const text = el.textContent ?? '';
+      const fence = text.includes('```') ? '````' : '```';
+      return `${fence}\n${text}\n${fence}`;
+    }
     case 'BLOCKQUOTE':
       return inner()
         .split('\n')
@@ -93,16 +112,18 @@ function blockMd(el: HTMLElement, depth: number): string {
   }
 }
 
-export function htmlToMarkdown(root: HTMLElement): string {
-  const blocks = [...root.children]
-    .filter((c): c is HTMLElement => c instanceof HTMLElement)
-    .map((c) => blockMd(c, 0))
+export function htmlToMarkdown(root: HTMLElement, title = ''): string {
+  // childNodes, not children: a bare text node at root still exports.
+  const blocks = [...root.childNodes]
+    .map((n) => (n instanceof HTMLElement ? blockMd(n, 0) : escMd(n.textContent ?? '')))
     .filter((s) => s.trim() !== '');
-  return `${blocks.join('\n\n')}\n`;
+  const head = title.trim() ? `# ${title.trim()}\n\n` : '';
+  return `${head}${blocks.join('\n\n')}\n`;
 }
 
-export function plainTextOf(root: HTMLElement): string {
-  return root.innerText.replace(/\n$/, '');
+export function plainTextOf(root: HTMLElement, title = ''): string {
+  const head = title.trim() ? `${title.trim()}\n\n` : '';
+  return head + root.innerText.replace(/\n$/, '');
 }
 
 // An html file saved with a .doc extension; Word and Pages open it.

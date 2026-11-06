@@ -16,6 +16,10 @@ function focusables(root: HTMLElement): HTMLElement[] {
 // Arrow keys, Home/End and Tab cycle through a surface's controls.
 // Shared by tool popups and side panels; Esc stays on the dismiss stack.
 export function cycleKeys(e: KeyboardEvent, root: HTMLElement) {
+  // A focused <select> owns ArrowUp/Down for stepping its options;
+  // cycling focus instead would make it unoperable by keyboard.
+  const ae = document.activeElement as HTMLElement | null;
+  if (ae?.tagName === 'SELECT' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) return;
   const items = focusables(root);
   if (!items.length) return;
   const i = items.indexOf(document.activeElement as HTMLElement);
@@ -113,15 +117,21 @@ export function closeBoardPopup() {
 // surface registers its closer here and unregisters in its close().
 const dismissStack: { close(): void }[] = [];
 
+export function dismissDepth() {
+  return dismissStack.length;
+}
+
 export function pushDismiss(s: { close(): void }) {
   dismissStack.push(s);
-  if (dismissStack.length === 1) window.addEventListener('keydown', onDismissKey, true);
+  // Bubble, not capture: surfaces' own Esc handlers (rename cancel,
+  // result nav) run first and can stopPropagation to claim the key.
+  if (dismissStack.length === 1) window.addEventListener('keydown', onDismissKey);
 }
 
 export function popDismiss(s: { close(): void }) {
   const i = dismissStack.indexOf(s);
   if (i !== -1) dismissStack.splice(i, 1);
-  if (!dismissStack.length) window.removeEventListener('keydown', onDismissKey, true);
+  if (!dismissStack.length) window.removeEventListener('keydown', onDismissKey);
 }
 
 function onDismissKey(e: KeyboardEvent) {
@@ -158,6 +168,9 @@ export function sheetGrab(node: HTMLElement, onDismiss: () => void) {
   let gy = 0;
   grab.addEventListener('pointerdown', (e) => {
     e.preventDefault();
+    // A second finger must not overwrite gpid: the first gesture's
+    // window listeners would leak permanently.
+    if (gpid !== null) return;
     gpid = e.pointerId;
     gy = e.clientY;
     const move = (ev: PointerEvent) => {
