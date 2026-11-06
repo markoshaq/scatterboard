@@ -27,7 +27,10 @@ from the left rail, and press `/` for the full shortcut map.
 - Backup stays yours too: Settings can mirror the workspace and its
   media into a folder you pick (a synced folder doubles as device
   sync), and Version history keeps named snapshots you can roll back
-  to, plus a daily automatic one.
+  to or browse for a single board or card, plus a daily automatic one.
+- Lock it down if you like: Settings > Privacy can encrypt the whole
+  workspace, media included, behind a passphrase and an unlock
+  screen.
 - Two tabs stay safe: a save in one updates the other instead of
   silently overwriting it.
 - Installable as an app (Help > Install app): one visit stores the
@@ -48,8 +51,9 @@ from the left rail, and press `/` for the full shortcut map.
 - Column cards stack members inline and convert into a nested board in
   one undoable step.
 - Connector lines attach to card edges and re-attach by dragging an
-  end; per-end arrow/dot markers, a midpoint label, dashes, and three
-  weights. A connect handle on the selected card draws one in a drag.
+  end; per-end arrow/dot markers, a midpoint label, dashes, three
+  weights, and straight or elbow routes. A connect handle on the
+  selected card draws one in a drag.
 - An Unsorted inbox holds unfiled cards (Alt+` files the selection); a
   Trash panel groups deleted cards by day and restores by drag.
 - Board search (Cmd/Ctrl+F) scans every text field on the current
@@ -63,7 +67,7 @@ from the left rail, and press `/` for the full shortcut map.
 |---|---|
 | Note | rich text |
 | Heading | single-line large text, two levels |
-| To-do | checkbox list with per-item due dates and times |
+| To-do | checkbox list with per-item due dates, times and repeats |
 | Link | URL card with an optional unfurled preview |
 | Video / Audio / Map | provider iframe embeds (3 types) |
 | Board | nested board with a live member count |
@@ -100,7 +104,9 @@ Per-cell types (number, currency, percent, date, text, checkbox),
 per-cell colour and alignment, rich text in cells, and six formula
 functions (`SUM`, `IF`, `MIN`, `MAX`, `COUNT`, `AVERAGE`) over A1
 references and ranges; typing `=` opens a formula autocomplete, and
-edge grips resize and reorder columns while editing. Number, currency,
+edge grips resize and reorder columns while editing. Rows sort by any
+column from the cell menu. Dropping a .csv file on the board creates a
+table, and the card menu downloads one back out. Number, currency,
 and date cells format through Intl using the locale and currency set in
 Settings.
 
@@ -119,7 +125,8 @@ Labels with colours, emoji reactions, comment threads, four builtin
 board templates plus saved snapshots, a searchable icon picker, quick
 capture into Unsorted, synced note copies (duplicating a note can keep
 the copies identical), a Due panel that gathers every dated to-do item
-across boards, overlap prevention that pushes neighbours when
+across boards with repeating dues and optional in-app reminders,
+overlap prevention that pushes neighbours when
 a card grows, a per-board dot-grid toggle, a customizable create
 palette, dark mode (Cmd/Ctrl+Shift+D), UI scale (Cmd/Ctrl+Shift+,/.),
 and a presentation mode (Cmd/Ctrl+Alt+P) with "Focus on selected
@@ -128,12 +135,12 @@ Español, Français, and Português.
 
 ### In and out
 
-In: drag files onto the canvas, paste images or URLs, JSON import, or
-quick capture. Out: the topbar Export menu offers board PNG, PDF
-(standard and high quality), a linear reading order as Word (.doc),
-Markdown, or plain text with an "Include sub-boards" toggle, a zip of
-every image and file, and full-board JSON. JSON export/import doubles
-as device-to-device sync.
+In: drag files onto the canvas (a .csv becomes a table card), paste
+images or URLs, JSON import, or quick capture. Out: the topbar Export
+menu offers board PNG, PDF (standard and high quality), a linear
+reading order as Word (.doc), Markdown, or plain text with an "Include
+sub-boards" toggle, a zip of every image and file, table CSV, and
+full-board JSON. JSON export/import doubles as device-to-device sync.
 
 ### Agents & MCP
 
@@ -208,6 +215,12 @@ when used:
   page's title through the same proxy.
 
 Offline, both fall back to manual titles and placeholders.
+
+For at-rest protection, Settings > Privacy > Encrypt workspace seals
+the stored workspace, its media, snapshots and folder-backup mirror
+with AES-GCM under a key derived from your passphrase (PBKDF2); the
+key never leaves the device, and a forgotten passphrase cannot be
+recovered.
 
 - "Local agent" (off by default, Settings > Online extras) connects
   the app to a bridge you run yourself over `ws://127.0.0.1` only. The

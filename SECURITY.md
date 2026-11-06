@@ -25,3 +25,9 @@ we can.
   checks the Origin header, requires a one-time pairing token that
   rotates after use, and uses separate credentials for app and agent
   sockets. Leave it off if you do not use it.
+- Settings > Privacy > Encrypt workspace seals the stored workspace,
+  its media, snapshots and the folder-backup mirror with AES-GCM
+  under a PBKDF2-derived key. The passphrase is entered locally and
+  never leaves the device; there is no recovery path if it is
+  forgotten. Encryption protects data at rest on this device; exports
+  you download are plain files like before.

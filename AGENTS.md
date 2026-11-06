@@ -43,7 +43,9 @@ calls; fully offline.
     Element, Label, Comment, TrashEntry, factories, `UNSORTED` sentinel,
     `migrateDoc` (defaults for fields added after persisted v1). Board
     `presentOpts` holds the three presentation toggles (mutated directly
-    like board.position, no undo). `ImageDoc` carries `natW`/`natH`
+    like board.position, no undo). `TodoItem.recur`/`spawned` back
+    repeating dues (see `recur.ts`), `LineDoc.route` picks
+    straight/elbow. `ImageDoc` carries `natW`/`natH`
     (stored blob pixel size, written at
     ingest) and optional `strokes` in that natural space; crop/rotate/
     flip, background removal and replace bake a NEW blob and drop
@@ -60,6 +62,11 @@ calls; fully offline.
   - `templates.ts`: Template snapshots {id, name, board, elements,
     labels}, 4 builtin presets, `snapshotTemplate`,
     `instantiateActions`.
+  - `recur.ts`: `doneWithRecur` checks a repeating to-do item off and
+    spawns its next occurrence as a successor item (RecurRule
+    {f: day|week|month|year, n}; `spawned` links it back so a
+    re-check never stacks a second successor; monthly/yearly clamp
+    to month length, unknown freq degrades to daily).
 - `src/canvas/`: `viewport` (one board-space transform; button/shortcut
   zooms tween via `animateTo` while wheel/pinch/drag stay instant and
   cancel it, `snapTo`/`fitTarget` serve instant paths like print fit),
@@ -88,6 +95,9 @@ calls; fully offline.
   (both mount only while editing, against the `GripHost`/`FxHost`
   slices of the card). `formula.ts` evaluates `=NAME(args)` cell
   text (6 functions, A1 refs/ranges, errors render raw).
+  `table/csv.ts` parses/serializes CSV (1MB/10k-cell caps,
+  `csvToTableDoc` builds a table from a dropped file) and
+  `sortTableRows` backs the cell menu's column sort.
 - `src/draw/`: `strokes.ts` (path/hit/bbox/serialize + file download),
   `pad.ts` `DrawPad` shared pen/select/eraser session: floating
   toolbar, stroke-level undo/redo, V/E/C/X/1-4 keys. `PadMount.viewBox`
@@ -128,15 +138,17 @@ calls; fully offline.
     text-style/link builders + `openViewMenu` (topbar View menu: Present
     entry, per-board dot-grid toggle, presentation toggles, Fit board)
     + `openMobileMenu` (the phone topbar overflow), `duepopup.ts` the
-    due-date picker (builds its own node but shares the same dismiss +
-    sheet helpers).
+    due-date picker incl. the Repeat row for recurring dues (builds
+    its own node but shares the same dismiss + sheet helpers).
   - `panel.ts` slide-over chrome shared by Unsorted/Trash/Search/
     Boards/Due/Snapshots (`openSearchPanel` in `search.ts`, `boards.ts`
     the boards/projects panel listing the board tree via `openPanel`,
     with a Recently viewed jump list above it; `duepanel.ts` lists
     every dated open to-do item across boards and exports
     `dueSoonCount` for the topbar chip; `snapshotpanel.ts` is the
-    version-history list).
+    version-history list with per-row Browse/restore/delete;
+    `snapbrowse.ts` opens a snapshot's board tree read-only and can
+    restore one board or one card from it).
   - `boardicons.ts` the board-icon glyph set (~60) + keyword tags,
     `mountBoardIcon` renders 'g:'/'c:'/'e:'/'b:' icon values.
   - `iconpicker.ts` board icon popup (search, Recommended,
@@ -147,8 +159,10 @@ calls; fully offline.
     viewport outlined, click/drag pans the board; pref `minimap` +
     View > Minimap toggle, hidden while presenting.
   - `settings.ts` settings popup {theme incl. System, language incl.
-    Auto, UI scale, canvas prefs, formatting, toolbar-palette editor,
-    templates, folder backup, Version history row} + `openAboutPopup`
+    Auto, UI scale, canvas prefs, formatting incl. due reminders,
+    toolbar-palette editor, templates, folder backup + Export a
+    backup, Version history row, Privacy group incl. Encrypt
+    workspace/Lock now/Remove encryption} + `openAboutPopup`
     (Help > About: `__APP_VERSION__`, storage meter, source link); `theme.ts` light/dark/system state
     (unset follows the OS, `systemDark()`), `canvasColors()`,
     `cardBg()`, `setUiScale`. `toast.ts` also has `hint()` (dismissible) and
@@ -167,7 +181,11 @@ calls; fully offline.
     chip/due chip/Export + View + Help menus (the trailing controls
     collapse to a '...' overflow on <=720px; the zoombar hides there
     too),
-    `icons.ts` all SVG icon strings, `util.ts` `dragGhost`/`mobileShell`.
+    `icons.ts` all SVG icon strings, `util.ts` `dragGhost`/`mobileShell`,
+    `encryptpop.ts` the Encrypt workspace/Remove encryption
+    passphrase prompt (warn + export-first on enable),
+    `lockscreen.ts` `waitForUnlock`, the full-screen unlock gate
+    boot parks on while the workspace is sealed.
     `shortcuts.ts` is the global
     keydown map (modal surfaces own their keys): card roots are
     tabindex -1 role=group, an arrow key with no selection runs
@@ -178,7 +196,8 @@ calls; fully offline.
     link-preview fetch through api.allorigins.win, the only fetch in
     the codebase besides embed iframes. Embed cards fetch their page
     title without the unfurl pref; link cards only with it.
-- `src/ingest/files.ts`: file/image ingest + paste parsing + `fmtSize`.
+- `src/ingest/files.ts`: file/image ingest + paste parsing + `fmtSize`;
+  dropped/pasted .csv files become table cards via `cards/table/csv.ts`.
 - `src/net/embeds.ts`: provider URL -> iframe src parsing (YouTube/Vimeo/
   Spotify/SoundCloud/Maps; no fetch) plus `urlTitle` (URL-derived
   titles, no fetch).
@@ -208,7 +227,13 @@ calls; fully offline.
   `syncdir.ts` mirrors workspace.json + a media/ folder into a picked
   directory over File System Access (Chrome-family only),
   `snapshots.ts` keeps named workspace snapshots outside the doc
-  (`snap:` keys in kv, capped at 15, automatic ones prune first), and
+  (`snap:` keys in kv, capped at 15, automatic ones prune first),
+  `crypto.ts` is the passphrase box (PBKDF2 600k -> AES-GCM
+  `CryptoBox` {seal,open}, enc meta {salt,iters,verify}, sealed-blob
+  helpers; `rekeyBlobs`/`rekeySnapshots` re-encrypt on passphrase
+  change or removal) and `envelope.ts` wraps adapter reads/writes:
+  `pack`/`unpack` the workspace JSON through the box, `locked()` +
+  `LockedError` gate boot until `waitForUnlock` resolves, and
   `tabs.ts` BroadcastChannel-announces each save so a second open tab
   pulls the newer workspace instead of silently overwriting it.
   All storage ids are `scatterboard:*`; the
@@ -233,7 +258,10 @@ calls; fully offline.
   column drop hints, resize, pan, overlap push), `export.ts` (PNG/PDF/
   linear/zip/JSON export + import + selection raster to clipboard),
   `syncdir.ts` (FolderSync: stored directory handle, post-save mirror
-  write, boot-time newer-backup restore offer),
+  write, boot-time newer-backup restore offer, backup-reminder nag),
+  `reminders.ts` (`Reminders`: 60s ticker over `collectDue`, fires
+  in-app hints for dated items, timed at their time and date-only at
+  9am; pref `reminders`),
   `overlays.ts` (label pills, chips,
   pins, annotation seating, column member line spans, connect handle,
   coveredByCard). Delegates
@@ -245,7 +273,8 @@ calls; fully offline.
   only (`?v=__BUILD_ID__` busts the runtime cache per deploy). boot.ts
   runs `migrateStorageKeys`, picks the adapter (sqlite OPFS else
   localStorage), loads/seeds/migrates the doc, mounts App, and applies
-  the initial `#/b/`/`#/e/` route; `window.__app` is dev-only. Boot
+  the initial `#/b/`/`#/e/` route; a sealed workspace parks on the
+  `lockscreen` gate first. `window.__app` is dev-only. Boot
   also writes the daily automatic snapshot and re-attaches the
   folder-backup handle (offering a restore when the mirror is newer). PWA
   entry params consumed at boot: `?share=1` (manifest share_target;

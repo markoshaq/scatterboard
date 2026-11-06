@@ -4,6 +4,36 @@ Notable changes per release, newest first. Sections: Added, Changed, Fixed, Remo
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-06
+
+Workspace encryption, repeating and reminded due dates, table CSV,
+elbow lines, and browsable snapshots.
+
+### Added
+
+- Settings > Privacy > Encrypt workspace protects the whole
+  workspace, media included, with a passphrase. Reloading locks it
+  behind an unlock screen, Lock now locks it on demand, and Remove
+  encryption decrypts it again. A forgotten passphrase cannot be
+  recovered.
+- The due picker gains a Repeat field: to-do items can recur daily,
+  weekly, monthly or yearly. Checking one off lines up the next date
+  as a fresh item, and repeating items show a ↻ badge.
+- Settings > Due reminders pings you when dated to-do items come due
+  while the app is open: timed items at their time, date-only items
+  at 9am.
+- Dropping or pasting a .csv file onto the board creates a table
+  card, and a table card's menu downloads its cells back out as CSV.
+- While editing a table, the focused cell's menu sorts its rows by
+  that column, A to Z or Z to A.
+- A selected line gains a Route tool: straight or elbow.
+- Version history rows offer Browse snapshot: look inside a
+  snapshot's boards and cards, then restore one board or one card
+  without rolling the whole workspace back.
+- Settings > Backup gains an Export a backup button, and when no
+  backup folder is set up the app reminds you to export one once it
+  has been a while since the last.
+
 ## [0.2.3] - 2026-11-06
 
 Folder backup, named version history, a board minimap, a Due panel
