@@ -8,6 +8,7 @@ interface SnapApi {
   list(): Promise<SnapshotMeta[]>;
   onNew(): Promise<void>;
   onRestore(id: string): void;
+  onBrowse?(id: string): void;
   onDelete(id: string): void;
 }
 
@@ -37,6 +38,19 @@ export function openSnapshotsPanel(api: SnapApi): PanelHandle {
       const row = panelRow(ICONS.snap, label, relTime(s.createdAt));
       row.classList.add('sp-hit');
       row.addEventListener('click', () => api.onRestore(s.id));
+      if (api.onBrowse) {
+        const browse = document.createElement('button');
+        browse.type = 'button';
+        browse.className = 'sp-row-del';
+        browse.innerHTML = ICONS.search;
+        browse.title = t('snapBrowse');
+        browse.setAttribute('aria-label', t('snapBrowse'));
+        browse.addEventListener('click', (e) => {
+          e.stopPropagation();
+          api.onBrowse!(s.id);
+        });
+        row.appendChild(browse);
+      }
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'sp-row-del';

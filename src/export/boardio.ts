@@ -57,7 +57,25 @@ export function parseBoardExport(text: string): BoardExport | null {
   const d = data as Partial<BoardExport>;
   if (d?.version !== 1 || typeof d.board !== 'string') return null;
   if (!Array.isArray(d.boards) || !Array.isArray(d.elements)) return null;
-  if (!d.boards.length || d.boards.some((b) => !b || typeof b.id !== 'string')) return null;
+  if (
+    !d.boards.length ||
+    d.boards.some(
+      (b) =>
+        !b ||
+        typeof b.id !== 'string' ||
+        typeof b.title !== 'string' ||
+        (b.position !== undefined &&
+          (!b.position ||
+            typeof b.position !== 'object' ||
+            !Number.isFinite(b.position.x) ||
+            !Number.isFinite(b.position.y) ||
+            !Number.isFinite(b.position.z))) ||
+        (b.parentId !== undefined && b.parentId !== null && typeof b.parentId !== 'string') ||
+        (b.grid !== undefined && typeof b.grid !== 'boolean')
+    )
+  ) {
+    return null;
+  }
   if (
     d.elements.some(
       (e) =>
@@ -92,7 +110,14 @@ export function importActions(
   const emap = new Map<ID, ID>();
   const lmap = new Map<ID, ID>();
   for (const b of data.boards) bmap.set(b.id, uid());
-  for (const e of data.elements) emap.set(e.id, uid());
+  // Duplicate input ids cannot share one clone id: each occurrence
+  // gets its own and references remap to the first.
+  const eIds = new Map<BoardExport['elements'][number], ID>();
+  for (const e of data.elements) {
+    const id = uid();
+    eIds.set(e, id);
+    if (!emap.has(e.id)) emap.set(e.id, id);
+  }
   for (const l of data.labels) lmap.set(l.id, uid());
   const rootId = bmap.get(data.board) ?? bmap.get(data.boards[0]!.id)!;
 
@@ -131,6 +156,15 @@ export function importActions(
       .filter((g): g is ID => g !== undefined),
   );
 
+  // New z values follow the sources' stacking order, not file order
+  // (same pattern as remapElements in clone.ts).
+  // Keyed by element object: two records sharing an id must not
+  // collapse onto one z (or one clone id below).
+  const zs = new Map<BoardExport['elements'][number], number>();
+  for (const e of data.elements.filter((e) => created.has(e.id)).sort((a, b) => a.z - b.z)) {
+    zs.set(e, nextZ(doc));
+  }
+
   const els: Element[] = [];
   for (const e of data.elements) {
     const bid = bmap.get(e.boardId);
@@ -149,9 +183,9 @@ export function importActions(
     if ('heading' in clone.content) scrub(clone.content.heading);
     if ('document' in clone.content) scrub(clone.content.document);
     if ('table' in clone.content) for (const row of clone.content.table.cells) for (const cell of row) scrub(cell);
-    clone.id = emap.get(e.id)!;
+    clone.id = eIds.get(e)!;
     clone.boardId = bid;
-    clone.z = nextZ(doc);
+    clone.z = zs.get(e)!;
     // Scalar fields aren't shape-checked at parse: coerce non-finite
     // positions rather than land a card with NaN geometry.
     if (!Number.isFinite(clone.x)) clone.x = 0;
