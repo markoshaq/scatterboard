@@ -1,5 +1,6 @@
 import { GRID, lineDoc, type Element, type LineMarker, type LineWeight } from '../state/schema';
 import { canvasColors, type CanvasColors } from '../ui/theme';
+import type { Pt } from './lines';
 import type { Rect, Viewport } from './viewport';
 
 export interface Guide {
@@ -15,6 +16,7 @@ export interface SceneLine {
   y1: number;
   x2: number;
   y2: number;
+  pts: Pt[];
   selected: boolean;
   dim?: boolean;
 }
@@ -142,7 +144,9 @@ export class Renderer {
     const r = Math.max(0.8, Math.min(1.6, 1.6 * vp.z));
     const d = dpr();
     const w = Math.max(8, Math.round(step * vp.z * d));
-    const key = `${w}|${r.toFixed(2)}|${this.cc.grid}`;
+    // step must be in the key: different (z, step) pairs can share w
+    // and r but need a different tile scale.
+    const key = `${step}|${w}|${r.toFixed(2)}|${this.cc.grid}`;
     if (this.gridTile?.key !== key) {
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = w;
@@ -183,25 +187,31 @@ export class Renderer {
     ctx.globalAlpha = l.dim ? 0.15 : 1;
     const w = LINE_W[c.weight ?? 'medium'];
     const ink = l.el.color ?? this.cc.ink;
+    const pts = l.pts;
+    const stroke = () => {
+      ctx.beginPath();
+      ctx.moveTo(pts[0]!.x, pts[0]!.y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y);
+      ctx.stroke();
+    };
     if (l.selected) {
       ctx.strokeStyle = this.cc.selHalo;
       ctx.lineWidth = w + 6 / vp.z;
-      ctx.beginPath();
-      ctx.moveTo(l.x1, l.y1);
-      ctx.lineTo(l.x2, l.y2);
-      ctx.stroke();
+      stroke();
     }
     ctx.strokeStyle = ink;
     ctx.lineWidth = w;
     ctx.setLineDash(c.dashed ? [5, 5] : []);
-    ctx.beginPath();
-    ctx.moveTo(l.x1, l.y1);
-    ctx.lineTo(l.x2, l.y2);
-    ctx.stroke();
+    stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = ink;
-    this.drawMarker(l.x1, l.y1, Math.atan2(l.y1 - l.y2, l.x1 - l.x2), c.fromMarker, w);
-    this.drawMarker(l.x2, l.y2, Math.atan2(l.y2 - l.y1, l.x2 - l.x1), c.toMarker, w);
+    // Markers follow the terminal segment, not the endpoint chord.
+    const p1 = pts[0]!;
+    const p2 = pts[1] ?? { x: l.x2, y: l.y2 };
+    const pa = pts[pts.length - 1]!;
+    const pb = pts[pts.length - 2] ?? { x: l.x1, y: l.y1 };
+    this.drawMarker(l.x1, l.y1, Math.atan2(p1.y - p2.y, p1.x - p2.x), c.fromMarker, w);
+    this.drawMarker(l.x2, l.y2, Math.atan2(pa.y - pb.y, pa.x - pb.x), c.toMarker, w);
     ctx.globalAlpha = 1;
   }
 

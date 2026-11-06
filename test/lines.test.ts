@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { createBoard, createLine, createNote, emptyDoc, type Doc, type Element } from '../src/state/schema';
-import { hitLines, lineRect, midpoint, resolveLine } from '../src/canvas/lines';
+import { createBoard, createLine, createNote, emptyDoc, lineDoc, saneContent, type Doc, type Element } from '../src/state/schema';
+import { hitLines, linePath, lineRect, midpoint, resolveLine } from '../src/canvas/lines';
 import type { Rect } from '../src/canvas/viewport';
 
 function doc(): Doc {
@@ -130,5 +130,173 @@ describe('hitLines', () => {
     const rd = resolveLine(dot, d, rectOf)!;
     expect(hitLines([rd], new Set(), { x: 42, y: 40 }, 1)?.id).toBe(dot.id);
     expect(hitLines([rd], new Set(), { x: 50, y: 40 }, 1)).toBeNull();
+  });
+});
+
+describe('elbow route', () => {
+  function elbowLine(d: Doc, from: { el?: string; x: number; y: number }, to: { el?: string; x: number; y: number }) {
+    const line = createLine(d, 'home', from, to);
+    lineDoc(line)!.route = 'elbow';
+    d.elements[line.id] = line;
+    return line;
+  }
+
+  it('doglegs at mid-x between side-by-side cards', () => {
+    const d = doc();
+    const a = note(d, 0, 0, 200, 100);
+    const b = note(d, 400, 100, 200, 100);
+    const r = resolveLine(elbowLine(d, { el: a.id, x: 0, y: 0 }, { el: b.id, x: 0, y: 0 }), d, rectOf)!;
+    expect([r.side1, r.side2]).toEqual(['right', 'left']);
+    expect(r.pts).toEqual([
+      { x: 200, y: 50 },
+      { x: 300, y: 50 },
+      { x: 300, y: 150 },
+      { x: 400, y: 150 },
+    ]);
+  });
+
+  it('doglegs at mid-y between stacked cards', () => {
+    const d = doc();
+    const a = note(d, 0, 0, 200, 100);
+    const b = note(d, 150, 250, 200, 100);
+    const r = resolveLine(elbowLine(d, { el: a.id, x: 0, y: 0 }, { el: b.id, x: 0, y: 0 }), d, rectOf)!;
+    expect([r.side1, r.side2]).toEqual(['bottom', 'top']);
+    expect(r.pts).toEqual([
+      { x: 100, y: 100 },
+      { x: 100, y: 175 },
+      { x: 250, y: 175 },
+      { x: 250, y: 250 },
+    ]);
+  });
+
+  it('attached end plus free end bends once', () => {
+    const d = doc();
+    const a = note(d, 0, 0, 200, 100);
+    const r = resolveLine(elbowLine(d, { el: a.id, x: 0, y: 0 }, { x: 400, y: 150 }), d, rectOf)!;
+    expect(r.side1).toBe('right');
+    expect(r.side2).toBeUndefined();
+    expect(r.pts).toEqual([
+      { x: 200, y: 50 },
+      { x: 400, y: 50 },
+      { x: 400, y: 150 },
+    ]);
+  });
+
+  it('hits each elbow segment but not the space inside the L', () => {
+    const d = doc();
+    const a = note(d, 0, 0, 200, 100);
+    const b = note(d, 400, 100, 200, 100);
+    const r = resolveLine(elbowLine(d, { el: a.id, x: 0, y: 0 }, { el: b.id, x: 0, y: 0 }), d, rectOf)!;
+    expect(hitLines([r], new Set(), { x: 250, y: 51 }, 1)?.id).toBe(r.el.id);
+    expect(hitLines([r], new Set(), { x: 299, y: 100 }, 1)?.id).toBe(r.el.id);
+    expect(hitLines([r], new Set(), { x: 350, y: 149 }, 1)?.id).toBe(r.el.id);
+    expect(hitLines([r], new Set(), { x: 220, y: 100 }, 1)).toBeNull();
+    expect(hitLines([r], new Set(), { x: 380, y: 100 }, 1)).toBeNull();
+  });
+
+  it('midpoint sits on the path', () => {
+    const d = doc();
+    const a = note(d, 0, 0, 200, 100);
+    const b = note(d, 400, 100, 200, 100);
+    const r = resolveLine(elbowLine(d, { el: a.id, x: 0, y: 0 }, { el: b.id, x: 0, y: 0 }), d, rectOf)!;
+    expect(midpoint(r)).toEqual({ x: 300, y: 100 });
+  });
+});
+
+describe('linePath', () => {
+  it('returns the endpoints for straight or missing route', () => {
+    expect(linePath(0, 0, 'right', 100, 50, 'left', 'straight')).toEqual([
+      { x: 0, y: 0 },
+      { x: 100, y: 50 },
+    ]);
+    expect(linePath(0, 0, 'right', 100, 50, 'left', undefined)).toEqual([
+      { x: 0, y: 0 },
+      { x: 100, y: 50 },
+    ]);
+  });
+
+  it('bends once where mixed exit rays meet', () => {
+    expect(linePath(0, 0, 'right', 100, 50, 'top', 'elbow')).toEqual([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 50 },
+    ]);
+    expect(linePath(0, 0, 'bottom', 100, 50, 'left', 'elbow')).toEqual([
+      { x: 0, y: 0 },
+      { x: 0, y: 50 },
+      { x: 100, y: 50 },
+    ]);
+  });
+
+  it('falls back to a dogleg when the corner lies behind a ray', () => {
+    // Exits right but the target sits left of the exit point.
+    expect(linePath(0, 0, 'right', -100, 50, 'top', 'elbow')).toEqual([
+      { x: 0, y: 0 },
+      { x: -50, y: 0 },
+      { x: -50, y: 50 },
+      { x: -100, y: 50 },
+    ]);
+    // Enters top but the corner would arrive from below.
+    expect(linePath(0, 0, 'right', 100, -50, 'top', 'elbow')).toEqual([
+      { x: 0, y: 0 },
+      { x: 50, y: 0 },
+      { x: 50, y: -50 },
+      { x: 100, y: -50 },
+    ]);
+  });
+
+  it('lets a free end pick an axis that reaches it', () => {
+    // Attached exits right, free end ahead: single bend.
+    expect(linePath(200, 50, 'right', 400, 150, undefined, 'elbow')).toEqual([
+      { x: 200, y: 50 },
+      { x: 400, y: 50 },
+      { x: 400, y: 150 },
+    ]);
+    // Free end behind the exit ray: dogleg.
+    expect(linePath(200, 50, 'right', 100, 150, undefined, 'elbow')).toEqual([
+      { x: 200, y: 50 },
+      { x: 150, y: 50 },
+      { x: 150, y: 150 },
+      { x: 100, y: 150 },
+    ]);
+    // Attached entry on the left, free start to its left: single bend.
+    expect(linePath(0, 50, undefined, 200, 100, 'left', 'elbow')).toEqual([
+      { x: 0, y: 50 },
+      { x: 0, y: 100 },
+      { x: 200, y: 100 },
+    ]);
+    // Both free: dominant delta picks the first axis.
+    expect(linePath(0, 0, undefined, 100, 20, undefined, 'elbow')).toEqual([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 20 },
+    ]);
+    expect(linePath(0, 0, undefined, 20, 100, undefined, 'elbow')).toEqual([
+      { x: 0, y: 0 },
+      { x: 0, y: 100 },
+      { x: 20, y: 100 },
+    ]);
+  });
+
+  it('collapses degenerate bends to a clean path', () => {
+    // Level dogleg collapses back to the chord.
+    expect(linePath(0, 0, 'right', 200, 0, 'left', 'elbow')).toEqual([
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+    ]);
+    // Zero-length line still yields two points.
+    expect(linePath(5, 5, 'right', 5, 5, 'left', 'elbow')).toEqual([
+      { x: 5, y: 5 },
+      { x: 5, y: 5 },
+    ]);
+  });
+});
+
+describe('saneContent route', () => {
+  it('accepts elbow and rejects unknown routes', () => {
+    const base = { from: { x: 0, y: 0 }, to: { x: 1, y: 1 }, label: '' };
+    expect(saneContent({ line: { ...base, route: 'elbow' } }, 'line')).toBe(true);
+    expect(saneContent({ line: { ...base, route: 'straight' } }, 'line')).toBe(true);
+    expect(saneContent({ line: { ...base, route: 'spiral' } }, 'line')).toBe(false);
   });
 });

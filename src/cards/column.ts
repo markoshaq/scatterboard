@@ -77,8 +77,12 @@ export class ColumnCard implements CardView {
 
   // Reorder-drag indicator: a bar seated as a flex child before the
   // member `beforeId` (or at the end) so the stack opens a visible
-  // slot. It is not a member, so update() leaves it in place.
+  // slot. update() re-seats it afterwards: member inserts would
+  // otherwise shove it to the end mid-drag.
+  private insertBeforeId: ID | null = null;
+
   showInsert(beforeId: ID | null) {
+    this.insertBeforeId = beforeId;
     if (!this.insertEl) {
       this.insertEl = document.createElement('div');
       this.insertEl.className = 'col-insert';
@@ -89,6 +93,7 @@ export class ColumnCard implements CardView {
   }
 
   hideInsert() {
+    this.insertBeforeId = null;
     this.insertEl?.remove();
     this.insertEl = null;
   }
@@ -137,6 +142,14 @@ export class ColumnCard implements CardView {
     }
     const docs = list.filter((m) => m.type === 'document').length;
     this.countEl.textContent = memberCount(list.length - docs, docs);
+    // The insert bar is not a member: the seat loop above may have
+    // moved past it, so put it back at its marked slot.
+    if (this.insertEl) {
+      const ref = this.insertBeforeId ? (this.members.get(this.insertBeforeId)?.node ?? null) : null;
+      if (this.insertEl.parentNode !== this.body || this.insertEl.nextSibling !== ref) {
+        this.body.insertBefore(this.insertEl, ref);
+      }
+    }
   }
 
   // Board-space line spans clipped to the column box, re-stroked in
@@ -147,8 +160,8 @@ export class ColumnCard implements CardView {
       `${Math.round(rect.w)},${Math.round(rect.h)}`,
       ...lines.map((l) => {
         const c = lineDoc(l.el);
-        const pts = [l.x1 - rect.x, l.y1 - rect.y, l.x2 - rect.x, l.y2 - rect.y].map((v) => Math.round(v));
-        return `${l.el.id}:${pts.join(',')}:${l.el.color ?? ''}:${c?.weight}:${c?.dashed ? 1 : 0}:${c?.fromMarker}:${c?.toMarker}:${l.dim ? 1 : 0}`;
+        const pts = l.pts.map((p) => `${Math.round(p.x - rect.x)},${Math.round(p.y - rect.y)}`).join(',');
+        return `${l.el.id}:${pts}:${l.el.color ?? ''}:${c?.weight}:${c?.dashed ? 1 : 0}:${c?.fromMarker}:${c?.toMarker}:${l.dim ? 1 : 0}`;
       }),
     ].join('|');
     if (key === this.spanKey) return;
@@ -161,20 +174,25 @@ export class ColumnCard implements CardView {
     for (const l of lines) {
       const c = lineDoc(l.el);
       if (!c) continue;
-      const t = clipSeg(l.x1, l.y1, l.x2, l.y2, rect);
-      if (!t) continue;
       const w = LINE_W[c.weight ?? 'medium'];
       const ink = l.el.color ?? cc.ink;
-      const seg = document.createElementNS(NS, 'line');
-      seg.setAttribute('x1', `${X(l.x1 + (l.x2 - l.x1) * t[0])}`);
-      seg.setAttribute('y1', `${Y(l.y1 + (l.y2 - l.y1) * t[0])}`);
-      seg.setAttribute('x2', `${X(l.x1 + (l.x2 - l.x1) * t[1])}`);
-      seg.setAttribute('y2', `${Y(l.y1 + (l.y2 - l.y1) * t[1])}`);
-      seg.setAttribute('stroke', ink);
-      seg.setAttribute('stroke-width', `${w}`);
-      if (c.dashed) seg.setAttribute('stroke-dasharray', '5 5');
-      if (l.dim) seg.setAttribute('opacity', '0.15');
-      this.lineSvg.appendChild(seg);
+      const pts = l.pts;
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const a = pts[i]!;
+        const b = pts[i + 1]!;
+        const t = clipSeg(a.x, a.y, b.x, b.y, rect);
+        if (!t) continue;
+        const seg = document.createElementNS(NS, 'line');
+        seg.setAttribute('x1', `${X(a.x + (b.x - a.x) * t[0])}`);
+        seg.setAttribute('y1', `${Y(a.y + (b.y - a.y) * t[0])}`);
+        seg.setAttribute('x2', `${X(a.x + (b.x - a.x) * t[1])}`);
+        seg.setAttribute('y2', `${Y(a.y + (b.y - a.y) * t[1])}`);
+        seg.setAttribute('stroke', ink);
+        seg.setAttribute('stroke-width', `${w}`);
+        if (c.dashed) seg.setAttribute('stroke-dasharray', '5 5');
+        if (l.dim) seg.setAttribute('opacity', '0.15');
+        this.lineSvg.appendChild(seg);
+      }
       const mk = (x: number, y: number, ang: number, m: string) => {
         if (m === 'dot') {
           const d = document.createElementNS(NS, 'circle');
@@ -195,10 +213,12 @@ export class ColumnCard implements CardView {
           this.lineSvg.appendChild(p);
         }
       };
+      const p2 = pts[1] ?? { x: l.x2, y: l.y2 };
+      const pb = pts[pts.length - 2] ?? { x: l.x1, y: l.y1 };
+      const pa = pts[pts.length - 1]!;
       if (pointInRect(l.x1, l.y1, rect))
-        mk(X(l.x1), Y(l.y1), Math.atan2(l.y1 - l.y2, l.x1 - l.x2), c.fromMarker);
-      if (pointInRect(l.x2, l.y2, rect))
-        mk(X(l.x2), Y(l.y2), Math.atan2(l.y2 - l.y1, l.x2 - l.x1), c.toMarker);
+        mk(X(l.x1), Y(l.y1), Math.atan2(pts[0]!.y - p2.y, pts[0]!.x - p2.x), c.fromMarker);
+      if (pointInRect(l.x2, l.y2, rect)) mk(X(l.x2), Y(l.y2), Math.atan2(pa.y - pb.y, pa.x - pb.x), c.toMarker);
     }
   }
 
