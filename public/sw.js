@@ -16,6 +16,7 @@ const PRECACHE = [
   './icon-dark.svg',
   './icon-192.png',
   './icon-512.png',
+  './icon-dark-192.png',
   './jswasm/sqlite3-worker1.mjs',
   './jswasm/sqlite3.wasm',
 ];
