@@ -34,7 +34,7 @@ self.addEventListener('install', (e) => {
 // walks them: index.html names the entry chunks, and every fetched js
 // names its lazy siblings as "./name-hash.js" strings. A fully cached
 // bundle means even a first-visit-then-offline launch works.
-const CHUNK = /[\w.-]+-[A-Za-z0-9_-]{8}\.(?:js|css)/g;
+const CHUNK = /[\w.-]+-[A-Za-z0-9_-]{8,}\.(?:js|css)/g;
 
 async function warmAll(cache) {
   const seen = new Set();

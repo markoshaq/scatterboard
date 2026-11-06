@@ -85,7 +85,7 @@
       // flashes the light background. Mirrors ui/theme.ts: an explicit
       // choice lives in localStorage, unset follows the OS.
       try {
-        var t = localStorage.getItem('scatterboard:theme');
+        var t = localStorage.getItem('scatterboard:theme') || localStorage.getItem('planboard:theme');
         var dark = t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
         if (dark) {
           document.documentElement.classList.add('dark');
