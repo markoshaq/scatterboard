@@ -6,9 +6,12 @@ import {
   createImage,
   createLine,
   embedDoc,
+  lineDoc,
   linkDoc,
+  migrateDoc,
   nextZ,
   survivingBoard,
+  tableDoc,
   uid,
   type Doc,
   type Element,
@@ -30,6 +33,7 @@ import {
   vElementPatch,
   vEnum,
   vId,
+  vNoParentCycle,
   vNum,
   vNumOpt,
   vObj,
@@ -39,7 +43,7 @@ import {
   type Dict,
 } from './validate';
 import { buildElement, mergeContent } from './build';
-import { checkNoOverwrite, ELEMENT_TYPES, scrubMove, vAction } from './vaction';
+import { checkNoOverwrite, checkParentCycles, ELEMENT_TYPES, scrubMove, vAction } from './vaction';
 
 // The slice of App the command surface needs; tests stub it, App
 // satisfies it structurally.
@@ -59,6 +63,8 @@ export interface AgentHost {
   scheduleSave(): void;
   editing: { endEdit(): void };
   layer: { rectOf(el: Element): Rect };
+  panels: { deleteBoardCascade(id: ID): void };
+  applyPrefs(): void;
   exporter: {
     snapshotPng(boardId?: ID, region?: Rect, scale?: number): Promise<Blob | null>;
     boardRaster(scale: number, region?: Rect): Promise<HTMLCanvasElement | null>;
@@ -106,6 +112,10 @@ const MUTATING = new Set([
   'import',
   'unfurl',
   'duplicate',
+  'removeBoard',
+  'saveSnapshot',
+  'deleteSnapshot',
+  'restoreSnapshot',
 ]);
 
 // Commands a ?do= link may run without asking: reads, selection,
@@ -124,10 +134,34 @@ export const URL_SAFE = new Set([
   'snapshot',
   'export',
   'templates',
+  'snapshots',
 ]);
 
-const EXPORT_FORMATS = new Set(['png', 'pdf', 'md', 'txt', 'doc', 'json', 'zip']);
+const EXPORT_FORMATS = new Set(['png', 'pdf', 'md', 'txt', 'doc', 'json', 'zip', 'csv']);
 const PRESENT_KEYS = new Set(['on', 'focus', 'comments', 'edit']);
+
+// Prefs an agent may set: doc-adjacent behaviour flags and formatting,
+// never identity/session state (agent, agentBridge) or bookkeeping
+// (commentSeen, recentBoards, helpers). lang is excluded: applying it
+// reloads the tab and kills the session.
+const PREF_BOOLS = new Set([
+  'reminders',
+  'unfurl',
+  'noOverlap',
+  'ink',
+  'undoArrows',
+  'autoEdit',
+  'spellcheck',
+  'minimap',
+  'browserLang',
+  'welcomed',
+]);
+const PREF_ENUMS: Record<string, Set<string>> = {
+  theme: new Set(['light', 'dark']),
+  unsortedSort: new Set(['added', 'oldest', 'modified', 'alpha', 'type']),
+  currency: new Set(['USD', 'EUR', 'GBP', 'JPY']),
+};
+const PREF_NUMS: Record<string, [number, number]> = { uiScale: [0.5, 2], guideAlpha: [0, 1] };
 
 // Per-type friendly content prop names accepted by create/patch.
 const TYPE_PROPS: Record<string, Set<string>> = {
@@ -137,16 +171,16 @@ const TYPE_PROPS: Record<string, Set<string>> = {
   column: new Set(['title']),
   board: new Set(['ref', 'title']),
   swatch: new Set(['value', 'caption', 'showValue']),
-  line: new Set(['from', 'to', 'label', 'dashed', 'weight', 'fromMarker', 'toMarker']),
+  line: new Set(['from', 'to', 'label', 'dashed', 'weight', 'route', 'fromMarker', 'toMarker']),
   comment: new Set(['text', 'items', 'add', 'anchor', 'anchorId']),
   link: new Set(['url', 'title', 'caption', 'showPreview', 'desc', 'image']),
   embed: new Set(['kind', 'url', 'title', 'caption', 'showPreview']),
-  image: new Set(['caption', 'strokes']),
+  image: new Set(['caption', 'alt', 'strokes']),
   file: new Set([]),
   document: new Set(['title', 'text', 'html', 'caption', 'displayMode']),
   sketch: new Set(['strokes']),
   annotation: new Set(['strokes']),
-  table: new Set(['title', 'caption', 'cells']),
+  table: new Set(['title', 'caption', 'cells', 'widths']),
 };
 
 const COMMON_PROPS = new Set(['x', 'y', 'w', 'color', 'parentId', 'boardId', 'labels', 'reactions']);
@@ -179,8 +213,62 @@ type Runner = () => unknown | Promise<unknown>;
 export function createAgentApi(app: AgentHost) {
   const doc = () => app.doc;
 
+  // Agent dispatches carry the 'agent' tag so the batch's store group
+  // never absorbs a user edit that lands while an async runner awaits:
+  // foreign work becomes its own undo entry instead.
   const dispatch = (a: Action) => {
-    app.store.dispatch(a);
+    app.store.dispatch(a, 'agent');
+  };
+
+  // A cross-board move cannot be expressed by the patch alone: column
+  // members follow their column, and line ends anchored to the moved
+  // card freeze at their last resolved point on the old board.
+  const moveExtras = (el: Element, newBoard: ID): Action[] => {
+    const out: Action[] = [];
+    const d = doc();
+    if (el.type === 'column') {
+      for (const m of Object.values(d.elements)) {
+        if (m.parentId !== el.id) continue;
+        const mp: ElementPatch = { boardId: newBoard, parentId: el.id };
+        scrubMove(m, mp, d);
+        out.push({ type: 'element.patch', id: m.id, patch: mp });
+      }
+    }
+    for (const le of Object.values(d.elements)) {
+      if (le.type !== 'line' || le.boardId !== el.boardId) continue;
+      const c = lineDoc(le);
+      if (!c || (c.from.el !== el.id && c.to.el !== el.id)) continue;
+      const rl = resolveLine(le, d, (t) => app.layer.rectOf(t));
+      const line = { ...c };
+      if (c.from.el === el.id) line.from = { x: Math.round(rl?.x1 ?? c.from.x), y: Math.round(rl?.y1 ?? c.from.y) };
+      if (c.to.el === el.id) line.to = { x: Math.round(rl?.x2 ?? c.to.x), y: Math.round(rl?.y2 ?? c.to.y) };
+      out.push({ type: 'element.patch', id: le.id, patch: { content: { line } } });
+    }
+    return out;
+  };
+
+  // Raw-action fixups the action itself cannot express: expanding here
+  // keeps the dispatch command and the friendly patch path aligned.
+  const expandAction = (a: Action): Action => {
+    if (a.type === 'element.patch') {
+      const el = doc().elements[a.id];
+      const nb = a.patch.boardId;
+      if (!el || nb === undefined || nb === el.boardId) return a;
+      const extras = moveExtras(el, nb);
+      return extras.length ? { type: 'batch', actions: [a, ...extras] } : a;
+    }
+    if (a.type === 'label.delete') {
+      // Elements keep no dead label refs, same as deleteLabel in tools.
+      const lid = a.label.id;
+      const extras = Object.values(doc().elements)
+        .filter((e) => e.labels.includes(lid))
+        .map((e): Action => ({ type: 'element.patch', id: e.id, patch: { labels: e.labels.filter((l) => l !== lid) } }));
+      return extras.length ? { type: 'batch', actions: [a, ...extras] } : a;
+    }
+    if (a.type === 'batch') {
+      return { type: 'batch', actions: a.actions.map(expandAction) };
+    }
+    return a;
   };
 
   const guard = () => {
@@ -229,7 +317,7 @@ export function createAgentApi(app: AgentHost) {
     // entry and an abort would undo their half-finished work.
     app.editing.endEdit();
     if (app.store.inGroup) fail('busy', 'a board gesture is in progress');
-    app.store.beginGroup();
+    app.store.beginGroup('agent');
     agentDepth++;
     try {
       const out: unknown[] = [];
@@ -362,13 +450,24 @@ export function createAgentApi(app: AgentHost) {
           const cur = doc().elements[id];
           if (!cur) fail('not_found', `no element ${id}`);
           const patch: ElementPatch = { ...top };
+          // Re-check against the live doc: a sibling command earlier in
+          // the batch may have reparented into a cycle since plan time.
+          if (patch.parentId !== undefined && patch.parentId !== null) {
+            vNoParentCycle(doc(), id, patch.parentId);
+          }
+          const extra: Action[] = [];
           if (Object.keys(contentProps).length) {
             const m = mergeContent(doc(), cur, contentProps);
             patch.content = m.content;
             if (m.top) Object.assign(patch, m.top);
+            if (m.extra) extra.push(...m.extra);
           }
           scrubMove(cur, patch, doc());
-          dispatch({ type: 'element.patch', id, patch });
+          if (patch.boardId !== undefined && patch.boardId !== cur.boardId) {
+            extra.push(...moveExtras(cur, patch.boardId));
+          }
+          const actions: Action[] = [{ type: 'element.patch', id, patch }, ...extra];
+          dispatch(actions.length > 1 ? { type: 'batch', actions } : actions[0]!);
           return { ok: true };
         };
       }
@@ -391,11 +490,15 @@ export function createAgentApi(app: AgentHost) {
         const to = vElId(doc(), o.to, 'to');
         const fa = doc().elements[from]!;
         const ta = doc().elements[to]!;
+        // Same endpoint rules as vLineEnd on the create path: lines,
+        // annotations and comments can never anchor a line end.
+        const badEnd = (e: Element) => e.type === 'line' || e.type === 'annotation' || e.type === 'comment';
         if (from === to) fail('bad_field', 'line endpoints must differ');
+        if (badEnd(fa) || badEnd(ta)) fail('bad_field', 'an endpoint cannot be a line, annotation or comment');
         if (fa.boardId !== ta.boardId) fail('bad_field', 'endpoints are on different boards');
         const opts: Dict = {};
         for (const k of Object.keys(o)) {
-          if (k === 'label' || k === 'dashed' || k === 'weight' || k === 'fromMarker' || k === 'toMarker') opts[k] = o[k];
+          if (k === 'label' || k === 'dashed' || k === 'weight' || k === 'route' || k === 'fromMarker' || k === 'toMarker') opts[k] = o[k];
           else if (k !== 'from' && k !== 'to') fail('bad_field', `unknown field ${k}`);
         }
         return () => {
@@ -403,6 +506,8 @@ export function createAgentApi(app: AgentHost) {
           const a = doc().elements[from];
           const b = doc().elements[to];
           if (!a || !b) fail('not_found', 'endpoint element is gone');
+          if (badEnd(a) || badEnd(b)) fail('bad_field', 'an endpoint cannot be a line, annotation or comment');
+          if (a.boardId !== b.boardId) fail('bad_field', 'endpoints are on different boards');
           const ra = app.layer.rectOf(a);
           const rb = app.layer.rectOf(b);
           const el = createLine(
@@ -414,6 +519,18 @@ export function createAgentApi(app: AgentHost) {
           el.content = mergeContent(doc(), el, opts).content;
           dispatch({ type: 'element.create', el });
           return { id: el.id };
+        };
+      }
+      case 'removeBoard': {
+        guard();
+        const o = vObj(params, 'params');
+        checkKeys(o, new Set(['id']));
+        const id = vBoardId(doc(), o.id);
+        return () => {
+          guard();
+          if (!doc().boards[id]) fail('not_found', `no board ${id}`);
+          app.panels.deleteBoardCascade(id);
+          return { ok: true };
         };
       }
       case 'trash':
@@ -489,10 +606,9 @@ export function createAgentApi(app: AgentHost) {
           // current center.
           const cx = x ?? (vp.vw / 2 - vp.x) / vp.z;
           const cy = y ?? (vp.vh / 2 - vp.y) / vp.z;
-          vp.z = zz;
-          vp.x = vp.vw / 2 - cx * zz;
-          vp.y = vp.vh / 2 - cy * zz;
-          vp.changed();
+          // snapTo cancels a running zoom tween; direct writes would
+          // be overwritten each frame until it settles.
+          vp.snapTo({ x: vp.vw / 2 - cx * zz, y: vp.vh / 2 - cy * zz, z: zz });
           return {
             x: (vp.vw / 2 - vp.x) / vp.z,
             y: (vp.vh / 2 - vp.y) / vp.z,
@@ -516,6 +632,102 @@ export function createAgentApi(app: AgentHost) {
           else if (on === false) app.exitPresent();
           const board = app.boardId ? doc().boards[app.boardId] : undefined;
           return { presenting: app.presenting, presentOpts: board?.presentOpts ?? {} };
+        };
+      }
+      case 'prefs': {
+        const o = params === undefined ? {} : vObj(params, 'params');
+        checkKeys(o, new Set(['set']));
+        const set = o.set === undefined ? null : vObj(o.set, 'set');
+        if (!set) return () => ({ ...app.prefs });
+        const writes: [string, unknown][] = [];
+        for (const [k, v] of Object.entries(set)) {
+          if (PREF_BOOLS.has(k)) writes.push([k, vBool(v, `prefs.${k}`)]);
+          else if (PREF_ENUMS[k]) writes.push([k, vEnum(v, `prefs.${k}`, PREF_ENUMS[k]!)]);
+          else if (PREF_NUMS[k]) {
+            const [lo, hi] = PREF_NUMS[k]!;
+            writes.push([k, Math.min(hi, Math.max(lo, vNum(v, `prefs.${k}`)))]);
+          } else fail('bad_field', `unknown pref ${k}`);
+        }
+        return () => {
+          guard();
+          for (const [k, v] of writes) (app.prefs as Dict)[k] = v;
+          app.scheduleSave();
+          app.applyPrefs();
+          return { ok: true };
+        };
+      }
+      case 'snapshots': {
+        const o = params === undefined ? {} : vObj(params, 'params');
+        checkKeys(o, new Set(['id']));
+        const id = o.id === undefined ? null : vId(o.id, 'id');
+        return async () => {
+          const { listSnapshots, readSnapshot } = await import('../persist/snapshots');
+          if (id === null) return listSnapshots();
+          const w = await readSnapshot(id).catch(() => null);
+          if (!w) fail('not_found', `no snapshot ${id}`);
+          const sd = migrateDoc(w.doc);
+          // Browse view: enough to pick a board for restoreSnapshot.
+          return {
+            boards: Object.values(sd.boards).map((b) => ({ id: b.id, title: b.title, parentId: b.parentId })),
+            elements: Object.values(sd.elements).map((e) => ({
+              id: e.id,
+              type: e.type,
+              boardId: e.boardId,
+              parentId: e.parentId,
+            })),
+          };
+        };
+      }
+      case 'saveSnapshot': {
+        guard();
+        const o = params === undefined ? {} : vObj(params, 'params');
+        checkKeys(o, new Set(['name']));
+        const name = vStrOpt(o.name, 'name', 256);
+        return async () => {
+          guard();
+          const { createSnapshot } = await import('../persist/snapshots');
+          const { fmtDate } = await import('../locale');
+          const meta = await createSnapshot(doc(), app.prefs, name ?? fmtDate(Date.now()), false);
+          return { id: meta.id, name: meta.name, createdAt: meta.createdAt };
+        };
+      }
+      case 'deleteSnapshot': {
+        guard();
+        const o = vObj(params, 'params');
+        checkKeys(o, new Set(['id']));
+        const id = vId(o.id, 'id');
+        return async () => {
+          guard();
+          const { deleteSnapshot } = await import('../persist/snapshots');
+          await deleteSnapshot(id);
+          return { ok: true };
+        };
+      }
+      case 'restoreSnapshot': {
+        guard();
+        const o = vObj(params, 'params');
+        checkKeys(o, new Set(['id', 'boardId', 'hostId']));
+        const id = vId(o.id, 'id');
+        const snapBoard = vStrOpt(o.boardId, 'boardId');
+        const hostId = o.hostId === undefined ? undefined : vBoardId(doc(), o.hostId);
+        return async () => {
+          guard();
+          const { readSnapshot } = await import('../persist/snapshots');
+          const w = await readSnapshot(id).catch(() => null);
+          if (!w) fail('not_found', `no snapshot ${id}`);
+          const sd = migrateDoc(w.doc);
+          const rootId = snapBoard ?? survivingBoard(sd) ?? '';
+          if (!sd.boards[rootId]) fail('not_found', `no board ${rootId} in snapshot`);
+          const host = hostId ?? survivingBoard(doc(), undefined, app.boardId);
+          if (!host) fail('not_found', 'no host board to attach to');
+          // Browse-style restore: the snapshot board lands as a new
+          // sub-board (undoable), never a whole-workspace replace.
+          const { restoreSnapshotBoardActions } = await import('../ui/snapbrowse');
+          const res = restoreSnapshotBoardActions(doc(), sd, rootId, host);
+          if (!res) fail('restore', 'snapshot restore failed');
+          dispatch({ type: 'batch', actions: res.actions });
+          app.openBoard(res.boardId);
+          return { boardId: res.boardId };
         };
       }
       case 'undo':
@@ -542,8 +754,27 @@ export function createAgentApi(app: AgentHost) {
         const dy = vNumOpt(o.dy, 'dy') ?? 24;
         return () => {
           guard();
-          const els = ids.map((i) => doc().elements[i]).filter((e): e is Element => !!e);
-          if (!els.length) fail('not_found', 'no elements left to duplicate');
+          // Collect column members like cloneForDrag: a duplicated
+          // column carries its cards along.
+          const src = new Map<ID, Element>();
+          for (const id of ids) {
+            const el = doc().elements[id];
+            if (!el) continue;
+            src.set(id, el);
+            if (el.type === 'column') {
+              for (const m of Object.values(doc().elements)) {
+                if (m.parentId === el.id) src.set(m.id, m);
+              }
+            }
+          }
+          if (!src.size) fail('not_found', 'no elements left to duplicate');
+          // Members cloned without their column land on the canvas at
+          // their rendered spot, not their stored column-space coords.
+          const els = [...src.values()].map((e) => {
+            if (e.parentId === null || src.has(e.parentId)) return e;
+            const r = app.layer.rectOf(e);
+            return { ...e, x: Math.round(r.x), y: Math.round(r.y) };
+          });
           const rectOf = (t: Element) => app.layer.rectOf(t);
           const { clones } = remapElements(doc(), els, (e) => e.boardId, dx, dy, {
             resolveEnd: (e, which) => {
@@ -652,12 +883,20 @@ export function createAgentApi(app: AgentHost) {
           }
           if (!el) {
             const ref = uid();
+            // File-card blobs only ever download, but a stored html/svg
+            // payload is a script vector the day anything previews it
+            // inline: keep the bytes, drop the script-capable type.
+            const ft = blob.type.toLowerCase();
+            const safe =
+              ft === 'text/html' || ft === 'image/svg+xml' || ft === 'application/xhtml+xml'
+                ? new Blob([blob], { type: 'application/octet-stream' })
+                : blob;
             try {
-              await app.blobStore.put(ref, blob);
+              await app.blobStore.put(ref, safe);
             } catch {
               fail('blob', 'blob store rejected the upload');
             }
-            el = createFile(doc(), boardId, x, y, ref, name ?? 'file', blob.size, blob.type);
+            el = createFile(doc(), boardId, x, y, ref, name ?? 'file', safe.size, safe.type);
           }
           // The async blob work may have outlasted the target: the
           // board could be gone and the parent may have left it.
@@ -673,8 +912,9 @@ export function createAgentApi(app: AgentHost) {
       }
       case 'export': {
         const o = params === undefined ? {} : vObj(params, 'params');
-        checkKeys(o, new Set(['format', 'boardId', 'subs', 'hi']));
+        checkKeys(o, new Set(['format', 'boardId', 'subs', 'hi', 'id']));
         const format = vEnum(o.format, 'format', EXPORT_FORMATS);
+        if (format !== 'csv' && o.id !== undefined) fail('bad_field', 'id only applies to csv');
         const bid = o.boardId === undefined ? requireBoard() : vBoardId(doc(), o.boardId);
         const subs = vBoolOpt(o.subs, 'subs') ?? false;
         const hi = vBoolOpt(o.hi, 'hi') ?? false;
@@ -688,15 +928,23 @@ export function createAgentApi(app: AgentHost) {
           }
           if (format === 'pdf') {
             const scale = hi ? 2 : 1;
-            if (bid !== app.boardId) app.openBoard(bid);
-            const cv = await app.exporter.boardRaster(scale);
-            const { toBlob } = await import('../export/boardpng');
-            const blob = cv && (await toBlob(cv, 'image/jpeg', hi ? 0.95 : 0.8));
-            if (!cv || !blob) fail('export', 'pdf export failed');
-            const jpeg = new Uint8Array(await blob.arrayBuffer());
-            const { jpegToPdf } = await import('../export/pdf');
-            const pdf = jpegToPdf(jpeg, cv.width, cv.height, (cv.width / scale) * 0.75, (cv.height / scale) * 0.75);
-            return { name: `${base}.pdf`, mime: 'application/pdf', dataUrl: await blobToDataUrl(pdf) };
+            const prev = app.boardId;
+            if (bid !== prev) app.openBoard(bid);
+            try {
+              const cv = await app.exporter.boardRaster(scale);
+              const { toBlob } = await import('../export/boardpng');
+              const blob = cv && (await toBlob(cv, 'image/jpeg', hi ? 0.95 : 0.8));
+              if (!cv || !blob) fail('export', 'pdf export failed');
+              const jpeg = new Uint8Array(await blob.arrayBuffer());
+              const { jpegToPdf } = await import('../export/pdf');
+              const pdf = jpegToPdf(jpeg, cv.width, cv.height, (cv.width / scale) * 0.75, (cv.height / scale) * 0.75);
+              return { name: `${base}.pdf`, mime: 'application/pdf', dataUrl: await blobToDataUrl(pdf) };
+            } finally {
+              // The raster needed the target board open; leave the user
+              // on the board they were actually looking at. A board the
+              // agent opened since is left alone.
+              if (prev && prev !== bid && doc().boards[prev] && app.boardId === bid) app.openBoard(prev);
+            }
           }
           if (format === 'md' || format === 'txt' || format === 'doc') {
             const { boardItems, toMarkdown, toPlain, toWordHtml } = await import('../export/linear');
@@ -706,6 +954,14 @@ export function createAgentApi(app: AgentHost) {
             const ext = format === 'doc' ? 'doc' : format;
             const mime = format === 'md' ? 'text/markdown' : format === 'txt' ? 'text/plain' : 'application/msword';
             return { name: `${base}.${ext}`, mime, text };
+          }
+          if (format === 'csv') {
+            if (o.id === undefined) fail('bad_params', 'csv export needs a table element id');
+            const el = doc().elements[vElId(doc(), o.id, 'id')];
+            const td = el ? tableDoc(el) : null;
+            if (!td) fail('bad_field', 'csv export needs a table element');
+            const { serializeCsv } = await import('../cards/table/csv');
+            return { name: `${slugFileName(td.title || 'table')}.csv`, mime: 'text/csv', text: serializeCsv(td.cells) };
           }
           if (format === 'json') {
             const { exportBoard } = await import('../export/boardio');
@@ -794,7 +1050,8 @@ export function createAgentApi(app: AgentHost) {
         return () => {
           guard();
           checkNoOverwrite(doc(), action);
-          dispatch(action);
+          checkParentCycles(doc(), action);
+          dispatch(expandAction(action));
           return { ok: true };
         };
       }

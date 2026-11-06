@@ -134,6 +134,18 @@ export function vParentId(doc: Doc, v: unknown, boardId?: ID): ID | null {
   return id;
 }
 
+// Transitive ancestor check: pid must not sit on a parent chain that
+// loops back to id, or rectOf/fallbackHeight recurse forever. Batch
+// siblings can each pass this against the pre-batch doc, so run-time
+// callers re-check it on the live doc too.
+export function vNoParentCycle(d: Doc, id: ID, pid: ID | null): void {
+  const seen = new Set<ID>([id]);
+  for (let cur: ID | null = pid; cur !== null && cur !== UNSORTED; cur = d.elements[cur]?.parentId ?? null) {
+    if (seen.has(cur)) fail('bad_field', 'parentId would create a cycle');
+    seen.add(cur);
+  }
+}
+
 export function vLabels(doc: Doc, v: unknown, boardId: ID): ID[] {
   if (!Array.isArray(v)) fail('bad_field', 'labels must be an array');
   return v.map((raw) => {
@@ -214,9 +226,16 @@ export function vElementPatch(doc: Doc, el: Element, raw: Dict, targetBoard: ID,
     switch (k) {
       case 'x':
       case 'y':
-      case 'z':
         patch[k] = vNum(v, `patch.${k}`);
         break;
+      case 'z': {
+        const z = vNum(v, 'patch.z');
+        // seq tracks the highest z ever handed out: a huge patched z
+        // must move it too or the card pins above all future cards.
+        if (z > doc.seq) doc.seq = z;
+        patch.z = z;
+        break;
+      }
       case 'w':
         patch.w = vWidth(v);
         break;
@@ -235,7 +254,7 @@ export function vElementPatch(doc: Doc, el: Element, raw: Dict, targetBoard: ID,
         break;
       case 'parentId': {
         const pid = vParentId(doc, v, targetBoard);
-        if (selfParent !== undefined && pid === selfParent) fail('bad_field', 'parentId cannot be the element itself');
+        if (selfParent !== undefined) vNoParentCycle(doc, selfParent, pid);
         patch.parentId = pid;
         break;
       }

@@ -24,7 +24,9 @@ import {
   type EmbedKind,
   type ID,
   type LineMarker,
+  type LineRoute,
   type LineWeight,
+  type RecurFreq,
   type TableCell,
   type TodoItem,
   type TypeContent,
@@ -58,9 +60,11 @@ import type { AgentHost } from './api';
 const EMBED_KINDS = new Set(['audio', 'map', 'video']);
 const LINE_MARKERS = new Set(['none', 'arrow', 'dot']);
 const LINE_WEIGHTS = new Set(['thin', 'medium', 'thick']);
+const LINE_ROUTES = new Set(['straight', 'elbow']);
 const CELL_TYPES = new Set(['auto', 'number', 'currency', 'percent', 'text', 'datetime', 'checkbox']);
 const ALIGNS_H = new Set(['left', 'center', 'right']);
 const ALIGNS_V = new Set(['top', 'middle', 'bottom']);
+const RECUR_FREQS = new Set(['day', 'week', 'month', 'year']);
 
 function vTodoItems(v: unknown): TodoItem[] {
   if (!Array.isArray(v)) fail('bad_field', 'items must be an array');
@@ -73,10 +77,18 @@ function vTodoItems(v: unknown): TodoItem[] {
     };
     if (o.dueAt !== undefined) it.dueAt = vNum(o.dueAt, 'items[].dueAt');
     if (o.dueTime !== undefined) it.dueTime = vBool(o.dueTime, 'items[].dueTime');
+    if (o.recur !== undefined) {
+      const r = vObj(o.recur, 'items[].recur');
+      const f = vEnum<RecurFreq>(r.f, 'items[].recur.f', RECUR_FREQS);
+      const n = r.n === undefined ? 1 : vNum(r.n, 'items[].recur.n');
+      if (n < 1) fail('bad_field', 'items[].recur.n must be >= 1');
+      it.recur = { f, n };
+    }
     if (o.assignee !== undefined) {
       if (o.assignee !== 'self') fail('bad_field', 'assignee must be "self"');
       it.assignee = 'self';
     }
+    if (o.reactions !== undefined) it.reactions = vStrArray(o.reactions, 'items[].reactions', 32);
     return it;
   });
 }
@@ -132,8 +144,9 @@ function mergeCells(cur: TableCell[][], v: unknown): TableCell[][] {
 // Applies the friendly content props to a copy of the element's
 // content. Also validates them: unknown keys already failed upstream,
 // bad values fail here. `top` carries element-field side effects
-// (annotation strokes re-origin the element).
-export function mergeContent(d: Doc, el: Element, p: Dict): { content: TypeContent; top?: ElementPatch } {
+// (annotation strokes re-origin the element), `extra` whole other
+// actions (a board card's title belongs to the board record).
+export function mergeContent(d: Doc, el: Element, p: Dict): { content: TypeContent; top?: ElementPatch; extra?: Action[] } {
   const c = el.content;
   if ('note' in c) {
     const note = { ...c.note };
@@ -161,8 +174,15 @@ export function mergeContent(d: Doc, el: Element, p: Dict): { content: TypeConte
     return { content: { todo } };
   }
   if ('boardRef' in c) {
-    if (p.ref !== undefined) return { content: { boardRef: vBoardId(d, p.ref) } };
-    return { content: c };
+    const extra: Action[] = [];
+    // The card shows the board's title: patching it edits the board.
+    if (p.title !== undefined) {
+      extra.push({ type: 'board.patch', id: c.boardRef, patch: { title: vStr(p.title, 'title') } });
+    }
+    return {
+      content: p.ref !== undefined ? { boardRef: vBoardId(d, p.ref) } : c,
+      ...(extra.length ? { extra } : {}),
+    };
   }
   if ('swatch' in c) {
     const swatch = { ...c.swatch };
@@ -180,6 +200,7 @@ export function mergeContent(d: Doc, el: Element, p: Dict): { content: TypeConte
     if (p.weight !== undefined) line.weight = vEnum<LineWeight>(p.weight, 'weight', LINE_WEIGHTS);
     if (p.fromMarker !== undefined) line.fromMarker = vEnum<LineMarker>(p.fromMarker, 'fromMarker', LINE_MARKERS);
     if (p.toMarker !== undefined) line.toMarker = vEnum<LineMarker>(p.toMarker, 'toMarker', LINE_MARKERS);
+    if (p.route !== undefined) line.route = vEnum<LineRoute>(p.route, 'route', LINE_ROUTES);
     return { content: { line } };
   }
   if ('comment' in c) {
@@ -188,7 +209,18 @@ export function mergeContent(d: Doc, el: Element, p: Dict): { content: TypeConte
     if (p.add !== undefined) {
       items = [...items, { id: uid(), text: vStr(p.add, 'add', 8192), createdAt: Date.now() }];
     }
-    return { content: { comment: { items } } };
+    if (p.text !== undefined && p.items === undefined) {
+      // 'text' names the thread's first comment, matching create.
+      const text = vStr(p.text, 'text', 8192);
+      items = items.length
+        ? [{ ...items[0]!, text }, ...items.slice(1)]
+        : [{ id: uid(), text, createdAt: Date.now() }];
+    }
+    const top: ElementPatch = {};
+    if (p.anchor !== undefined) {
+      top.anchorId = p.anchor === null ? undefined : vAnchorId(d, p.anchor, el.boardId);
+    }
+    return { content: { comment: { items } }, ...(Object.keys(top).length ? { top } : {}) };
   }
   if ('link' in c) {
     const link = { ...c.link };
@@ -218,6 +250,10 @@ export function mergeContent(d: Doc, el: Element, p: Dict): { content: TypeConte
   if ('image' in c) {
     const image = { ...c.image };
     if (p.caption !== undefined) image.caption = vStr(p.caption, 'caption');
+    if (p.alt !== undefined) {
+      if (p.alt === null) delete image.alt;
+      else image.alt = vStr(p.alt, 'alt', 4096);
+    }
     if (p.strokes !== undefined) image.strokes = vStrokes(p.strokes);
     return { content: { image } };
   }
@@ -257,6 +293,13 @@ export function mergeContent(d: Doc, el: Element, p: Dict): { content: TypeConte
     if (p.title !== undefined) table.title = vStr(p.title, 'title');
     if (p.caption !== undefined) table.caption = vStr(p.caption, 'caption');
     if (p.cells !== undefined) table.cells = mergeCells(c.table.cells, p.cells);
+    if (p.widths !== undefined) {
+      if (p.widths === null) delete table.widths;
+      else {
+        if (!Array.isArray(p.widths)) fail('bad_field', 'widths must be an array');
+        table.widths = p.widths.map((w) => vNum(w, 'widths[]'));
+      }
+    }
     return { content: { table } };
   }
   return { content: c };

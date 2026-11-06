@@ -4,6 +4,7 @@ import {
   nextZ,
   saneContent,
   uid,
+  UNSORTED,
   type Doc,
   type Element,
   type ElementType,
@@ -189,6 +190,31 @@ export function scrubMove(el: Element, patch: ElementPatch, d: Doc) {
   if (patch.anchorId === undefined && el.anchorId !== undefined) {
     if (d.elements[el.anchorId]?.boardId !== patch.boardId) patch.anchorId = undefined;
   }
+}
+
+// The whole-action-tree parentId cycle check: each patch is validated
+// against the pre-batch doc, so a cycle two siblings create together
+// only shows up once their patches are applied in order over an
+// overlay of the live doc. Runs at dispatch time alongside
+// checkNoOverwrite.
+export function checkParentCycles(d: Doc, a: Action): void {
+  const parentOf = new Map<ID, ID | null>();
+  const parent = (id: ID): ID | null =>
+    parentOf.has(id) ? parentOf.get(id)! : (d.elements[id]?.parentId ?? null);
+  const walk = (x: Action) => {
+    if (x.type === 'batch') {
+      for (const s of x.actions) walk(s);
+      return;
+    }
+    if (x.type !== 'element.patch' || x.patch.parentId === undefined) return;
+    parentOf.set(x.id, x.patch.parentId);
+    const seen = new Set<ID>([x.id]);
+    for (let cur: ID | null = x.patch.parentId; cur !== null && cur !== UNSORTED; cur = parent(cur)) {
+      if (seen.has(cur)) fail('bad_field', 'parentId would create a cycle');
+      seen.add(cur);
+    }
+  };
+  walk(a);
 }
 
 // Re-checked at run time too: two creates in one batch could carry

@@ -138,25 +138,54 @@ function requestApp(method, params) {
   });
 }
 
-function greet(ws, msg) {
-  if (!msg || msg.type !== 'hello') return deny(ws, 'expected hello');
-  const isApp = msg.role === 'app';
-  const sessionKey = isApp ? appKey : key;
-  let authed = msg.bridgeId === bridgeId && msg.key === sessionKey;
-  // The pairing token admits app sockets only; it cannot mint an agent.
-  if (isApp && msg.token === token) {
-    authed = true;
-    if (!tokenPinned) token = randomBytes(16).toString('base64url');
-  }
-  if (!authed) return deny(ws, 'bad credentials');
+const hmacOf = (k, s) => createHmac('sha256', k).update(s).digest('hex');
+
+function welcomeApp(ws, proofSecret, proofNonce) {
+  // One app session at a time; agents share the socket pool.
+  if (appSock && appSock.readyState === appSock.OPEN) return deny(ws, 'busy');
   ws.greeted = true;
-  if (isApp) {
-    // One app session at a time; agents share the socket pool.
-    if (appSock && appSock.readyState === appSock.OPEN) return deny(ws, 'busy');
-    ws.isApp = true;
-    appSock = ws;
+  ws.isApp = true;
+  appSock = ws;
+  // The bridge proves the same secret back: a port squatter that
+  // answered the hello cannot mint a welcome the app will trust.
+  send(ws, { type: 'welcome', bridgeId, key: appKey, proof: hmacOf(proofSecret, `${proofNonce}:bridge`) });
+}
+
+function greet(ws, msg) {
+  if (!msg || (msg.type !== 'hello' && msg.type !== 'auth')) return deny(ws, 'expected hello');
+  if (msg.type === 'hello') {
+    if (msg.role !== 'app') {
+      if (!(msg.bridgeId === bridgeId && msg.key === key)) return deny(ws, 'bad credentials');
+      ws.greeted = true;
+      send(ws, { type: 'welcome', bridgeId, key });
+      return;
+    }
+    // Legacy hellos still carry credentials inline so older app
+    // versions connect; anything else gets a challenge nonce and
+    // proves the secret as HMAC instead of sending it.
+    if (msg.bridgeId === bridgeId && msg.key === appKey) return welcomeApp(ws, appKey, '');
+    if (msg.token === token) {
+      const presented = token;
+      if (!tokenPinned) token = randomBytes(16).toString('base64url');
+      return welcomeApp(ws, presented, '');
+    }
+    ws.nonce = randomBytes(16).toString('base64url');
+    send(ws, { type: 'challenge', nonce: ws.nonce });
+    return;
   }
-  send(ws, { type: 'welcome', bridgeId, key: sessionKey });
+  // msg.type === 'auth': an app answering its challenge nonce.
+  const n = ws.nonce;
+  ws.nonce = undefined;
+  if (!n) return deny(ws, 'expected hello');
+  if (typeof msg.tokenMac === 'string' && msg.tokenMac === hmacOf(token, n)) {
+    const presented = token;
+    if (!tokenPinned) token = randomBytes(16).toString('base64url');
+    return welcomeApp(ws, presented, n);
+  }
+  if (msg.bridgeId === bridgeId && typeof msg.mac === 'string' && msg.mac === hmacOf(appKey, n)) {
+    return welcomeApp(ws, appKey, n);
+  }
+  return deny(ws, 'bad credentials');
 }
 
 wss.on('connection', (ws) => {
@@ -173,8 +202,10 @@ wss.on('connection', (ws) => {
       return;
     }
     if (!ws.greeted) {
-      clearTimeout(greetTimer);
+      // The timer survives the hello -> challenge -> auth handshake:
+      // only a successful greet disarms it.
       greet(ws, msg);
+      if (ws.greeted) clearTimeout(greetTimer);
       return;
     }
     if (ws.isApp) {
@@ -248,6 +279,12 @@ const METHODS = {
   sb_redo: 'redo',
   sb_batch: 'batch',
   sb_dispatch: 'dispatch',
+  sb_removeboard: 'removeBoard',
+  sb_prefs: 'prefs',
+  sb_snapshots: 'snapshots',
+  sb_savesnapshot: 'saveSnapshot',
+  sb_deletesnapshot: 'deleteSnapshot',
+  sb_restoresnapshot: 'restoreSnapshot',
 };
 
 const STR = { type: 'string' };
@@ -304,11 +341,15 @@ const TOOLS = [
   {
     name: 'sb_create',
     description:
-      'Create a card. type: note|column|board|todo|heading|swatch|line|comment|link|embed|document|sketch|annotation|table. ' +
+      'Create a card. type: note|column|board|todo|heading|swatch|line|comment|link|embed|document|sketch|annotation|table (image/file via sb_upload). ' +
       'props: {x,y,w,color,parentId("unsorted"|columnId|null),boardId,labels,reactions} plus per-type fields: ' +
-      'text/html (note,heading,document), level (heading), title (todo,column,board,document,table), items (todo,comment), ' +
-      'url/kind (link,embed), value/caption (swatch), cells {B2:{text}} (table), strokes (sketch,annotation), ' +
-      'from/to {el,x,y} (line), ref (board card to an existing board), anchorId (comment)',
+      'text/html (note,heading,document), level (heading), title (todo,column,board,document,table), ' +
+      'showTitle and items [{text,done,dueAt,dueTime,recur{f,n},assignee:"self",reactions}] (todo), text/items/add/anchorId (comment), ' +
+      'url/title/caption/showPreview/desc/image (link), kind/url/title/caption/showPreview (embed), value/caption/showValue (swatch), ' +
+      'from/to {el,x,y}/label/dashed/weight thin|medium|thick/route straight|elbow/fromMarker|toMarker none|arrow|dot (line), ' +
+      'title/text/html/caption/displayMode icon|detail (document), caption/alt/strokes (image), ' +
+      'cells {B2:{text,html,type,alignH,alignV,color}}/widths [numbers] (table), strokes (sketch,annotation), ' +
+      'ref/title (board card to an existing or new board)',
     inputSchema: obj({ type: STR, props: { type: 'object' } }, ['type']),
   },
   {
@@ -332,6 +373,7 @@ const TOOLS = [
         to: STR,
         label: STR,
         weight: { type: 'string', enum: ['thin', 'medium', 'thick'] },
+        route: { type: 'string', enum: ['straight', 'elbow'] },
         dashed: BOOL,
         fromMarker: { type: 'string', enum: ['none', 'arrow', 'dot'] },
         toMarker: { type: 'string', enum: ['none', 'arrow', 'dot'] },
@@ -373,7 +415,7 @@ const TOOLS = [
   {
     name: 'sb_snapshot',
     description:
-      'PNG snapshot of a board (default: the open board), returned as an image. x,y,w,h crop to a board-space region (all four required together); scale defaults to 2',
+      'PNG raster of a board (default: the open board), returned as an image. x,y,w,h crop to a board-space region (all four required together); scale defaults to 2. Not a version-history snapshot; see sb_snapshots',
     inputSchema: obj({ boardId: STR, x: NUM, y: NUM, w: NUM, h: NUM, scale: NUM }),
   },
   {
@@ -413,11 +455,12 @@ const TOOLS = [
   {
     name: 'sb_export',
     description:
-      'Export a board (default: the open board). format: png (image), pdf, md, txt, doc, json, zip (media files). subs includes sub-boards in text exports; hi renders pdf at 2x. Returns {name,mime,dataUrl} or {name,mime,text}',
+      'Export a board (default: the open board). format: png (image), pdf, md, txt, doc, json, zip (media files), csv (one table card; id required). subs includes sub-boards in text exports; hi renders pdf at 2x. Returns {name,mime,dataUrl} or {name,mime,text}',
     inputSchema: obj(
       {
-        format: { type: 'string', enum: ['png', 'pdf', 'md', 'txt', 'doc', 'json', 'zip'] },
+        format: { type: 'string', enum: ['png', 'pdf', 'md', 'txt', 'doc', 'json', 'zip', 'csv'] },
         boardId: STR,
+        id: STR,
         subs: BOOL,
         hi: BOOL,
       },
@@ -449,8 +492,40 @@ const TOOLS = [
   {
     name: 'sb_dispatch',
     description:
-      'Dispatch a raw store action: element.*, board.*, label.*, template.patch, template.delete or batch (trash.* and template.create are rejected; use sb_restore/sb_emptytrash/sb_savetemplate)',
+      'Dispatch a raw store action: element.*, board.*, label.*, template.patch, template.delete or batch (trash.*, board.delete and template.create are rejected; use sb_restore/sb_emptytrash/sb_removeboard/sb_savetemplate)',
     inputSchema: obj({ action: { type: 'object' } }, ['action']),
+  },
+  {
+    name: 'sb_removeboard',
+    description: 'Delete a board and its whole subtree: elements, labels, sub-boards and dangling board cards elsewhere. One undoable batch; fails on the last board',
+    inputSchema: obj({ id: STR }, ['id']),
+  },
+  {
+    name: 'sb_prefs',
+    description:
+      'Read app prefs, or pass set:{key:value} to change one of: reminders, unfurl, noOverlap, ink, undoArrows, autoEdit, spellcheck, minimap, browserLang, welcomed, theme (light|dark), unsortedSort, currency, uiScale, guideAlpha',
+    inputSchema: obj({ set: { type: 'object' } }),
+  },
+  {
+    name: 'sb_snapshots',
+    description: 'List version-history snapshots {id,name,createdAt,auto}; pass id to browse the snapshot\'s boards and elements (for sb_restoresnapshot)',
+    inputSchema: obj({ id: STR }),
+  },
+  {
+    name: 'sb_savesnapshot',
+    description: 'Save the whole workspace as a named version-history snapshot',
+    inputSchema: obj({ name: STR }),
+  },
+  {
+    name: 'sb_deletesnapshot',
+    description: 'Delete a version-history snapshot by id',
+    inputSchema: obj({ id: STR }, ['id']),
+  },
+  {
+    name: 'sb_restoresnapshot',
+    description:
+      'Restore one board out of a snapshot into the live doc as a new sub-board: boardId picks the snapshot board (default: its root board), hostId picks the live parent board (default: a surviving root). Undoable; does not replace the workspace',
+    inputSchema: obj({ id: STR, boardId: STR, hostId: STR }, ['id']),
   },
 ];
 

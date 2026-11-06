@@ -40,6 +40,17 @@ export class Store {
   private future: HistoryEntry[] = [];
   private group: Group | null = null;
   private groupDepth = 0;
+  // A tagged group (agent batches) accepts only dispatches carrying
+  // the same tag; foreign work lands as standalone history entries
+  // instead of merging into someone else's undo. foreignDepth counts
+  // groups opened while a tagged group owns the store, so their
+  // endGroup calls cannot close the owner's group early.
+  private groupTag: string | null = null;
+  private foreignDepth = 0;
+  // While a replay emit is in flight this floors the redo stack: the
+  // just-replayed entry stays queued even when a listener flushes an
+  // edit group (endEdit -> endGroup -> dropFuture) during the emit.
+  private futureFloor = 0;
   private changeListeners = new Set<(c: Change) => void>();
 
   constructor(doc: Doc) {
@@ -62,21 +73,21 @@ export class Store {
     return { inverse: flatten(inv), change };
   }
 
-  dispatch(a: Action) {
+  dispatch(a: Action, tag?: string) {
     const { inverse, change } = this.run(a);
-    if (this.group) {
+    if (this.group && (this.groupTag ?? null) === (tag ?? null)) {
       // A no-op apply (a delete whose target is already gone) joins
       // neither the group's undo record nor its redo leaves, and the
       // redo stack survives it.
       if (inverse.length || anyChange(change)) {
         this.absorbUndo(this.group, inverse);
         this.absorbRedo(this.group, a);
-        this.future = [];
+        this.dropFuture();
       }
     } else if (inverse.length) {
       this.past.push({ undo: inverse, redo: flatten(a) });
       if (this.past.length > HISTORY_LIMIT) this.past.shift();
-      this.future = [];
+      this.dropFuture();
     }
     // A no-op apply (patch on a missing element) produces an empty
     // change: no rev bump, no save mark, no render.
@@ -115,15 +126,28 @@ export class Store {
     }
   }
 
-  // Nested begins join the outer group instead of discarding it.
-  beginGroup() {
+  // Nested begins join the outer group instead of discarding it. A
+  // begin tagged differently from the open group's tag is foreign: it
+  // does not join and its matching endGroup is swallowed here.
+  beginGroup(tag?: string) {
+    if (this.group && this.groupTag !== (tag ?? null)) {
+      this.foreignDepth++;
+      return;
+    }
     this.groupDepth++;
-    this.group ??= { undo: [], undoIdx: new Map(), redo: [], redoIdx: new Map() };
+    if (!this.group) {
+      this.group = { undo: [], undoIdx: new Map(), redo: [], redoIdx: new Map() };
+      this.groupTag = tag ?? null;
+    }
   }
 
   // Returns whether the group landed a history entry: callers rolling
   // a group back must not undo when nothing was pushed.
   endGroup(label?: string): boolean {
+    if (this.foreignDepth > 0) {
+      this.foreignDepth--;
+      return false;
+    }
     if (!this.group) {
       this.groupDepth = 0;
       return false;
@@ -131,10 +155,11 @@ export class Store {
     if (--this.groupDepth > 0) return false;
     const g = this.group;
     this.group = null;
+    this.groupTag = null;
     if (!g.redo.length) return false;
     this.past.push({ undo: g.undo, redo: g.redo, ...(label !== undefined ? { label } : {}) });
     if (this.past.length > HISTORY_LIMIT) this.past.shift();
-    this.future = [];
+    this.dropFuture();
     return true;
   }
 
@@ -142,6 +167,13 @@ export class Store {
   // it so an undone partial batch can never replay.
   clearFuture() {
     this.future = [];
+    this.futureFloor = 0;
+  }
+
+  // future = [] honoring futureFloor: during a replay emit the entry
+  // the replay just queued is kept, anything pushed since is dropped.
+  private dropFuture() {
+    this.future.length = Math.min(this.future.length, this.futureFloor);
   }
 
   get inGroup() {
@@ -162,11 +194,14 @@ export class Store {
     const change: Change = emptyChange();
     change.replay = true;
     for (const a of entry.undo) applyAction(this.doc, a, change);
-    // Push AFTER emit: listeners may flush an open edit group during the
-    // emit (endEdit -> endGroup -> future = []), which would wipe the
-    // redo entry we just queued.
-    this.emit(change);
+    // Queue the redo entry BEFORE emit so a listener dispatch lands on
+    // the right side of it; futureFloor keeps an in-emit group flush
+    // (endEdit -> endGroup -> dropFuture) from wiping the entry.
+    const prevFloor = this.futureFloor;
     this.future.push(entry);
+    this.futureFloor = this.future.length;
+    this.emit(change);
+    this.futureFloor = prevFloor;
   }
 
   redo() {
@@ -175,7 +210,9 @@ export class Store {
     const change: Change = emptyChange();
     change.replay = true;
     for (const a of entry.redo) applyAction(this.doc, a, change);
-    this.emit(change);
+    // Push BEFORE emit: a listener dispatching during the emit lands
+    // above this entry, keeping the undo stack last-in-first-out.
     this.past.push(entry);
+    this.emit(change);
   }
 }

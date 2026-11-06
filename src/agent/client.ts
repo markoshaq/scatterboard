@@ -5,6 +5,17 @@ import type { AgentApi, AgentHost } from './api';
 
 const DEFAULT_PORT = 7341;
 
+// The app never sends credentials in the clear: the bridge answers
+// the hello with a nonce, and both sides prove the shared secret as
+// HMAC(secret, nonce). A process squatting the port learns nothing it
+// can replay or persist.
+async function hmacHex(key: string, data: string): Promise<string> {
+  const enc = new TextEncoder();
+  const k = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', k, enc.encode(data));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 // Mirrors the literal in settings.ts; kept as a DOM event so the lazy
 // chunk never enters the main bundle's import graph.
 const AGENT_STATUS_EVENT = 'sb-agent-status';
@@ -30,6 +41,11 @@ export function startClient(
   let offlineToast = false;
   let attempts = 0;
   let timer: number | null = null;
+  // The live challenge + the secret we authenticated with (stored key
+  // or pairing token): the bridge proves the same secret back before
+  // a welcome counts.
+  let nonce: string | null = null;
+  let authedSecret: string | null = null;
   // Requests serialize: concurrent batches would interleave their store
   // dispatches and merge undo entries.
   let queue: Promise<void> = Promise.resolve();
@@ -42,16 +58,15 @@ export function startClient(
 
   const connect = () => {
     if (!active || giveUp) return;
+    // The handshake needs WebCrypto HMAC; an insecure context cannot
+    // authenticate at all, so do not retry.
+    if (!crypto.subtle) {
+      giveUp = true;
+      return;
+    }
     ws = new WebSocket(`ws://127.0.0.1:${port}`);
     ws.onopen = () => {
-      const hello: Dict = { type: 'hello', role: 'app' };
-      if (opts.token) hello.token = opts.token;
-      const bridge = app.prefs.agentBridge;
-      if (bridge) {
-        hello.bridgeId = bridge.id;
-        hello.key = bridge.key;
-      }
-      ws!.send(JSON.stringify(hello));
+      ws!.send(JSON.stringify({ type: 'hello', role: 'app' }));
     };
     ws.onmessage = (ev) => {
       let msg: Dict;
@@ -60,8 +75,10 @@ export function startClient(
       } catch {
         return;
       }
-      if (msg.type === 'welcome') return onWelcome(msg);
+      if (msg.type === 'challenge') return onChallenge(msg);
+      if (msg.type === 'welcome') return void onWelcome(msg);
       if (msg.type === 'deny') return onDeny(msg);
+      if (!greeted) return;
       if (msg.id !== undefined && typeof msg.method === 'string') {
         queue = queue.then(() => handle(msg as { id: unknown; method: string; params?: unknown }));
       }
@@ -69,7 +86,53 @@ export function startClient(
     ws.onclose = () => onClose();
   };
 
-  const onWelcome = (msg: Dict) => {
+  // Answer the bridge's nonce: stored credentials send
+  // HMAC(appKey, nonce); first pairing sends HMAC(token, nonce) so the
+  // token itself never crosses the wire either.
+  const onChallenge = (msg: Dict) => {
+    if (typeof msg.nonce !== 'string' || !msg.nonce) return;
+    nonce = msg.nonce;
+    const bridge = app.prefs.agentBridge;
+    void (async () => {
+      const auth: Dict = { type: 'auth', role: 'app' };
+      try {
+        if (bridge) {
+          auth.bridgeId = bridge.id;
+          auth.mac = await hmacHex(bridge.key, nonce!);
+          authedSecret = bridge.key;
+        } else if (opts.token) {
+          auth.tokenMac = await hmacHex(opts.token, nonce!);
+          authedSecret = opts.token;
+        } else {
+          // Nothing to prove with: stay enabled so a later pairing URL
+          // can connect, but stop reconnecting now.
+          giveUp = true;
+          ws?.close();
+          return;
+        }
+      } catch {
+        return;
+      }
+      ws?.send(JSON.stringify(auth));
+    })();
+  };
+
+  const onWelcome = async (msg: Dict) => {
+    const n = nonce;
+    const secret = authedSecret;
+    nonce = null;
+    // The welcome only counts if the peer proves the same secret we
+    // authenticated with: anything else is a port squatter and must
+    // never reach persistence or command handling.
+    const ok =
+      n !== null &&
+      secret !== null &&
+      typeof msg.proof === 'string' &&
+      msg.proof === (await hmacHex(secret, `${n}:bridge`));
+    if (!ok) {
+      ws?.close();
+      return;
+    }
     attempts = 0;
     const first = !app.agentConnected;
     greeted = true;
@@ -77,16 +140,11 @@ export function startClient(
     setStatus(true);
     if (typeof msg.bridgeId === 'string' && typeof msg.key === 'string') {
       const cur = app.prefs.agentBridge;
-      // Persist credentials only for a session we authenticated: the
-      // hello carried a pairing token, or the bridge echoes the stored
-      // identity. An unsolicited tokenless welcome grants nothing.
-      if (opts.token || cur?.id === msg.bridgeId) {
-        if (!cur || cur.id !== msg.bridgeId || cur.key !== msg.key) {
-          app.prefs.agentBridge = { id: msg.bridgeId, key: msg.key };
-        }
-        app.prefs.agent = true;
-        app.scheduleSave();
+      if (!cur || cur.id !== msg.bridgeId || cur.key !== msg.key) {
+        app.prefs.agentBridge = { id: msg.bridgeId, key: msg.key };
       }
+      app.prefs.agent = true;
+      app.scheduleSave();
     }
     if (first) toast(t('agentConnected'), 'ok');
   };

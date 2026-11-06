@@ -56,6 +56,22 @@ function harness() {
     scheduleSave: () => {},
     editing: { endEdit: () => {} },
     layer: { rectOf: (el: Element) => ({ x: el.x, y: el.y, w: el.w ?? 240, h: 80 }) },
+    panels: {
+      deleteBoardCascade: (id) => {
+        const actions: Action[] = [];
+        const visit = (bid: ID) => {
+          for (const el of Object.values(doc.elements)) {
+            if (el.boardId === bid) actions.push({ type: 'element.delete', el });
+          }
+          const board = doc.boards[bid];
+          if (board) actions.push({ type: 'board.delete', board });
+          for (const b of Object.values(doc.boards)) if (b.parentId === bid) visit(b.id);
+        };
+        visit(id);
+        if (actions.length) store.dispatch({ type: 'batch', actions });
+      },
+    },
+    applyPrefs: () => {},
     exporter: {
       snapshotPng: async () => new Blob(['png'], { type: 'image/png' }),
       boardRaster: async () => null,
@@ -186,6 +202,49 @@ describe('agent patch/remove/connect', () => {
     expect((await err(api.run('patch', { id: 'ghost', patch: { x: 1 } }))).code).toBe('not_found');
   });
 
+  it('rejects parentId cycles, self, transitive and intra-batch', async () => {
+    const { doc, api } = harness();
+    const a = (await api.run('create', { type: 'column', props: {} })) as { id: ID };
+    const b = (await api.run('create', { type: 'column', props: {} })) as { id: ID };
+    // Self-parent and a transitive loop across sequential patches.
+    expect((await err(api.run('patch', { id: a.id, patch: { parentId: a.id } }))).code).toBe('bad_field');
+    await api.run('patch', { id: a.id, patch: { parentId: b.id } });
+    expect(doc.elements[a.id]!.parentId).toBe(b.id);
+    expect((await err(api.run('patch', { id: b.id, patch: { parentId: a.id } }))).code).toBe('bad_field');
+    expect(doc.elements[b.id]!.parentId).toBeNull();
+    doc.elements[a.id]!.parentId = null;
+    // Two sibling commands each pass plan-time validation against the
+    // pre-batch doc; the run-time recheck must still stop the cycle
+    // and roll the whole batch back.
+    const e = await err(
+      api.runCommands([
+        { method: 'patch', params: { id: a.id, patch: { parentId: b.id } } },
+        { method: 'patch', params: { id: b.id, patch: { parentId: a.id } } },
+      ]),
+    );
+    expect(e.code).toBe('bad_field');
+    expect(doc.elements[a.id]!.parentId).toBeNull();
+    expect(doc.elements[b.id]!.parentId).toBeNull();
+  });
+
+  it('rejects an intra-batch parentId cycle on dispatch', async () => {
+    const { doc, api } = harness();
+    const a = (await api.run('create', { type: 'column', props: {} })) as { id: ID };
+    const b = (await api.run('create', { type: 'column', props: {} })) as { id: ID };
+    const e = await err(
+      api.run('dispatch', {
+        type: 'batch',
+        actions: [
+          { type: 'element.patch', id: a.id, patch: { parentId: b.id } },
+          { type: 'element.patch', id: b.id, patch: { parentId: a.id } },
+        ],
+      }),
+    );
+    expect(e.code).toBe('bad_field');
+    expect(doc.elements[a.id]!.parentId).toBeNull();
+    expect(doc.elements[b.id]!.parentId).toBeNull();
+  });
+
   it('removes via the trash path', async () => {
     const { doc, api } = harness();
     const r = (await api.run('create', { type: 'note', props: {} })) as { id: ID };
@@ -206,6 +265,82 @@ describe('agent patch/remove/connect', () => {
     expect(c?.dashed).toBe(true);
     expect(c?.toMarker).toBe('dot');
     expect((await err(api.run('connect', { from: a.id, to: 'ghost' }))).code).toBe('not_found');
+  });
+
+  it('sets an elbow route on connect, create and patch', async () => {
+    const { doc, api } = harness();
+    const a = (await api.run('create', { type: 'note', props: { x: 0, y: 0 } })) as { id: ID };
+    const b = (await api.run('create', { type: 'note', props: { x: 400, y: 0 } })) as { id: ID };
+    const r = (await api.run('connect', { from: a.id, to: b.id, route: 'elbow' })) as { id: ID };
+    expect(lineDoc(doc.elements[r.id]!)?.route).toBe('elbow');
+    await api.run('patch', { id: r.id, patch: { route: 'straight' } });
+    expect(lineDoc(doc.elements[r.id]!)?.route).toBe('straight');
+    expect((await err(api.run('patch', { id: r.id, patch: { route: 'spiral' } }))).code).toBe('bad_field');
+    expect((await err(api.run('connect', { from: a.id, to: b.id, route: 'spiral' }))).code).toBe('bad_field');
+  });
+
+  it('keeps per-item reactions on todo items through create and patch', async () => {
+    const { doc, api } = harness();
+    const r = (await api.run('create', {
+      type: 'todo',
+      props: { items: [{ text: 'a', reactions: ['👍'] }] },
+    })) as { id: ID };
+    const td = () => {
+      const c = doc.elements[r.id]!.content;
+      return 'todo' in c ? c.todo : null;
+    };
+    expect(td()?.items[0]?.reactions).toEqual(['👍']);
+    await api.run('patch', {
+      id: r.id,
+      patch: { items: [{ text: 'a', reactions: ['👍'] }, { text: 'b' }] },
+    });
+    expect(td()?.items).toHaveLength(2);
+    expect(td()?.items[0]?.reactions).toEqual(['👍']);
+  });
+
+  it('patches image alt and table widths', async () => {
+    const { doc, api } = harness();
+    await api.run('dispatch', {
+      type: 'element.create',
+      el: {
+        type: 'image',
+        boardId: 'home',
+        content: { image: { blobRef: 'b1', name: 'p.png', caption: '', aspect: 1.5 } },
+      },
+    });
+    const img = Object.values(doc.elements).find((e) => e.type === 'image')!;
+    await api.run('patch', { id: img.id, patch: { alt: 'a picture' } });
+    const im = doc.elements[img.id]!.content;
+    expect('image' in im && im.image.alt).toBe('a picture');
+    const tbl = (await api.run('create', { type: 'table', props: {} })) as { id: ID };
+    await api.run('patch', { id: tbl.id, patch: { widths: [100, 140, 80] } });
+    const tc = doc.elements[tbl.id]!.content;
+    expect('table' in tc && tc.table.widths).toEqual([100, 140, 80]);
+    expect((await err(api.run('patch', { id: tbl.id, patch: { widths: 'wide' } }))).code).toBe('bad_field');
+  });
+
+  it('deletes a board subtree through removeBoard', async () => {
+    const { doc, api } = harness();
+    const card = (await api.run('create', { type: 'board', props: { title: 'Sub' } })) as { id: ID };
+    const bc = doc.elements[card.id]!.content;
+    const sub = 'boardRef' in bc ? bc.boardRef : '';
+    const kid = (await api.run('create', { type: 'note', props: { boardId: sub, text: 'k' } })) as { id: ID };
+    await api.run('removeBoard', { id: sub });
+    expect(doc.boards[sub]).toBeUndefined();
+    expect(doc.elements[kid.id]).toBeUndefined();
+    expect((await err(api.run('removeBoard', { id: 'ghost' }))).code).toBe('not_found');
+  });
+
+  it('reads and writes allowed prefs only', async () => {
+    const { host, api } = harness();
+    await api.run('prefs', { set: { reminders: true, theme: 'dark', uiScale: 1.25 } });
+    expect(host.prefs.reminders).toBe(true);
+    expect(host.prefs.theme).toBe('dark');
+    expect(host.prefs.uiScale).toBe(1.25);
+    const got = (await api.run('prefs')) as { reminders?: boolean };
+    expect(got.reminders).toBe(true);
+    expect((await err(api.run('prefs', { set: { agent: true } }))).code).toBe('bad_field');
+    expect((await err(api.run('prefs', { set: { theme: 'neon' } }))).code).toBe('bad_field');
   });
 });
 
@@ -430,6 +565,22 @@ describe('agent upload, export, import and unfurl', () => {
     expect(parsed.board).toBe('home');
     expect((await err(api.run('export', { format: 'zip' }))).code).toBe('export');
     expect((await err(api.run('export', { format: 'gif' }))).code).toBe('bad_field');
+  });
+
+  it('exports a table card as csv', async () => {
+    const { api } = harness();
+    const t = (await api.run('create', {
+      type: 'table',
+      props: { title: 'Grid', cells: { A1: { text: 'a,b' }, B1: { text: 'two' } } },
+    })) as { id: ID };
+    const csv = (await api.run('export', { format: 'csv', id: t.id })) as { name: string; mime: string; text: string };
+    expect(csv.mime).toBe('text/csv');
+    expect(csv.name).toBe('grid.csv');
+    expect(csv.text).toContain('"a,b",two');
+    expect((await err(api.run('export', { format: 'csv' }))).code).toBe('bad_params');
+    const n = (await api.run('create', { type: 'note', props: {} })) as { id: ID };
+    expect((await err(api.run('export', { format: 'csv', id: n.id }))).code).toBe('bad_field');
+    expect((await err(api.run('export', { format: 'md', id: t.id }))).code).toBe('bad_field');
   });
 
   it('imports a board export under the home board', async () => {
