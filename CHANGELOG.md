@@ -33,6 +33,35 @@ elbow lines, and browsable snapshots.
 - Settings > Backup gains an Export a backup button, and when no
   backup folder is set up the app reminds you to export one once it
   has been a while since the last.
+- The favicon and installed-app icon follow the theme.
+- Local agents gain board delete, prefs read/write, version-history
+  snapshot tools, table CSV export and a raw store-action dispatch;
+  pairing now proves the app key instead of sending it.
+
+### Fixed
+
+- Paste after pan or zoom landed cards at a stale spot instead of
+  under the cursor.
+- Exporting mid-edit serialized pre-edit content; exports now commit
+  the open edit first.
+- A link/embed title fetch landing late could clobber text typed
+  while it was in flight, and sit inside the wrong undo group.
+- In-flight gestures now cancel on board switch, and a drop into a
+  column deleted mid-drag no longer orphans the cards.
+- A hidden embed preview kept its iframe playing audio invisibly.
+- Esc and board shortcuts no longer reach past a focused popup, panel
+  or toast; dropdowns keep their arrow keys, and IME composition keys
+  no longer trigger shortcuts, autoformat or end an edit.
+- A card dragged across the minimap no longer hijacks it into panning.
+- File-card PDF previews render in a fully sandboxed frame.
+- Image editor: flip after an odd quarter-turn mirrors on the right
+  axis, route-driven mode swaps commit in-progress strokes, and a
+  missing or corrupt blob offers a way out.
+- Markdown/Word export escapes link labels and destinations, widens
+  code fences around inline backticks, and keeps bare root text.
+- Undoing mid-stroke no longer corrupts draw pads, strokes over 65k
+  points no longer throw, and draw-mode strokes no longer land offset
+  during a zoom tween.
 
 ## [0.2.3] - 2026-11-06
 

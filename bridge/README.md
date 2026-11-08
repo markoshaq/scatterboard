@@ -21,7 +21,7 @@ project. Any stdio-capable MCP client works; hosts the installer does
 not know (Codex, Zed, Cline, ...) need the manual config below. Devin
 picks the server up live; other clients may need a restart.
 
-Equivalent manual config for `mcpServers` (user scope required —
+Equivalent manual config for `mcpServers` (user scope required:
 IDE-embedded Devin ignores project `mcpServers`; user config is
 `%APPDATA%\devin\config.json` on Windows, `~/.config/devin/config.json`
 elsewhere):

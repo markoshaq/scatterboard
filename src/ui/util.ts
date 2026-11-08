@@ -35,7 +35,7 @@ export function dragGhost(
   const move = (ev: PointerEvent) => {
     if (ev.buttons === 0) {
       // Released outside the window: no pointerup arrives, only
-      // no-button moves. That is a cancel — but only after the pointer
+      // no-button moves. That is a cancel, but only after the pointer
       // really left the window mid-drag, or a stray zero-button move
       // inside (trackpad tap-drag, pen proximity) kills the gesture.
       if (ghost && outside) cancel();
