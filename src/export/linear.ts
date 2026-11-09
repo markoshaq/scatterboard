@@ -119,7 +119,7 @@ export function toMarkdown(title: string, items: Item[]): string {
       // <url> is the CommonMark destination form: a ')' inside the url
       // would otherwise close the link early.
       // Brackets in the label must escape or they corrupt the link.
-      parts.push(it.text && it.text !== it.url ? `[${it.text.replace(/[\[\]]/g, '\\$&')}](<${it.url}>)` : it.url);
+      parts.push(it.text && it.text !== it.url ? `[${it.text.replace(/[[\]]/g, '\\$&')}](<${it.url}>)` : it.url);
     }
     else if (it.k === 'quote') parts.push(`> ${it.text}`);
     else if (it.k === 'table') {

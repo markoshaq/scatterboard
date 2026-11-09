@@ -651,6 +651,10 @@ function shortDate(ts: number): string {
   return new Intl.DateTimeFormat(langTag(), { month: 'short', day: 'numeric' }).format(new Date(ts));
 }
 
+export function fmtStamp(ts: number): string {
+  return new Intl.DateTimeFormat(langTag(), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ts));
+}
+
 export function relTime(ts: number): string {
   const diff = Date.now() - ts;
   if (diff < 45000) return t('justNow');

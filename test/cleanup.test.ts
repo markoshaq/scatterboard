@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import {
   createBoard, createBoardCard, createColumn, createComment, createLabel, createLine, createNote,
@@ -13,7 +13,7 @@ import { Editing } from '../src/app/editing';
 import { Panels } from '../src/app/panels';
 import { createAgentApi, type AgentHost } from '../src/agent/api';
 import type { Rect } from '../src/canvas/viewport';
-import type { App } from '../src/app';
+import { App } from '../src/app';
 import de from '../src/lang/de';
 import es from '../src/lang/es';
 import fr from '../src/lang/fr';
@@ -134,6 +134,49 @@ describe('Deletion.deleteSelection cascade', () => {
     expect(d.elements[m.id]!.x).toBeGreaterThan(100);
     expect(d.trash[col.id]).toBeDefined();
   });
+
+  it('deletes members that are also selected instead of spilling them', () => {
+    const d = emptyDoc();
+    const home = createBoard({ id: 'home', title: 'H' });
+    d.boards = { home };
+    const col = createColumn(d, 'home', 100, 100, 'C');
+    const m = createNote(d, 'home', 0, 0, 'member');
+    m.parentId = col.id;
+    d.elements = { [col.id]: col, [m.id]: m };
+    const store = new Store(d);
+    const app = appFor(store, new Set([col.id, m.id]));
+    (app.layer.members as unknown as (id: ID) => Element[]) = () => [m];
+    new Deletion(app).deleteSelection();
+    expect(d.elements[col.id]).toBeUndefined();
+    expect(d.elements[m.id]).toBeUndefined();
+    expect(d.trash[m.id]).toBeDefined();
+    store.undo();
+    expect(d.elements[col.id]).toBeDefined();
+    expect(d.elements[m.id]!.parentId).toBe(col.id);
+  });
+
+  it('selectAll reaches into columns, nested columns included', () => {
+    const d = emptyDoc();
+    const home = createBoard({ id: 'home', title: 'H' });
+    d.boards = { home };
+    const col = createColumn(d, 'home', 0, 0, 'C');
+    const inner = createColumn(d, 'home', 0, 0, 'I');
+    inner.parentId = col.id;
+    const deep = createNote(d, 'home', 0, 0, 'deep');
+    deep.parentId = inner.id;
+    const free = createNote(d, 'home', 400, 0, 'free');
+    d.elements = { [col.id]: col, [inner.id]: inner, [deep.id]: deep, [free.id]: free };
+    const store = new Store(d);
+    const app = appFor(store, new Set());
+    (app.layer as unknown as { elements: () => Element[] }).elements = () => [col, free];
+    (app.layer.members as unknown as (id: ID) => Element[]) = (id) =>
+      id === col.id ? [inner] : id === inner.id ? [deep] : [];
+    (app.setSelection as unknown as (ids: Iterable<ID>) => void) = (ids) => {
+      app.sel = new Set(ids);
+    };
+    App.prototype.selectAll.call(app);
+    expect([...app.sel].sort()).toEqual([col.id, inner.id, deep.id, free.id].sort());
+  });
 });
 
 function gestureHarness() {
@@ -245,6 +288,67 @@ describe('Gestures member reorder + column drops', () => {
     g.endDrag();
     expect(d.elements[a.id]!.parentId).toBe(col.id);
     expect(d.elements[a.id]!.z).toBe(seq0 + 1);
+  });
+});
+
+describe('Panels unsorted sort', () => {
+  it('added/oldest order by the filed stamp, not creation', () => {
+    const d = emptyDoc();
+    // older card, filed most recently -> first under 'added', last under 'oldest'.
+    const oldCard = createNote(d, 'home', 0, 0, 'a');
+    oldCard.createdAt = 100;
+    oldCard.unsortedAt = 2000;
+    const newCard = createNote(d, 'home', 0, 0, 'b');
+    newCard.createdAt = 900;
+    newCard.unsortedAt = 1000;
+    // Pre-stamp items fall back to their creation date.
+    const legacy = createNote(d, 'home', 0, 0, 'c');
+    legacy.createdAt = 500;
+    const panels = (unsortedSort: string) =>
+      new Panels({ layer: { members: () => [oldCard, newCard, legacy] }, prefs: { unsortedSort } } as unknown as App);
+    expect(panels('added').unsortedItems().map((e) => e.id)).toEqual([oldCard.id, newCard.id, legacy.id]);
+    expect(panels('oldest').unsortedItems().map((e) => e.id)).toEqual([legacy.id, newCard.id, oldCard.id]);
+  });
+});
+
+describe('Gestures edge auto-pan', () => {
+  it('dwells before panning, skips chrome and moves the view toward the held edge', () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame'] });
+    const { d, app, rects } = gestureHarness();
+    const vp = document.createElement('div');
+    vp.className = 'viewport';
+    const onCanvas = document.createElement('div');
+    vp.appendChild(onCanvas);
+    const chrome = document.createElement('div');
+    document.body.append(vp, chrome);
+    const panBy = vi.fn();
+    (app.vp as unknown as { panBy: (dx: number, dy: number) => void }).panBy = panBy;
+    let now = 1000;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const el = createNote(d, 'home', 100, 100, 'x');
+    d.elements = { [el.id]: el };
+    rects.set(el.id, { x: 100, y: 100, w: 200, h: 80 });
+    const g = new Gestures(app);
+    const ev = (clientX: number, target: HTMLElement) =>
+      ({ clientX, clientY: 300, pointerId: 1, target }) as unknown as PointerEvent;
+
+    g.dragMove([el.id], new Map([[el.id, { x: 100, y: 100 }]]), { x: 110, y: 140 }, ev(10, onCanvas));
+    vi.advanceTimersByTime(60);
+    expect(panBy).not.toHaveBeenCalled();
+    now += 500;
+    vi.advanceTimersByTime(60);
+    expect(panBy).toHaveBeenCalled();
+    // Left edge: the view travels left, i.e. content (and panBy) move +x.
+    expect(panBy.mock.calls.at(-1)![0]).toBeGreaterThan(0);
+    g.dragMove([el.id], new Map([[el.id, { x: 100, y: 100 }]]), { x: 110, y: 140 }, ev(10, chrome));
+    const calls = panBy.mock.calls.length;
+    vi.advanceTimersByTime(60);
+    expect(panBy.mock.calls.length).toBe(calls);
+    g.endDrag();
+    clock.mockRestore();
+    vi.useRealTimers();
+    vp.remove();
+    chrome.remove();
   });
 });
 

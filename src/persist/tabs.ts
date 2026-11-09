@@ -7,7 +7,7 @@
 const CHANNEL = 'scatterboard:doc';
 const LS_KEY = 'scatterboard:v1';
 
-export interface TabSync {
+interface TabSync {
   // Called after a successful full-doc adapter save.
   notifySaved(): void;
 }

@@ -260,6 +260,10 @@ export interface Element {
   reactions?: string[];
   createdAt: number;
   modifiedAt: number;
+  // When the card was filed into Unsorted; stamped by applyAction on
+  // every entry and cleared on exit. Missing on pre-field docs, where
+  // createdAt is the sensible stand-in.
+  unsortedAt?: number;
 }
 
 export interface Label {
@@ -296,17 +300,17 @@ export interface Doc {
 }
 
 export const GRID = 40;
-export const NOTE_W = 240;
+const NOTE_W = 240;
 export const NOTE_MIN_W = 140;
 export const NOTE_MAX_W = 800;
 const COLUMN_W = 280;
 const BOARD_CARD_W = 210;
 const SWATCH_W = 200;
-export const LINK_W = 280;
+const LINK_W = 280;
 export const IMAGE_W = 240;
 const FILE_W = 190;
-export const DOC_W = 280;
-export const SKETCH_W = 280;
+const DOC_W = 280;
+const SKETCH_W = 280;
 const TABLE_W = 300;
 export const SKETCH_PAD_W = 600;
 export const SKETCH_PAD_H = 450;

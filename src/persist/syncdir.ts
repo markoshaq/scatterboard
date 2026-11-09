@@ -76,7 +76,7 @@ async function writeFile(dir: FileSystemDirectoryHandle, name: string, data: str
   await w.close();
 }
 
-export function parseBackup(text: string): BackupPayload | null {
+function parseBackup(text: string): BackupPayload | null {
   try {
     const w = JSON.parse(text) as BackupPayload;
     return w && w.kind === KIND && w.doc && typeof w.doc === 'object' && w.doc.boards ? w : null;

@@ -8,6 +8,10 @@ import { resolveLine } from '../canvas/lines';
 import { ColumnCard } from '../cards/column';
 import { releaseGuard } from '../ui/util';
 import { NOTE_MAX_W, NOTE_MIN_W } from '../state/schema';
+// Edge-pan dwell: the pointer must sit in the margin this long before
+// the view starts scrolling, so a drag passing over an edge (or aiming
+// for the trash in the corner) never pans by accident.
+const EDGE_DWELL = 450;
 export class Gestures {
   constructor(private a: App) {}
 
@@ -73,28 +77,43 @@ export class Gestures {
   // Edge auto-pan: while a drag gesture holds the pointer within M px
   // of a screen edge, the board glides that way each frame and the
   // gesture re-fires with the same client point (boardPoint follows
-  // the pan, so the card keeps travelling).
-  private edgePan = { raf: 0, ev: null as PointerEvent | null, fire: null as (() => void) | null };
+  // the pan, so the card keeps travelling). The pointer must dwell in
+  // the margin for EDGE_DWELL ms first, and the margin only counts over
+  // the canvas: rail, trash and panels overlay the viewport edges and a
+  // drop aimed at them must never scroll the board.
+  private edgePan = { raf: 0, ev: null as PointerEvent | null, fire: null as (() => void) | null, dwellAt: 0 };
 
   private armEdgePan(ev: PointerEvent, fire: () => void) {
     this.edgePan.ev = ev;
     this.edgePan.fire = fire;
     if (this.edgePan.raf) return;
+    this.edgePan.dwellAt = 0;
     const M = 44;
     const S = 16;
     const tick = () => {
       const e = this.edgePan.ev;
       let dx = 0;
       let dy = 0;
-      if (e) {
-        if (e.clientX < M) dx = -Math.min(S, (M - e.clientX) * 0.4);
-        else if (e.clientX > innerWidth - M) dx = Math.min(S, (e.clientX - innerWidth + M) * 0.4);
-        if (e.clientY < M) dy = -Math.min(S, (M - e.clientY) * 0.4);
-        else if (e.clientY > innerHeight - M) dy = Math.min(S, (e.clientY - innerHeight + M) * 0.4);
-        if (dx || dy) {
+      const over = e?.target;
+      const inView = over instanceof Element && !!over.closest('.viewport');
+      if (e && inView) {
+        // Camera-toward-the-edge convention (Figma-style): holding at
+        // the left edge pans the view left, i.e. content slides right
+        // and the card drops further left on the board.
+        if (e.clientX < M) dx = Math.min(S, (M - e.clientX) * 0.4);
+        else if (e.clientX > innerWidth - M) dx = -Math.min(S, (e.clientX - innerWidth + M) * 0.4);
+        if (e.clientY < M) dy = Math.min(S, (M - e.clientY) * 0.4);
+        else if (e.clientY > innerHeight - M) dy = -Math.min(S, (e.clientY - innerHeight + M) * 0.4);
+        if (!dx && !dy) {
+          this.edgePan.dwellAt = 0;
+        } else if (!this.edgePan.dwellAt) {
+          this.edgePan.dwellAt = performance.now();
+        } else if (performance.now() - this.edgePan.dwellAt >= EDGE_DWELL) {
           this.a.vp.panBy(dx, dy);
           this.edgePan.fire?.();
         }
+      } else {
+        this.edgePan.dwellAt = 0;
       }
       this.edgePan.raf = requestAnimationFrame(tick);
     };
@@ -103,7 +122,7 @@ export class Gestures {
 
   private disarmEdgePan() {
     if (this.edgePan.raf) cancelAnimationFrame(this.edgePan.raf);
-    this.edgePan = { raf: 0, ev: null, fire: null };
+    this.edgePan = { raf: 0, ev: null, fire: null, dwellAt: 0 };
   }
 
   trashRect: DOMRect | null | undefined;

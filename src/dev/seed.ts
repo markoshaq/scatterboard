@@ -156,7 +156,7 @@ function seedBlobs(): { imgRef: string; artRef: string; fileRef: string; fileSiz
 
 export function seedDoc(): Doc {
   const doc = emptyDoc();
-  const home = createBoard({ id: 'home', title: t('homeTitle'), icon: 'g:rocket', color: '#e8734a' });
+  const home = createBoard({ id: 'home', title: t('homeTitle'), icon: 'g:home', color: '#e8f0fe' });
   doc.boards[home.id] = home;
   const bid = home.id;
   const { imgRef, artRef, fileRef, fileSize } = seedBlobs();
@@ -541,6 +541,7 @@ export function seedDoc(): Doc {
   // is already waiting in each surface the app offers.
   const wFiled = createNote(doc, bid, 0, 0, 'Filed to Unsorted until it has a home');
   wFiled.parentId = UNSORTED;
+  wFiled.unsortedAt = wFiled.createdAt;
   doc.elements[wFiled.id] = wFiled;
   const trashed = createNote(doc, bid, 0, 0, 'Deleted cards wait in Trash. Restore me or empty it out.');
   doc.trash[trashed.id] = { el: trashed, deletedAt: now };

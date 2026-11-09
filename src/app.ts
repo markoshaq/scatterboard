@@ -1163,7 +1163,16 @@ export class App {
 
 
   selectAll() {
-    this.setSelection(this.layer.elements().map((e) => e.id));
+    // Column members count as selected too: a select-all delete must
+    // reach inside columns or the column delete spills them back out.
+    const all = new Set<ID>();
+    const walk = (id: ID) => {
+      if (all.has(id)) return;
+      all.add(id);
+      for (const m of this.layer.members(id)) walk(m.id);
+    };
+    for (const e of this.layer.elements()) walk(e.id);
+    this.setSelection(all);
   }
 
 

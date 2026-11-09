@@ -94,7 +94,7 @@ export class BoardExport {
         }
       }
     }
-    const inShot = (e: Element) => inLimit(e) || (mountIds !== null && mountIds.has(e.id));
+    const inShot = (e: Element) => inLimit(e) || mountIds?.has(e.id) === true;
     const boundEls = this.a.layer.elements().filter(inLimit);
     if (only) {
       // Members are not in elements(): the crop still needs their rects.

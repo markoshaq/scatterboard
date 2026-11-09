@@ -4,6 +4,7 @@ import {
   createNote, createTable, createTodo, emptyDoc, type Doc, type TableCell,
 } from '../src/state/schema';
 import { boardItems, toMarkdown, toPlain, toWordHtml } from '../src/export/linear';
+import { setFormatting } from '../src/locale';
 
 function doc(): Doc {
   const d = emptyDoc();
@@ -56,6 +57,9 @@ describe('boardItems reading order', () => {
 });
 
 describe('cell display values', () => {
+  // fmtNumber follows navigator.language by default; pin en so the
+  // assertions hold on non-US dev machines and CI alike.
+  setFormatting({ browserLang: false, lang: 'en', currency: 'USD' });
   it('resolves checkboxes, formulas, percent and typed cells', () => {
     const d = doc();
     const t = createTable(d, 'home', 0, 0);

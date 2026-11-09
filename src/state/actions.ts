@@ -1,4 +1,4 @@
-import type { Board, Doc, Element, ID, Label, Template, TrashEntry } from './schema';
+import { UNSORTED, type Board, type Doc, type Element, type ID, type Label, type Template, type TrashEntry } from './schema';
 
 type PatchOf<T, K extends keyof T> = { [P in K]?: T[P] | undefined };
 
@@ -18,6 +18,7 @@ export type ElementPatch = PatchOf<
   | 'reactions'
   | 'syncGroup'
   | 'modifiedAt'
+  | 'unsortedAt'
 >;
 type BoardPatch = PatchOf<Board, 'title' | 'icon' | 'color' | 'grid' | 'position' | 'modifiedAt'>;
 type LabelPatch = PatchOf<Label, 'name' | 'color'>;
@@ -62,6 +63,7 @@ export function applyAction(doc: Doc, a: Action, change: Change): Action {
       // A create on a live id must not clobber it: the inverse delete
       // would erase the pre-existing element on undo.
       if (doc.elements[a.el.id]) return { type: 'batch', actions: [] };
+      if (a.el.parentId === UNSORTED) a.el.unsortedAt ??= Date.now();
       doc.elements[a.el.id] = a.el;
       change.elements.add(a.el.id);
       return { type: 'element.delete', el: a.el };
@@ -79,10 +81,18 @@ export function applyAction(doc: Doc, a: Action, change: Change): Action {
       // modifiedAt rides the patch record so an undo restores the
       // timestamp it replaced instead of stamping a fresh one.
       (before as Record<string, unknown>).modifiedAt = rec.modifiedAt;
+      // Entering Unsorted stamps unsortedAt, leaving clears it; the
+      // stamp rides the inverse record the same way modifiedAt does,
+      // so an undo restores the filed time it replaced.
+      const entering = a.patch.parentId === UNSORTED && el.parentId !== UNSORTED;
+      const leaving = a.patch.parentId !== undefined && a.patch.parentId !== UNSORTED && el.parentId === UNSORTED;
+      if ((entering || leaving) && !('unsortedAt' in a.patch)) before.unsortedAt = el.unsortedAt;
       for (const k of Object.keys(a.patch) as (keyof ElementPatch)[]) {
         (before as Record<string, unknown>)[k] = rec[k];
         rec[k] = a.patch[k];
       }
+      if (entering && a.patch.unsortedAt === undefined) rec.unsortedAt = Date.now();
+      else if (leaving) delete rec.unsortedAt;
       rec.modifiedAt = a.patch.modifiedAt ?? Date.now();
       change.elements.add(a.id);
       return { type: 'element.patch', id: a.id, patch: before };

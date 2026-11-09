@@ -11,6 +11,12 @@ export function attachPointer(root: HTMLElement, app: App) {
   // tracks all fingers in `touches` so a second finger can switch the
   // session into a pinch (zoom + pan).
   let activePointer: number | null = null;
+  // A tilt-capable wheel (G502-style) emits horizontal deltas as the
+  // middle button is squeezed for panning; swallow wheel input while it
+  // is held, and driver-late horizontal deltas for a beat after it lets
+  // go, so the two never fight over one pan.
+  let middleHeld = false;
+  let middleUpAt = -Infinity;
   const touches = new Map<number, { x: number; y: number }>();
   let pinching = false;
   let pinchPrev: { d: number; cx: number; cy: number } | null = null;
@@ -70,6 +76,7 @@ export function attachPointer(root: HTMLElement, app: App) {
       return;
     }
     if (e.button !== 0 && e.button !== 1) return;
+    if (e.button === 1) middleHeld = true;
     if (activePointer !== null && e.pointerId !== activePointer) return;
     activePointer = e.pointerId;
     onDown(e, app);
@@ -89,6 +96,10 @@ export function attachPointer(root: HTMLElement, app: App) {
     pinchPrev = cur;
   });
   const release = (e: PointerEvent) => {
+    if (!(e.buttons & 4)) {
+      if (middleHeld) middleUpAt = performance.now();
+      middleHeld = false;
+    }
     if (e.pointerId === activePointer) activePointer = null;
     if (e.pointerType !== 'touch') return;
     touches.delete(e.pointerId);
@@ -115,7 +126,11 @@ export function attachPointer(root: HTMLElement, app: App) {
     window.open(a.href, '_blank', 'noopener');
   });
   root.addEventListener('dblclick', (e) => onDblClick(e, app));
-  root.addEventListener('wheel', (e) => onWheel(e, app, root), { passive: false });
+  root.addEventListener('wheel', (e) => {
+    const tiltStray = e.deltaX !== 0 && performance.now() - middleUpAt < 150;
+    if (middleHeld || tiltStray) return e.preventDefault();
+    onWheel(e, app, root);
+  }, { passive: false });
   root.addEventListener('contextmenu', (e) => onContextMenu(e, app));
   root.addEventListener('pointermove', (e) => {
     // Client coords, converted on read: a paste after pan/zoom without a

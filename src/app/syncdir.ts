@@ -17,7 +17,7 @@ import {
   type BackupPayload,
 } from '../persist/syncdir';
 
-export type SyncState = 'off' | 'on' | 'denied' | 'fail';
+type SyncState = 'off' | 'on' | 'denied' | 'fail';
 
 const SYNC_DEBOUNCE = 3000;
 const NAG_EXPORT_AGE = 14 * 86400000;

@@ -1,7 +1,7 @@
 import { getBox, hasBox, isEnvelope } from './crypto';
 import type { PersistedWorkspace } from './storage';
 
-export class LockedError extends Error {
+class LockedError extends Error {
   constructor() {
     super('workspace is locked');
   }

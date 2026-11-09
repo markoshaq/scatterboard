@@ -1,10 +1,10 @@
 import { kvDel, kvGet, kvPut } from './kv';
 
-export const DEFAULT_PBKDF2_ITERS = 600000;
+const DEFAULT_PBKDF2_ITERS = 600000;
 const VERIFY_PLAIN = 'scatterboard-ok';
 const META_KEY = 'enc:meta';
 
-export interface EnvelopeJson {
+interface EnvelopeJson {
   enc: 1;
   v: 1;
   iv: string;
@@ -19,7 +19,7 @@ export interface SealedBlob {
   type: string;
 }
 
-export interface EncMeta {
+interface EncMeta {
   salt: string;
   iters: number;
   verify: string;
@@ -59,7 +59,7 @@ export function isSealedBlob(v: unknown): v is SealedBlob {
   return o.enc === 1 && o.v === 1 && typeof o.iv === 'string' && typeof o.ct === 'string';
 }
 
-export async function deriveKey(
+async function deriveKey(
   passphrase: string,
   salt: Uint8Array<ArrayBuffer>,
   iters = DEFAULT_PBKDF2_ITERS,
@@ -93,7 +93,7 @@ export class CryptoBox {
 
   async open(raw: string): Promise<string> {
     const env = JSON.parse(raw) as EnvelopeJson;
-    if (!env || env.enc !== 1 || env.v !== 1 || typeof env.iv !== 'string' || typeof env.ct !== 'string') {
+    if (env?.enc !== 1 || env.v !== 1 || typeof env.iv !== 'string' || typeof env.ct !== 'string') {
       throw new Error('bad envelope');
     }
     const iv = b64ToBytes(env.iv);

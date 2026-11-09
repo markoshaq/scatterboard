@@ -8,7 +8,7 @@ export interface Pt {
   y: number;
 }
 
-export type LineSide = 'top' | 'bottom' | 'left' | 'right';
+type LineSide = 'top' | 'bottom' | 'left' | 'right';
 
 interface ResolvedLine {
   el: Element;

@@ -26,7 +26,10 @@ export class Deletion {
         // Members unfile next to the column's rendered rect: a nested
         // column's stored x/y is its stale pre-filing spot.
         const cr = this.a.layer.rectOf(el);
-        this.a.layer.members(el.id).forEach((m, i) => {
+        // Members in the selection are doomed with the column: the spill
+        // only applies to members the user did not mark for deletion.
+        const survivors = this.a.layer.members(el.id).filter((m) => !this.a.sel.has(m.id));
+        survivors.forEach((m, i) => {
           actions.push({
             type: 'element.patch',
             id: m.id,

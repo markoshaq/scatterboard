@@ -6,7 +6,8 @@ import { copyTextToClipboard, putBlob } from '../persist/blobs';
 import { prepareImage } from '../ingest/files';
 import type { Rect } from '../canvas/viewport';
 import { toast } from '../ui/toast';
-import { relTime, t } from '../strings';
+import { fmtStamp, relTime, t } from '../strings';
+import { cardAriaLabel } from '../cards/factory';
 import { typeIcon } from '../ui/icons';
 import { dragGhost, DROP_EXCLUDE } from '../ui/util';
 import { openPanel, panelEmpty, panelRow, dayGroupLabel, type PanelHandle } from '../ui/panel';
@@ -59,9 +60,13 @@ export class Panels {
 
   unsortedItems(): Element[] {
     const items = this.a.layer.members(UNSORTED).filter((e) => e.type !== 'line');
+    // filedAt is when the card entered Unsorted; pre-stamp docs read
+    // createdAt as the stand-in. It is also what the row shows under
+    // the added/oldest sorts, so the list always explains itself.
+    const filedAt = (e: Element) => e.unsortedAt ?? e.createdAt;
     switch (this.a.prefs.unsortedSort ?? 'added') {
       case 'oldest':
-        return items;
+        return items.sort((a, b) => filedAt(a) - filedAt(b) || a.z - b.z);
       case 'modified':
         return items.sort((a, b) => b.modifiedAt - a.modifiedAt);
       case 'alpha':
@@ -69,7 +74,7 @@ export class Panels {
       case 'type':
         return items.sort((a, b) => a.type.localeCompare(b.type) || a.createdAt - b.createdAt);
       default:
-        return items.reverse();
+        return items.sort((a, b) => filedAt(b) - filedAt(a) || b.z - a.z);
     }
   }
 
@@ -655,18 +660,39 @@ export class Panels {
         this.renderPanel();
       });
       body.appendChild(sort);
+      const mode = this.a.prefs.unsortedSort ?? 'added';
+      // The extra column carries the stamp the active sort keys on
+      // (added/oldest -> when filed, modified -> modifiedAt, else the
+      // creation date for context) so the order reads; the row tooltip
+      // spells it out exactly. Type sort gets a group header per card
+      // kind, like the trash's day groups.
+      const when = (el: Element) =>
+        mode === 'modified' ? el.modifiedAt
+        : mode === 'alpha' || mode === 'type' ? el.createdAt
+        : el.unsortedAt ?? el.createdAt;
+      let group = '';
       for (const el of items) {
-        body.appendChild(
-          this.draggableRow(el, undefined, (pt) => {
-            if (this.a.lockedView()) return;
-            this.a.store.dispatch({
-              type: 'element.patch',
-              id: el.id,
-              patch: { parentId: this.a.columnAt(pt), x: Math.round(pt.x), y: Math.round(pt.y) },
-            });
-            this.a.setSelection([el.id]);
-          }),
-        );
+        if (mode === 'type') {
+          const label = cardAriaLabel(el);
+          if (label !== group) {
+            group = label;
+            const head = document.createElement('div');
+            head.className = 'sp-group';
+            head.textContent = label;
+            body.appendChild(head);
+          }
+        }
+        const row = this.draggableRow(el, relTime(when(el)), (pt) => {
+          if (this.a.lockedView()) return;
+          this.a.store.dispatch({
+            type: 'element.patch',
+            id: el.id,
+            patch: { parentId: this.a.columnAt(pt), x: Math.round(pt.x), y: Math.round(pt.y) },
+          });
+          this.a.setSelection([el.id]);
+        });
+        row.title = fmtStamp(when(el));
+        body.appendChild(row);
       }
       return;
     }

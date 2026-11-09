@@ -1,7 +1,7 @@
 import type { Doc, Element, ID } from '../state/schema';
 import type { Rect } from '../canvas/viewport';
 
-export interface ChipsEvents {
+interface ChipsEvents {
   onChip(id: ID, kind: 'label' | 'reaction', chip: HTMLElement): void;
 }
 

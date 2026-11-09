@@ -2,6 +2,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { sanitizeHtml } from '../src/ui/sanitize';
 import { embedSrc, hostOf } from '../src/net/embeds';
+import { attachPointer } from '../src/canvas/input';
+import type { App } from '../src/app';
 
 describe('sanitizeHtml', () => {
   it('keeps editor-produced markup intact', () => {
@@ -94,5 +96,27 @@ describe('tool popup focus', () => {
 
     pop.close();
     expect(document.activeElement).toBe(anchor);
+  });
+});
+
+describe('tilt-wheel suppression', () => {
+  it('swallows wheel deltas while the middle button pans and strays after release', () => {
+    const root = document.createElement('div');
+    const panBy = vi.fn();
+    const app = { vp: { panBy, zoomAt: vi.fn() }, startPan: vi.fn() } as unknown as App;
+    attachPointer(root, app);
+    root.dispatchEvent(new PointerEvent('pointerdown', { button: 1, pointerId: 1, buttons: 4 }));
+    // Both axes die while the button is held: the pressing finger cannot
+    // also be scrolling the wheel.
+    root.dispatchEvent(new WheelEvent('wheel', { deltaX: 53, cancelable: true }));
+    root.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, cancelable: true }));
+    expect(panBy).not.toHaveBeenCalled();
+    window.dispatchEvent(new PointerEvent('pointerup', { button: 1, pointerId: 1, buttons: 0 }));
+    // A driver-late tilt delta inside the grace window is still eaten;
+    // a real vertical scroll right after release goes through.
+    root.dispatchEvent(new WheelEvent('wheel', { deltaX: 53, cancelable: true }));
+    expect(panBy).not.toHaveBeenCalled();
+    root.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, cancelable: true }));
+    expect(panBy).toHaveBeenCalledTimes(1);
   });
 });

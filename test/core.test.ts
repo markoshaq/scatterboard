@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { applyAction, emptyChange, type Action } from '../src/state/actions';
 import {
   createBoard, createColumn, createComment, createLabel, createNote,
@@ -68,6 +68,49 @@ describe('applyAction inverses', () => {
     expect(d.elements[el.id]).toBeUndefined();
     apply(d, inv);
     expect(d.elements[el.id]?.content).toEqual(el.content);
+  });
+});
+
+describe('unsortedAt filing stamp', () => {
+  it('stamps on entry, survives unrelated patches, clears on exit, undoes both ways', () => {
+    const d = doc();
+    const el = createNote(d, 'home', 0, 0, 'x');
+    apply(d, { type: 'element.create', el });
+    const clock = vi.spyOn(Date, 'now');
+    clock.mockReturnValue(1111);
+    const fileInv = apply(d, { type: 'element.patch', id: el.id, patch: { parentId: UNSORTED } });
+    expect(el.unsortedAt).toBe(1111);
+    clock.mockReturnValue(2222);
+    apply(d, { type: 'element.patch', id: el.id, patch: { color: '#fff' } });
+    expect(el.unsortedAt).toBe(1111);
+    apply(d, fileInv);
+    expect(el.parentId).toBeNull();
+    expect(el.unsortedAt).toBeUndefined();
+    clock.mockReturnValue(3333);
+    apply(d, { type: 'element.patch', id: el.id, patch: { parentId: UNSORTED } });
+    expect(el.unsortedAt).toBe(3333);
+    const unfileInv = apply(d, { type: 'element.patch', id: el.id, patch: { parentId: null } });
+    expect(el.unsortedAt).toBeUndefined();
+    apply(d, unfileInv);
+    expect(el.parentId).toBe(UNSORTED);
+    // The undo restores the stamp it replaced instead of a fresh now.
+    expect(el.unsortedAt).toBe(3333);
+    clock.mockRestore();
+  });
+
+  it('stamps elements created already filed, keeps an explicit stamp', () => {
+    const d = doc();
+    const fresh = createNote(d, 'home', 0, 0, 'x');
+    fresh.parentId = UNSORTED;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(7777);
+    apply(d, { type: 'element.create', el: fresh });
+    expect(fresh.unsortedAt).toBe(7777);
+    const imported = createNote(d, 'home', 0, 0, 'y');
+    imported.parentId = UNSORTED;
+    imported.unsortedAt = 4242;
+    apply(d, { type: 'element.create', el: imported });
+    expect(imported.unsortedAt).toBe(4242);
+    clock.mockRestore();
   });
 });
 

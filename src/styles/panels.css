@@ -285,24 +285,13 @@ button.bpl-caret:hover {
   background: var(--accent-soft2);
 }
 
-/* Always laid out so .bpl-stats never shifts: hidden with visibility
-   (not display or opacity) keeps the buttons out of the tab order and
-   unclickable while reserving their slot. */
+/* Always laid out (and shown): the slot is reserved either way, so
+   hover-gating only hid affordances without saving space. */
 .bpl-actions {
   display: inline-flex;
   align-items: center;
   gap: 2px;
   flex: none;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.12s ease, visibility 0s linear 0.12s;
-}
-
-.bpl-row:hover .bpl-actions,
-.bpl-row:focus-within .bpl-actions {
-  opacity: 1;
-  visibility: visible;
-  transition-delay: 0s;
 }
 
 .bpl-row.bpl-confirm .bpl-actions {

@@ -1,7 +1,7 @@
 import { t } from '../strings';
 import { haspopup, openToolPopup, type ToolPopup } from './popup';
 
-export type EncryptPopupOpts =
+type EncryptPopupOpts =
   | {
       mode: 'enable';
       onExport(): void;
