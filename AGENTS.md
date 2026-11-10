@@ -264,7 +264,15 @@ calls; fully offline.
   9am; pref `reminders`),
   `overlays.ts` (label pills, chips,
   pins, annotation seating, column member line spans, connect handle,
-  coveredByCard). Delegates
+  coveredByCard), `persistence.ts` (`Saver`: saveTail write queue,
+  debounce, save chip, tab-sync foreign-save handling, flush,
+  external writes, reset-all), `present.ts` (present mode:
+  lockedView, enter/exit, presentOpts, dims, View menu, presentStep),
+  `prefs.ts` (`Preferences`: applyPrefs, theme/scale, Settings/Help/
+  Agent popups, encryption transitions, snapshots, welcomeHint),
+  `ingest.ts` (file picker/drop ingest, columnAt, image replace +
+  crop-to-grid, pasteExternal + link repoint), `clipboard.ts`
+  (copy/cut/paste, pasteStyles, duplicate, cloneForDrag). Delegates
   reach App internals via
   an `App` back-reference; App keeps public shims for outside callers.
 - `src/main.ts` + `src/boot.ts`: entry. main.ts loads the boot locale

@@ -1,18 +1,8 @@
 import type { Store } from './state/store';
-import { boardRefOf, createAnnotation, createColumn, createComment, createDocument, createEmbed, createHeading, createLine, createLink, createNote, createSketch, createSwatch, createTable, createTodo, documentDoc, headingDoc, imageDoc, lineDoc, linkDoc, migrateDoc, sketchDoc, survivingBoard, uid, EDITOR_TYPES, GRID, IMAGE_W, UNSORTED, type Doc, type Element, type ElementType, type ID, type EmbedKind, type ImageDoc, type PresentOpts } from './state/schema';
-import type { Action, ElementPatch } from './state/actions';
-import { getClipboard, setClipboard } from './state/clipboard';
-import type { DocStorage, Lang, PersistedWorkspace, Prefs } from './persist/storage';
-import { blobTotalSize, clearBlobs, copyTextToClipboard, putBlob, rekeyBlobs } from './persist/blobs';
-import { clearEncMeta, getBox, hasBox, saveEncMeta, setBox, setupPassphrase, unlockWithPassphrase } from './persist/crypto';
-import { clearExtra } from './persist/kv';
-import { initTabSync } from './persist/tabs';
-import { createSnapshot, deleteSnapshot, listSnapshots, readSnapshot, rekeySnapshots } from './persist/snapshots';
-import { syncDirSupported } from './persist/syncdir';
-import { ingestFiles, ingestPaste, prepareImage, type IngestApi } from './ingest/files';
+import { boardRefOf, createAnnotation, createColumn, createComment, createDocument, createEmbed, createHeading, createLine, createLink, createNote, createSketch, createSwatch, createTable, createTodo, documentDoc, imageDoc, lineDoc, sketchDoc, EDITOR_TYPES, UNSORTED, type Doc, type Element, type ElementType, type ID, type EmbedKind, type PresentOpts } from './state/schema';
+import type { DocStorage, PersistedWorkspace, Prefs } from './persist/storage';
+import { putBlob } from './persist/blobs';
 import { scrubContent } from './ui/sanitize';
-import { embedSrc, hostOf, urlTitle } from './net/embeds';
-import { elementsToPlain } from './export/linear';
 import { Viewport } from './canvas/viewport';
 import { Renderer, type DraftLine, type Guide, type SceneLine } from './canvas/renderer';
 import { CardsLayer } from './cards/layer';
@@ -21,26 +11,20 @@ import { Topbar, type Crumb } from './ui/topbar';
 import { Rail } from './ui/rail';
 import { attachPointer } from './canvas/input';
 import { attachShortcuts } from './ui/shortcuts';
-import { normRect, pointInRect, rectsIntersect, unionRect } from './canvas/hit';
+import { normRect, rectsIntersect, unionRect } from './canvas/hit';
 import { hitLines, linePath, resolveLine, type LineHit } from './canvas/lines';
-import { lang as activeLang, t } from './strings';
-import { choice, hint, toast } from './ui/toast';
+import { t } from './strings';
+import { toast } from './ui/toast';
 import type { EditorHandle } from './editor/doceditor';
 import { imgModeFromHash, imgModeParam, type ImgMode } from './editor/imgmode';
 import type { ImgEditorHandle } from './editor/imgeditor';
 import { openShortcutsPanel } from './ui/shortcutpanel';
 import { openCapturePopup } from './ui/capture';
-import { setFormatting } from './locale';
-import { CREATE_ITEMS } from './ui/rail';
-import { openHelpMenu, openMobileMenu, openViewMenu } from './ui/toolpopups';
-import { installAvailable, runInstall } from './ui/install';
-import { DROP_EXCLUDE, mobileShell } from './ui/util';
+import { openMobileMenu } from './ui/toolpopups';
+import { mobileShell } from './ui/util';
 import { closeBoardPopup, closeToolPopup } from './ui/popup';
-import { remapElements } from './state/clone';
 import { builtinTemplates } from './state/templates';
 import { openNewBoardPicker } from './ui/newboard';
-import { openAboutPopup, openAgentPopup, openSettings, SCALE_STEPS } from './ui/settings';
-import { isDark, setTheme, setUiScale, systemDark } from './ui/theme';
 import { BoardExport } from './app/export';
 import { Editing } from './app/editing';
 import { RailTools } from './app/tools';
@@ -51,13 +35,13 @@ import { Deletion } from './app/deletion';
 import { Comments } from './app/comments';
 import { FolderSync } from './app/syncdir';
 import { Reminders } from './app/reminders';
+import { Saver } from './app/persistence';
+import { Present } from './app/present';
+import { Preferences } from './app/prefs';
+import { Ingest } from './app/ingest';
+import { Clipboard } from './app/clipboard';
 import { Minimap } from './ui/minimap';
 import { dueSoonCount, type DueItem } from './ui/duepanel';
-import { openSnapshotsPanel } from './ui/snapshotpanel';
-import { openSnapBrowsePanel, restoreSnapshotBoardActions, restoreSnapshotCardActions } from './ui/snapbrowse';
-import { openEncryptPopup } from './ui/encryptpop';
-import { fmtDate } from './locale';
-const SAVE_DEBOUNCE = 700;
 
 
 export class App {
@@ -76,6 +60,11 @@ export class App {
   // user-picked directory after each save; see app/syncdir.ts.
   readonly fsync = new FolderSync(this);
   readonly reminders = new Reminders(this);
+  readonly saver = new Saver(this);
+  readonly present = new Present(this);
+  readonly settings = new Preferences(this);
+  readonly ingest = new Ingest(this);
+  readonly clipboard = new Clipboard(this);
 
   store: Store;
 
@@ -108,39 +97,9 @@ export class App {
 
   guides: Guide[] = [];
 
-  private saveTimer: number | null = null;
-
-  private saveState: 'saved' | 'saving' = 'saved';
-
-  private saveKind: 0 | 1 | 2 = 0;
-
-  // Serialized write chain: every adapter.save queues on saveTail so
-  // concurrent saveNow callers (debounce, markExported, flush,
-  // encryption transitions) can never complete out of order.
-  // savePending counts writes still queued or running; 'saved' is only
-  // reported once it drains with nothing debounced behind it.
-  private saveTail: Promise<void> = Promise.resolve();
-
-  private savePending = 0;
-
-  private saveChip = false;
-
-  // Consecutive doc-save failures; a streak means storage is broken
-  // (quota, blocked IDB), not a transient hiccup, and earns a warning.
-  private saveFails = 0;
-
-  private saveWarned = false;
-
   // savedAt of the last workspace this tab wrote or loaded; the folder
   // backup's newer-file check compares against it.
   lastSavedAt = 0;
-
-  // Set before a reload that intentionally discards local state (a
-  // newer workspace arrived from another tab or the backup): flush()
-  // must not write the stale doc back over it.
-  private skipFlush = false;
-
-  private foreignSaveAsked = false;
 
   private renderQueued = false;
 
@@ -149,15 +108,13 @@ export class App {
   // full pass for non-element inputs (theme, board meta, locale).
   private dirtyEls = new Set<ID>();
 
-  private refreshCards = true;
+  refreshCards = true;
 
   private lastIz = 1;
 
   private wasDimming = false;
 
   private minimap: Minimap;
-
-  private tabSync: { notifySaved(): void } | null = null;
 
   private dueCache = { rev: -1, n: 0 };
 
@@ -285,11 +242,11 @@ export class App {
       onNavigate: (id) => this.openBoard(id),
       onUnsorted: () => this.panels.openUnsorted(),
       onDue: () => this.panels.openDue(),
-      onView: (anchor) => this.openViewMenu(anchor),
-      onHelp: (anchor) => this.openHelp(anchor),
+      onView: (anchor) => this.present.openViewMenu(anchor),
+      onHelp: (anchor) => this.settings.openHelp(anchor),
       onExport: (anchor) => this.exporter.openExportMenu(anchor),
-      onSettings: (anchor) => this.openSettings(anchor),
-      onAgent: (anchor) => this.openAgentMenu(anchor),
+      onSettings: (anchor) => this.settings.openSettings(anchor),
+      onAgent: (anchor) => this.settings.openAgentMenu(anchor),
       onMore: (anchor) => this.openMobileMenu(anchor),
       onCrumbIcon: (id, anchor) => this.panels.iconPickerFor(id, anchor),
       onCrumbBoards: () => this.panels.openBoards(),
@@ -301,10 +258,10 @@ export class App {
     });
     this.rail = new Rail(root, {
       onDrop: (type, at, kind) => this.createFromRail(type, at, kind),
-      onDropHint: (ev, type) => this.paletteDropHint(ev, type),
+      onDropHint: (ev, type) => this.ingest.paletteDropHint(ev, type),
       onTool: (id, anchor) => this.tools.onTool(id, anchor),
-      onAddImage: () => this.pickFiles('image/*'),
-      onUpload: () => this.pickFiles('*/*'),
+      onAddImage: () => this.ingest.pickFiles('image/*'),
+      onUpload: () => this.ingest.pickFiles('*/*'),
       onDraw: () => this.enterDrawMode(),
       onCapture: (anchor) => this.openCapture(anchor),
       onUndo,
@@ -320,9 +277,7 @@ export class App {
     });
     this.minimap = new Minimap(this);
     vpEl.appendChild(this.minimap.node);
-    // Second open tab: the other tab's save announces itself over the
-    // channel so this one pulls the newer doc instead of clobbering it.
-    this.tabSync = initTabSync(() => this.onForeignSave());
+    this.saver.init();
     const stop = document.createElement('button');
     stop.type = 'button';
     stop.className = 'present-stop';
@@ -336,7 +291,7 @@ export class App {
       // Popups anchored to board space would float detached from their
       // anchor once the viewport moves; chrome-anchored ones stay.
       closeBoardPopup();
-      this.schedulePosSave();
+      this.saver.schedulePosSave();
       this.requestRender();
     };
     this.store.onChange((c) => {
@@ -400,12 +355,7 @@ export class App {
       this.refreshCards = true;
       this.requestRender();
     });
-    // Follow OS theme changes while the theme pref stays on System.
-    try {
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-        if (!this.prefs.theme) this.applyPrefs();
-      });
-    } catch {}
+    this.settings.init();
     this.layout();
   }
 
@@ -710,70 +660,36 @@ export class App {
   // 'Prevent editing' toggle: blocks every mutation entry point while
   // presenting; select/pan/zoom stay live. Checked centrally here.
   lockedView(): boolean {
-    return this.presenting && !!this.board()?.presentOpts?.edit;
+    return this.present.locked();
   }
 
 
   enterPresent() {
-    if (this.presenting || this.overlayOpen || !this.boardId) return;
-    this.editing.endEdit();
-    this.overlays.commitLabelEdit();
-    this.panels.closePanel();
-    closeToolPopup();
-    this.presenting = true;
-    this.applyPresentClasses();
-    this.requestRender();
+    this.present.enter();
   }
 
 
   exitPresent() {
-    if (!this.presenting) return;
-    this.presenting = false;
-    this.layer.pin.clear();
-    this.applyPresentClasses();
-    this.requestRender();
+    this.present.exit();
   }
 
 
   togglePresent() {
-    if (this.presenting) this.exitPresent();
-    else this.enterPresent();
-  }
-
-
-  private applyPresentClasses() {
-    const opts = this.board()?.presentOpts;
-    document.body.classList.toggle('presenting', this.presenting);
-    document.body.classList.toggle('hide-comments', this.presenting && !!opts?.comments);
+    this.present.toggle();
   }
 
 
   // Agent shim: set presentation toggles explicitly (the View menu
-  // toggles via togglePresentOpt). Same direct-mutation path.
+  // toggles them one at a time). Same direct-mutation path.
   setPresentOpts(o: PresentOpts) {
-    const board = this.board();
-    if (!board) return;
-    board.presentOpts = { ...board.presentOpts, ...o };
-    this.scheduleSave();
-    this.applyPresentClasses();
-  }
-
-
-  // Persisted per board, direct field mutation like board.position:
-  // no action, no undo entry.
-  private togglePresentOpt(key: keyof PresentOpts) {
-    const board = this.board();
-    if (!board) return;
-    board.presentOpts = { ...board.presentOpts, [key]: !board.presentOpts?.[key] };
-    this.scheduleSave();
-    this.applyPresentClasses();
+    this.present.setOpts(o);
   }
 
 
   // 'Focus on selected cards': non-selected canvas items dim. Re-checked
   // in render() so the focus set follows live selection changes.
   dims(id: ID): boolean {
-    return this.presenting && this.sel.size > 0 && !this.sel.has(id) && !!this.board()?.presentOpts?.focus;
+    return this.present.dims(id);
   }
 
 
@@ -782,31 +698,11 @@ export class App {
   private openMobileMenu(anchor: HTMLElement) {
     openMobileMenu(anchor, {
       onFit: () => this.fitView(),
-      onView: (a) => this.openViewMenu(a),
+      onView: (a) => this.present.openViewMenu(a),
       onExport: (a) => this.exporter.openExportMenu(a),
-      onAgent: (a) => this.openAgentMenu(a),
-      onSettings: (a) => this.openSettings(a),
-      onHelp: (a) => this.openHelp(a),
-    });
-  }
-
-
-  private openViewMenu(anchor: HTMLElement) {
-    if (!this.boardId) return;
-    openViewMenu(anchor, {
-      presentOpts: () => this.board()?.presentOpts ?? {},
-      onToggle: (key) => this.togglePresentOpt(key),
-      grid: () => this.board()?.grid ?? true,
-      onToggleGrid: () => this.toggleGrid(),
-      minimap: () => this.prefs.minimap !== false,
-      onToggleMinimap: () => {
-        if (this.prefs.minimap === false) delete this.prefs.minimap;
-        else this.prefs.minimap = false;
-        this.scheduleSave();
-        this.requestRender();
-      },
-      onPresent: () => this.enterPresent(),
-      onFit: () => this.fitView(),
+      onAgent: (a) => this.settings.openAgentMenu(a),
+      onSettings: (a) => this.settings.openSettings(a),
+      onHelp: (a) => this.settings.openHelp(a),
     });
   }
 
@@ -1364,139 +1260,41 @@ export class App {
 
 
   duplicateSelection() {
-    if (this.lockedView()) return;
-    const src = this.copySet();
-    if (!src.length) return;
-    const { clones, idMap } = this.cloneElements(src, 24, 24);
-    this.store.dispatch({ type: 'batch', actions: clones.map((el) => ({ type: 'element.create' as const, el })) });
-    const top = clones.filter((c) => c.parentId === null);
-    this.setSelection((top.length ? top : clones).map((c) => c.id));
-    this.editing.offerSyncCopies(
-      src.map((s) => ({ src: s, clone: this.doc.elements[idMap.get(s.id)!]! })).filter((p) => !!p.clone),
-    );
+    this.clipboard.duplicateSelection();
   }
 
 
   // --- clipboard + cloning ---
 
   copySet(): Element[] {
-    const out = new Map<ID, Element>();
-    // Members come along transitively: a column can sit inside a column.
-    const collect = (el: Element) => {
-      if (out.has(el.id)) return;
-      out.set(el.id, el);
-      if (el.type === 'column') for (const m of this.layer.members(el.id)) collect(m);
-    };
-    for (const el of this.selectedEls()) collect(el);
-    return [...out.values()];
+    return this.clipboard.copySet();
   }
 
 
   copySelection() {
-    const set = this.copySet();
-    if (!set.length) return;
-    setClipboard(set);
-    // Mirror the pick as plain text on the OS clipboard so it pastes
-    // into other apps; the internal snapshot still wins on our paste.
-    const text = elementsToPlain(this.doc, set);
-    if (text) void copyTextToClipboard(text).catch(() => {});
+    this.clipboard.copySelection();
   }
 
 
   cutSelection() {
-    if (this.lockedView()) return;
-    this.copySelection();
-    this.deletion.deleteSelection();
-  }
-
-
-  // Shared clone path for paste, Opt+drag and duplicate: new ids/z, column
-  // members re-file to their cloned column, line endpoints re-attach only
-  // when the card came along, comments drop a stale anchor.
-  private cloneElements(els: Element[], dx: number, dy: number): { clones: Element[]; idMap: Map<ID, ID> } {
-    const rectOf = (t: Element) => this.layer.rectOf(t);
-    // Members cloned without their column unfile at their rendered
-    // slot: the stored x/y is a stale pre-filing position.
-    const srcIds = new Set(els.map((e) => e.id));
-    els = els.map((e) => {
-      if (e.parentId === null || srcIds.has(e.parentId)) return e;
-      const r = this.layer.rectOf(e);
-      return { ...e, x: Math.round(r.x), y: Math.round(r.y) };
-    });
-    return remapElements(this.doc, els, (e) => this.boardId ?? e.boardId, dx, dy, {
-      resolveEnd: (e, which) => {
-        const l = resolveLine(e, this.doc, rectOf);
-        if (!l) return null;
-        return which === 'from' ? { x: l.x1, y: l.y1 } : { x: l.x2, y: l.y2 };
-      },
-    });
+    this.clipboard.cutSelection();
   }
 
 
   paste() {
-    const src = getClipboard();
-    if (!src?.length || !this.boardId || this.lockedView()) return;
-    const { clones, idMap } = this.cloneElements(src, 24, 24);
-    this.store.dispatch({ type: 'batch', actions: clones.map((el) => ({ type: 'element.create' as const, el })) });
-    const top = clones.filter((c) => c.parentId === null);
-    this.setSelection((top.length ? top : clones).map((c) => c.id));
-    this.editing.offerSyncCopies(
-      src.map((s) => ({ src: s, clone: this.doc.elements[idMap.get(s.id)!]! })).filter((p) => !!p.clone),
-    );
+    this.clipboard.paste();
   }
 
 
-  // Paste styles: colour/labels/reactions/heading level from the first
-  // copied card onto the selection. Content untouched.
   pasteStyles() {
-    const src = getClipboard()?.[0];
-    if (!src || !this.sel.size || this.lockedView()) return;
-    const labels = src.labels.filter((l) => this.doc.labels[l]?.boardId === this.boardId);
-    const srcHeading = headingDoc(src);
-    const actions: Action[] = this.selectedEls().map((e) => {
-      const patch: ElementPatch = {
-        color: src.color,
-        // Line labels render nowhere; don't write dead data.
-        labels: e.type === 'line' ? e.labels : [...labels],
-        reactions: src.reactions ? [...src.reactions] : undefined,
-      };
-      const c = headingDoc(e);
-      if (c && srcHeading) patch.content = { heading: { ...c, level: srcHeading.level } };
-      return { type: 'element.patch' as const, id: e.id, patch };
-    });
-    this.store.dispatch({ type: 'batch', actions });
+    this.clipboard.pasteStyles();
   }
 
 
   // Opt+drag: clone the dragged set in place (inside the move group), then
   // drag the clones. Returns the new drag ids and their drag origins.
   cloneForDrag(ids: ID[]): { ids: ID[]; origins: Map<ID, { x: number; y: number }> } | null {
-    if (this.lockedView()) return null;
-    const src = new Map<ID, Element>();
-    for (const id of ids) {
-      const el = this.doc.elements[id];
-      if (!el) continue;
-      src.set(id, el);
-      if (el.type === 'column') for (const m of this.layer.members(id)) src.set(m.id, m);
-    }
-    if (!src.size) return null;
-    // Column members being cloned out get their rendered position as x/y.
-    const els = [...src.values()].map((e) => {
-      if (e.parentId === null || src.has(e.parentId)) return e;
-      const r = this.layer.rectOf(e);
-      return { ...e, x: Math.round(r.x), y: Math.round(r.y) };
-    });
-    const { clones, idMap } = this.cloneElements(els, 0, 0);
-    this.store.dispatch({ type: 'batch', actions: clones.map((el) => ({ type: 'element.create' as const, el })) });
-    const newIds = ids.map((id) => idMap.get(id)).filter((id): id is ID => !!id);
-    const origins = new Map<ID, { x: number; y: number }>();
-    for (const id of newIds) {
-      // cardOrigin resolves members to their rendered slot, so a
-      // member clone does not jump to its stale stored x/y mid-drag.
-      origins.set(id, this.cardOrigin(id));
-    }
-    this.setSelection(newIds);
-    return { ids: newIds, origins };
+    return this.clipboard.cloneForDrag(ids);
   }
 
 
@@ -1545,28 +1343,13 @@ export class App {
   // slides: the landing card is selected (so Focus-on-selected dims
   // the rest) and fitted on screen.
   presentStep(dir: -1 | 1) {
-    const els = this.layer
-      .elements()
-      .filter((e) => e.type !== 'line' && e.type !== 'annotation' && !(e.type === 'comment' && e.anchorId !== undefined))
-      .map((e) => ({ e, r: this.layer.rectOf(e) }))
-      .sort((a, b) => a.r.y - b.r.y || a.r.x - b.r.x);
-    if (!els.length) return;
-    const i = els.findIndex((c) => this.sel.has(c.e.id));
-    const target = els[i < 0 ? (dir === 1 ? 0 : els.length - 1) : (i + dir + els.length) % els.length]!.e;
-    this.selectOnly(target.id);
-    // Pin the landing card mounted: the fit tween takes ~190ms to bring
-    // a far target on screen, and a culled view cannot take focus.
-    this.layer.pin = new Set([target.id]);
-    this.vp.fit(this.layer.rectOf(target), this.fitInsets());
-    this.render();
-    this.layer.view(target.id)?.node.focus({ preventScroll: true });
-    this.announce(`${cardAriaLabel(target)}: ${this.panels.snippetFor(target)}`);
+    this.present.step(dir);
   }
 
   // Polite announcement channel for transient states (card nav) that
   // toasts should not carry visually. A beat of empty text first:
   // identical back-to-back messages do not re-announce otherwise.
-  private announce(msg: string) {
+  announce(msg: string) {
     this.liveEl.textContent = '';
     requestAnimationFrame(() => {
       this.liveEl.textContent = msg;
@@ -1599,7 +1382,7 @@ export class App {
   }
 
 
-  private fitInsets() {
+  fitInsets() {
     // Usable box inside the chrome: on desktop, 76px rail + 16 gap on
     // the left, 44px topbar + 14 gap up top, zoom HUD reserved at the
     // bottom; on phones the bar plus the floating trash/well own the
@@ -1661,24 +1444,8 @@ export class App {
 
   // --- file + media ingestion ---
 
-  private viewCenter() {
+  viewCenter() {
     return this.vp.toBoard(this.vp.vw / 2, this.vp.vh / 2);
-  }
-
-
-  private pastePoint() {
-    return this.pointer ?? this.viewCenter();
-  }
-
-
-  // Palette drags share the card-drag drop ring so a new card can be seen
-  // filing into the column under the pointer. updateDropTarget runs with
-  // no dragged ids to exclude (the ghost is not an element); lines never
-  // file, and rail chrome is not a target, matching the drop-time guard.
-  paletteDropHint(ev: PointerEvent | null, type: ElementType) {
-    const over = ev ? document.elementFromPoint(ev.clientX, ev.clientY) : null;
-    const ok = !!ev && type !== 'line' && !this.lockedView() && !over?.closest(DROP_EXCLUDE);
-    this.gestures.updateDropTarget(ok ? this.boardPoint(ev) : null, []);
   }
 
 
@@ -1686,86 +1453,19 @@ export class App {
   // rail drops onto a column join it; same rule as updateDropTarget, so a
   // column covered by another card cannot be the target.
   columnAt(pt: { x: number; y: number }): ID | null {
-    let top: Element | null = null;
-    for (const e of this.layer.elements()) {
-      if (e.type === 'line' || e.type === 'annotation') continue;
-      if (e.type === 'comment' && e.anchorId !== undefined) continue;
-      if (!pointInRect(pt.x, pt.y, this.layer.rectOf(e))) continue;
-      if (!top || e.z > top.z) top = e;
-    }
-    return top?.type === 'column' ? top.id : null;
-  }
-
-
-  private ingestApi(): IngestApi {
-    const boardId = this.boardId!;
-    return {
-      doc: this.doc,
-      boardId,
-      dispatch: (a) => this.store.dispatch(a),
-      // Async ingest resolves after the user may have switched boards:
-      // only select when still on the board the files landed on.
-      select: (ids) => {
-        if (this.boardId === boardId) this.setSelection(ids);
-      },
-      parentFor: (pt) => this.columnAt(pt),
-    };
+    return this.ingest.columnAt(pt);
   }
 
 
   ingestFileList(files: File[], pt: { x: number; y: number }) {
-    if (!this.boardId || this.lockedView()) return;
-    void ingestFiles(files, pt, this.ingestApi());
-  }
-
-
-  private pickFiles(accept: string) {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.name = 'file-upload';
-    input.accept = accept;
-    input.multiple = true;
-    input.addEventListener('change', () => {
-      if (input.files?.length) this.ingestFileList([...input.files], this.viewCenter());
-    });
-    input.click();
+    this.ingest.ingestFileList(files, pt);
   }
 
 
   // Image More > Replace Image: swap the blob, keep caption and position.
   // Strokes drop with the old natural space.
-  async replaceImage(el: Element) {
-    const c = imageDoc(el);
-    if (!c) return;
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.name = 'image-replace';
-    input.accept = 'image/*';
-    input.addEventListener('change', () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      void (async () => {
-        try {
-          const { blob, aspect, natW, natH } = await prepareImage(file);
-          const ref = uid();
-          await putBlob(ref, blob);
-          // The card may be gone after the async work (delete/undo).
-          const curEl = this.doc.elements[el.id];
-          const cur = curEl ? imageDoc(curEl) : null;
-          if (!cur || this.lockedView()) return;
-          const next = { ...cur, blobRef: ref, name: file.name || cur.name, aspect, natW, natH };
-          delete next.strokes;
-          this.store.dispatch({
-            type: 'element.patch',
-            id: el.id,
-            patch: { content: { image: next } },
-          });
-        } catch {
-          toast(t('imageMissing'), 'err');
-        }
-      })();
-    });
-    input.click();
+  replaceImage(el: Element) {
+    return this.ingest.replaceImage(el);
   }
 
 
@@ -1773,128 +1473,15 @@ export class App {
   // dot grid, then centre-crop the bitmap so its aspect exactly fills
   // the snapped card (no CSS cover crop remains). Interpretation:
   // width AND rendered height land on grid multiples.
-  async cropImageToGrid(el: Element) {
-    const c = imageDoc(el);
-    if (!c) return;
-    const w = Math.max(GRID, Math.round((el.w ?? IMAGE_W) / GRID) * GRID);
-    const h = Math.max(GRID, Math.round(w / c.aspect / GRID) * GRID);
-    const aspect = w / h;
-    let crop: { ref: string; w: number; h: number } | undefined;
-    if (Math.abs(aspect - c.aspect) > 0.001) {
-      try {
-        const { loadBitmap, cropImage, canvasBlob } = await import('./editor/imgops');
-        const bmp = await loadBitmap(c.blobRef);
-        if (!bmp) {
-          toast(t('imageMissing'), 'err');
-          return;
-        }
-        const srcA = bmp.width / bmp.height;
-        const cw = srcA > aspect ? Math.round(bmp.height * aspect) : bmp.width;
-        const ch = srcA > aspect ? bmp.height : Math.round(bmp.width / aspect);
-        const out = cropImage(bmp, { x: (bmp.width - cw) / 2, y: (bmp.height - ch) / 2, w: cw, h: ch });
-        const blob = await canvasBlob(out, true);
-        if (!blob) return;
-        const ref = uid();
-        await putBlob(ref, blob);
-        crop = { ref, w: cw, h: ch };
-      } catch {
-        toast(t('imageMissing'), 'err');
-        return;
-      }
-    }
-    // Re-read the element after the async work: the card may have been
-    // deleted, moved or edited, and the grid snap applies to where it
-    // is now. The image patch merges onto the fresh doc so caption,
-    // alt or name edits made during the crop are not clobbered.
-    const curEl = this.doc.elements[el.id];
-    const cur = curEl ? imageDoc(curEl) : null;
-    if (!curEl || !cur || this.lockedView()) return;
-    let content: { image: ImageDoc } | undefined;
-    if (crop) {
-      const next = { ...cur, blobRef: crop.ref, aspect, natW: crop.w, natH: crop.h };
-      delete next.strokes;
-      content = { image: next };
-    }
-    const patch: ElementPatch = {
-      x: Math.round(curEl.x / GRID) * GRID,
-      y: Math.round(curEl.y / GRID) * GRID,
-      w: Math.max(GRID, Math.round((curEl.w ?? IMAGE_W) / GRID) * GRID),
-      ...(content ? { content } : {}),
-    };
-    this.store.dispatch({ type: 'element.patch', id: el.id, patch });
+  cropImageToGrid(el: Element) {
+    return this.ingest.cropImageToGrid(el);
   }
 
 
   // OS-clipboard paste: internal element clipboard wins, then files,
   // then URL text -> link card. Text fields keep native paste.
   pasteExternal(e: ClipboardEvent) {
-    if (this.isTextTarget(e) || !this.boardId || this.lockedView()) return;
-    e.preventDefault();
-    if (getClipboard()?.length) {
-      this.paste();
-      return;
-    }
-    const { files, url } = ingestPaste(e);
-    const pt = this.pastePoint();
-    if (files.length) {
-      this.ingestFileList(files, pt);
-      return;
-    }
-    if (url && !this.repointSelectedLink(url)) this.createLinkAt(pt, url);
-  }
-
-
-  // Paste a URL while a single link/embed card is selected: re-point
-  // the card instead of dropping a new one.
-  private repointSelectedLink(url: string): boolean {
-    if (this.sel.size !== 1) return false;
-    const el = this.doc.elements[[...this.sel][0]!];
-    const c = el?.content;
-    if (!el || !c) return false;
-    if ('link' in c) {
-      // Rebuild rather than spread-patching so the old url's unfurled
-      // fields (desc/image) do not linger under exactOptionalPropertyTypes.
-      this.store.dispatch({
-        type: 'element.patch',
-        id: el.id,
-        patch: {
-          content: {
-            link: { url, title: urlTitle(url) ?? hostOf(url), caption: c.link.caption, showPreview: c.link.showPreview },
-          },
-        },
-      });
-      this.editing.enrichLink(el.id, url);
-    } else if ('embed' in c) {
-      // A url that no longer parses for this provider would leave a
-      // dead player: fall back to a fresh link card instead.
-      if (!embedSrc(c.embed.kind, url)) return false;
-      this.store.dispatch({
-        type: 'element.patch',
-        id: el.id,
-        patch: {
-          content: {
-            embed: { kind: c.embed.kind, url, title: urlTitle(url) ?? hostOf(url), caption: c.embed.caption, showPreview: c.embed.showPreview },
-          },
-        },
-      });
-      this.editing.enrichEmbed(el.id, url);
-    } else {
-      return false;
-    }
-    toast(t('linkUpdated'), 'ok');
-    return true;
-  }
-
-
-  private createLinkAt(pt: { x: number; y: number }, url: string) {
-    if (!this.boardId) return;
-    const el = createLink(this.doc, this.boardId, Math.round(pt.x), Math.round(pt.y));
-    const c = linkDoc(el)!;
-    el.content = { link: { ...c, url, title: urlTitle(url) ?? hostOf(url) } };
-    this.stampBoardColor(el);
-    this.store.dispatch({ type: 'element.create', el });
-    this.setSelection([el.id]);
-    this.editing.enrichLink(el.id, url);
+    this.ingest.pasteExternal(e);
   }
 
   fileToUnsorted() {
@@ -1941,552 +1528,69 @@ export class App {
   // --- preferences ---
 
   applyPrefs() {
-    // The lang/theme mirrors only exist for explicit choices so the
-    // next boot can re-run browser/OS detection when a pref is unset.
-    if (this.prefs.lang) localStorage.setItem('scatterboard:lang', this.prefs.lang);
-    else localStorage.removeItem('scatterboard:lang');
-    if (this.prefs.theme) localStorage.setItem('scatterboard:theme', this.prefs.theme);
-    else localStorage.removeItem('scatterboard:theme');
-    setTheme(this.prefs.theme ?? (systemDark() ? 'dark' : 'light'));
-    setUiScale(this.prefs.uiScale ?? 1);
-    setFormatting({
-      browserLang: this.prefs.browserLang ?? true,
-      lang: this.prefs.lang ?? activeLang(),
-      currency: this.prefs.currency ?? null,
-    });
-    // Editable surfaces inherit spellcheck from the body element.
-    document.body.spellcheck = this.prefs.spellcheck !== false;
-    // Theme/scale change every card's colours and counter-scale, none
-    // of which shows up as an element patch.
-    this.refreshCards = true;
-    this.renderer.invalidate();
-    this.requestRender();
+    this.settings.applyPrefs();
   }
 
 
   toggleTheme() {
-    this.prefs.theme = isDark() ? 'light' : 'dark';
-    this.applyPrefs();
-    this.scheduleSave();
+    this.settings.toggleTheme();
   }
 
 
   stepUiScale(dir: number) {
-    const cur = this.prefs.uiScale ?? 1;
-    const i = SCALE_STEPS.indexOf(cur);
-    const next = SCALE_STEPS[Math.max(0, Math.min(SCALE_STEPS.length - 1, (i < 0 ? 1 : i) + dir))]!;
-    if (next === cur) return;
-    this.prefs.uiScale = next;
-    this.applyPrefs();
-    this.scheduleSave();
-  }
-
-
-  private openHelp(anchor: HTMLElement) {
-    openHelpMenu(anchor, {
-      onShortcuts: () => openShortcutsPanel(),
-      canInstall: installAvailable,
-      onInstall: runInstall,
-      onAbout: (a) =>
-        openAboutPopup(a, {
-          storage: async () => ({
-            doc: this.adapter.docBytes(),
-            blobs: await blobTotalSize(),
-            persisted: (await navigator.storage?.persisted?.().catch(() => false)) ?? false,
-          }),
-          lastExportAt: () => this.prefs.lastExportAt,
-        }),
-    });
-  }
-
-
-  // Robot-icon menu in the topbar: only local-agent state lives here;
-  // the general online prefs stay in Settings.
-  private openAgentMenu(anchor: HTMLElement) {
-    openAgentPopup(anchor, {
-      flag: () => this.prefs.agent === true,
-      onFlag: (_k, v) => {
-        this.prefs.agent = v;
-        this.scheduleSave();
-        this.requestRender();
-        void import('./agent/index').then((m) => m.setAgentEnabled(this, v));
-      },
-      agentStatus: () => this.agentConnected,
-      agentPaired: () => !!this.prefs.agentBridge,
-    });
-  }
-
-
-  private openSettings(anchor: HTMLElement) {
-    const save = () => this.scheduleSave();
-    openSettings(anchor, {
-      theme: () => this.prefs.theme ?? 'system',
-      onTheme: (m) => {
-        if (m === 'system') delete this.prefs.theme;
-        else this.prefs.theme = m;
-        this.applyPrefs();
-        save();
-      },
-      scale: () => this.prefs.uiScale ?? 1,
-      onScale: (sc) => {
-        this.prefs.uiScale = sc;
-        this.applyPrefs();
-        save();
-      },
-      lang: () => this.prefs.lang ?? null,
-      // Module-level label tables are captured at boot; switching
-      // languages reloads the shell after the prefs flush.
-      onLang: (l: Lang | null) => {
-        if (l) {
-          this.prefs.lang = l;
-          localStorage.setItem('scatterboard:lang', l);
-        } else {
-          delete this.prefs.lang;
-          localStorage.removeItem('scatterboard:lang');
-        }
-        this.scheduleSave();
-        void this.flush().then(() => location.reload());
-      },
-      browserLang: () => this.prefs.browserLang ?? true,
-      onBrowserLang: (v) => {
-        this.prefs.browserLang = v;
-        this.applyPrefs();
-        save();
-      },
-      currency: () => this.prefs.currency ?? null,
-      onCurrency: (c) => {
-        if (c) this.prefs.currency = c;
-        else delete this.prefs.currency;
-        this.applyPrefs();
-        save();
-      },
-      flag: (k) =>
-        k === 'undoArrows' || k === 'autoEdit' || k === 'unfurl' || k === 'spellcheck'
-          ? this.prefs[k] !== false
-          : this.prefs[k] === true,
-      onFlag: (k, v) => {
-        if (k === 'reminders' && v && typeof Notification !== 'undefined' && Notification.permission === 'default') {
-          void Notification.requestPermission().catch(() => {});
-        }
-        this.prefs[k] = v;
-        save();
-        if (k === 'spellcheck') document.body.spellcheck = v;
-        if (k === 'reminders' && v) this.reminders.tick();
-        this.requestRender();
-        if (k === 'agent') void import('./agent/index').then((m) => m.setAgentEnabled(this, v));
-      },
-      agentStatus: () => this.agentConnected,
-      agentPaired: () => !!this.prefs.agentBridge,
-      guideAlpha: () => this.prefs.guideAlpha ?? 0,
-      onGuideAlpha: (v) => {
-        this.prefs.guideAlpha = v;
-        save();
-        this.requestRender();
-      },
-      onTemplates: () => {
-        if (!this.boardId) return;
-        const boardId = this.boardId;
-        openNewBoardPicker(anchor, {
-          builtins: () => builtinTemplates(),
-          customs: () => Object.values(this.doc.templates).sort((a, b) => b.createdAt - a.createdAt),
-          onPick: (tpl) => this.panels.placeBoard(boardId, this.viewCenter(), tpl),
-          onRename: (id, name) => this.store.dispatch({ type: 'template.patch', id, patch: { name } }),
-          onDelete: (id) => {
-            const tpl = this.doc.templates[id];
-            if (tpl) this.store.dispatch({ type: 'template.delete', tpl });
-          },
-        });
-      },
-      onReset: () => choice(t('resetAllQ'), t('resetAllAct'), () => void this.resetAll()),
-      railItems: () => {
-        const order = this.prefs.railOrder ?? CREATE_ITEMS.map((i) => i.key);
-        const hidden = new Set(this.prefs.railHidden ?? []);
-        const seen = new Set<string>();
-        const out: { key: string; label: string; hidden: boolean }[] = [];
-        for (const key of order) {
-          const it = CREATE_ITEMS.find((i) => i.key === key);
-          if (it && !seen.has(key)) {
-            seen.add(key);
-            out.push({ key, label: it.label, hidden: hidden.has(key) });
-          }
-        }
-        for (const it of CREATE_ITEMS) {
-          if (!seen.has(it.key)) out.push({ key: it.key, label: it.label, hidden: hidden.has(it.key) });
-        }
-        return out;
-      },
-      onRailMove: (key, dir) => {
-        const order = (this.prefs.railOrder ?? CREATE_ITEMS.map((i) => i.key)).slice();
-        const i = order.indexOf(key);
-        const j = i + dir;
-        if (i < 0 || j < 0 || j >= order.length) return;
-        [order[i], order[j]] = [order[j]!, order[i]!];
-        this.prefs.railOrder = order;
-        save();
-        this.requestRender();
-      },
-      onRailHide: (key, hidden) => {
-        const set = new Set(this.prefs.railHidden ?? []);
-        if (hidden) set.add(key);
-        else set.delete(key);
-        this.prefs.railHidden = [...set];
-        save();
-        this.requestRender();
-      },
-      onRailReset: () => {
-        delete this.prefs.railOrder;
-        delete this.prefs.railHidden;
-        save();
-        this.requestRender();
-      },
-      syncDirSupported: () => syncDirSupported(),
-      syncDirStatus: () => this.fsync.status(),
-      onSyncDirPick: () => this.fsync.pick(),
-      onSyncDirReconnect: () => this.fsync.reconnect(),
-      onSyncDirStop: () => this.fsync.stop(),
-      onBackupExport: () => void this.exporter.exportJson(),
-      onSnapshots: () => this.openSnapshots(),
-      encrypted: () => hasBox(),
-      onEncrypt: (a) =>
-        openEncryptPopup(a, {
-          mode: 'enable',
-          onExport: () => void this.exporter.exportJson(),
-          onEnable: (pass) => this.enableEncryption(pass),
-        }),
-      onDecrypt: (a) =>
-        openEncryptPopup(a, {
-          mode: 'disable',
-          onDisable: (pass) => this.disableEncryption(pass),
-        }),
-      onLockNow: () => void this.lockNow(),
-    });
-  }
-
-
-  private async enableEncryption(passphrase: string) {
-    const oldBox = getBox();
-    const { box, meta } = await setupPassphrase(passphrase);
-    await saveEncMeta(meta);
-    setBox(box);
-    this.saveKind = 2;
-    await this.saveNow();
-    await rekeyBlobs(oldBox, box);
-    await rekeySnapshots(oldBox, box);
-    this.fsync.rekey();
-    toast(t('encEnabledToast'), 'ok');
-  }
-
-
-  private async disableEncryption(passphrase: string): Promise<boolean> {
-    const verified = await unlockWithPassphrase(passphrase);
-    if (!verified) return false;
-    const oldBox = getBox() ?? verified;
-    setBox(null);
-    this.saveKind = 2;
-    await this.saveNow();
-    await rekeyBlobs(oldBox, null);
-    await rekeySnapshots(oldBox, null);
-    // Key metadata only goes away once plaintext is safely persisted:
-    // a failure above leaves sealed data still unlockable.
-    await clearEncMeta();
-    this.fsync.rekey();
-    toast(t('encRemovedToast'), 'ok');
-    return true;
-  }
-
-
-  private async lockNow() {
-    await this.flush();
-    setBox(null);
-    this.reloadDiscarding();
-  }
-
-
-  // Settings "Version history" row: named workspace snapshots stored
-  // outside the doc (persist/snapshots.ts), restored through the
-  // adapter save plus a reload.
-  openSnapshots() {
-    this.panels.closePanel();
-    openSnapshotsPanel({
-      list: () => listSnapshots(),
-      onNew: async () => {
-        try {
-          await createSnapshot(this.doc, this.prefs, fmtDate(Date.now()), false);
-          toast(t('snapTaken'), 'ok');
-        } catch {
-          toast(t('snapFail'), 'err');
-        }
-      },
-      onRestore: (id) => {
-        choice(t('snapRestoreQ'), t('snapRestoreAct'), () => void this.restoreSnapshot(id));
-      },
-      onBrowse: (id) => {
-        void this.browseSnapshot(id);
-      },
-      onDelete: (id) => {
-        void deleteSnapshot(id);
-      },
-    });
-  }
-
-
-  private async browseSnapshot(id: ID) {
-    const w = await readSnapshot(id).catch(() => null);
-    if (!w) {
-      toast(t('snapFail'), 'err');
-      return;
-    }
-    const snapDoc = migrateDoc(w.doc);
-    this.panels.closePanel();
-    openSnapBrowsePanel({
-      doc: snapDoc,
-      snippetFor: (el) => this.panels.snippetFor(el),
-      onRestoreBoard: (boardId) => {
-        if (this.lockedView()) return;
-        const host = survivingBoard(this.doc, undefined, this.boardId);
-        const res = host ? restoreSnapshotBoardActions(this.doc, snapDoc, boardId, host) : null;
-        if (!res) {
-          toast(t('snapFail'), 'err');
-          return;
-        }
-        this.store.dispatch({ type: 'batch', actions: res.actions });
-        this.openBoard(res.boardId);
-        toast(t('snapRestored'), 'ok');
-      },
-      onRestoreCard: (el) => {
-        if (this.lockedView()) return;
-        const host = survivingBoard(this.doc, undefined, this.boardId);
-        const res = host ? restoreSnapshotCardActions(this.doc, el, host) : null;
-        if (!res || !host) {
-          toast(t('snapFail'), 'err');
-          return;
-        }
-        this.store.dispatch({ type: 'batch', actions: res.actions });
-        if (this.boardId !== host) this.openBoard(host);
-        this.setSelection([res.id]);
-        toast(t('snapRestored'), 'ok');
-      },
-    });
-  }
-
-
-  private async restoreSnapshot(id: ID) {
-    const w = await readSnapshot(id).catch(() => null);
-    if (!w) {
-      toast(t('snapFail'), 'err');
-      return;
-    }
-    // Freeze autosave before the restore write: a pending saveNow
-    // landing after it would silently overwrite the restored doc.
-    this.beginExternalSave();
-    try {
-      await this.saveExternal({ version: 1, doc: migrateDoc(w.doc), savedAt: Date.now(), prefs: w.prefs ?? this.prefs });
-    } catch {
-      this.endExternalSave();
-      toast(t('snapFail'), 'err');
-      return;
-    }
-    this.tabSync?.notifySaved();
-    this.reloadDiscarding();
-  }
-
-
-  // Folder-backup and snapshot restores write through the adapter
-  // directly; other tabs still need the reload nudge.
-  notifyExternalSave() {
-    this.tabSync?.notifySaved();
-  }
-
-
-  // Settings "Reset everything": wipe doc storage, blobs and prefs,
-  // then reload so the boot path re-seeds a fresh default doc.
-  private async resetAll() {
-    try {
-      await this.flush();
-      localStorage.removeItem('scatterboard:lang');
-      localStorage.removeItem('scatterboard:theme');
-      await this.adapter.clear();
-      await clearBlobs();
-      await clearExtra();
-    } catch {
-      toast(t('exFail'), 'err');
-      return;
-    }
-    location.reload();
+    this.settings.stepUiScale(dir);
   }
 
 
   // First run only: one quiet dismissible hint, then never again.
   welcomeHint() {
-    if (this.prefs.welcomed) return;
-    hint(t('welcomeToast'), () => {
-      this.prefs.welcomed = true;
-      this.scheduleSave();
-    });
+    this.settings.welcomeHint();
   }
 
 
   // --- persistence ---
 
   scheduleSave() {
-    this.markSave(2);
-  }
-
-
-  // Viewport-only path: writes a small per-board position row instead
-  // of serializing the whole doc.
-  private schedulePosSave() {
-    this.markSave(1);
-  }
-
-
-  private markSave(kind: 1 | 2) {
-    if (kind > this.saveKind) this.saveKind = kind;
-    this.saveState = 'saving';
-    // Camera-only saves (kind 1) write a small position row: persist
-    // them silently. The chip only reports real doc changes.
-    if (kind === 2 && !this.saveChip) {
-      this.saveChip = true;
-      this.topbar.setSaveState('saving');
-    }
-    if (this.saveTimer !== null) clearTimeout(this.saveTimer);
-    this.saveTimer = window.setTimeout(() => {
-      this.saveTimer = null;
-      void this.saveNow();
-    }, SAVE_DEBOUNCE);
+    this.saver.scheduleSave();
   }
 
 
   markExported() {
-    this.prefs.lastExportAt = Date.now();
-    void this.saveNow();
-  }
-
-  // Every save request enqueues one write on the tail chain; the write
-  // re-reads saveKind when it runs, so a queued write always persists
-  // the newest required state. skipFlush freezes the path entirely:
-  // an external write (snapshot/folder restore, foreign-save reload)
-  // is about to supersede this doc.
-  private saveNow(): Promise<void> {
-    if (this.skipFlush) return Promise.resolve();
-    this.savePending++;
-    // Swallow rejections: the tail must keep draining and callers
-    // treat failures internally (writeSave reports via saveFails).
-    const p = this.saveTail.then(() => this.writeSave()).catch(() => {});
-    this.saveTail = p;
-    return p;
-  }
-
-  private async writeSave() {
-    const kind = this.saveKind;
-    this.saveKind = 0;
-    const board = this.board();
-    if (board) board.position = this.vp.snapshot();
-    try {
-      if (kind === 1) {
-        if (board) await this.adapter.saveBoardPos(board.id, board.position!);
-      } else {
-        const w = { version: 1, doc: this.doc, savedAt: Date.now(), prefs: this.prefs };
-        await this.adapter.save(w);
-        this.lastSavedAt = w.savedAt;
-        // Other tabs reload off this save; the folder mirror trails it.
-        this.tabSync?.notifySaved();
-        this.fsync.onSaved();
-      }
-    } catch {
-      // Keep 'saving': the chip stays honest and flush() retries on
-      // pagehide instead of the rejection going unhandled. A streak of
-      // doc-save failures means storage is really broken, so warn once
-      // and offer an export rather than losing work quietly.
-      if (kind === 2 && ++this.saveFails >= 3 && !this.saveWarned) {
-        this.saveWarned = true;
-        choice(t('saveFail'), t('exportAs'), () => void this.exporter.exportJson());
-      }
-      return;
-    } finally {
-      this.savePending--;
-    }
-    this.saveFails = 0;
-    this.saveWarned = false;
-    // 'saved' only once the queue is empty and nothing is debounced:
-    // a kind-1 write completing while a doc save is pending must not
-    // report saved, or flush() could slip past unwritten data.
-    if (this.savePending === 0 && this.saveKind === 0 && this.saveTimer === null) {
-      this.saveState = 'saved';
-      if (this.saveChip) {
-        this.saveChip = false;
-        this.topbar.setSaveState('saved');
-      }
-    }
+    this.saver.markExported();
   }
 
 
-  // Another tab announced a doc save. A clean tab pulls it silently;
-  // a dirty or busy one asks first because the reload drops in-flight
-  // work. skipFlush guards the stale doc on the way out either way.
-  private onForeignSave() {
-    if (this.saveState === 'saved' && !this.editingId && !this.overlayOpen && !this.presenting) {
-      this.reloadDiscarding();
-      return;
-    }
-    if (this.foreignSaveAsked) return;
-    this.foreignSaveAsked = true;
-    choice(
-      t('tabChanged'),
-      t('tabReload'),
-      () => this.reloadDiscarding(),
-      () => {
-        this.foreignSaveAsked = false;
-      },
-      0,
-    );
+  flush() {
+    return this.saver.flush();
   }
 
-
-  reloadDiscarding() {
-    this.skipFlush = true;
-    location.reload();
-  }
-
-
-  async flush() {
-    if (this.skipFlush) return;
-    if (this.saveTimer !== null) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-    }
-    // Pending work gets a queued write; a write already in flight or
-    // queued must also complete before flush returns.
-    if (this.saveState === 'saving' || this.saveKind > 0) await this.saveNow();
-    else await this.saveTail;
-  }
 
   // External workspace writes (snapshot/folder restores) must land
   // after any in-flight autosave and stay last: freeze the save path
   // first so a debounced or queued saveNow can't slip a stale doc in
   // behind the restore, then chain the write behind saveTail.
   beginExternalSave() {
-    if (this.saveTimer !== null) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-    }
-    this.skipFlush = true;
+    this.saver.beginExternalSave();
   }
 
   // Re-arm autosave when the external write never landed; pending
   // edits need their debounce back.
   endExternalSave() {
-    this.skipFlush = false;
-    this.scheduleSave();
+    this.saver.endExternalSave();
   }
 
   saveExternal(w: PersistedWorkspace): Promise<void> {
-    const p = this.saveTail.then(() => this.adapter.save(w));
-    this.saveTail = p.then(
-      () => {},
-      () => {},
-    );
-    return p;
+    return this.saver.saveExternal(w);
+  }
+
+  // Folder-backup and snapshot restores write through the adapter
+  // directly; other tabs still need the reload nudge.
+  notifyExternalSave() {
+    this.saver.notifyExternalSave();
+  }
+
+
+  reloadDiscarding() {
+    this.saver.reloadDiscarding();
   }
 }
-
