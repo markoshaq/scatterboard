@@ -44,7 +44,7 @@ jobs:
           # Project page lives under /scatterboard/; vite.config reads
           # this for the asset base path.
           SCATTERBOARD_BASE: /scatterboard/
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
       - id: deploy
