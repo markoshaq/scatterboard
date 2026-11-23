@@ -48,7 +48,7 @@ jobs:
         with:
           path: dist
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
         with:
           # Pages rollout stalls have hit the default 10min timeout
           # twice; give the CDN update longer before giving up.
