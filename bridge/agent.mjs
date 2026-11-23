@@ -83,7 +83,7 @@ function originOk(origin) {
   }
 }
 
-const http = createServer((req, res) => {
+const http = createServer((_req, res) => {
   res.writeHead(404);
   res.end();
 });

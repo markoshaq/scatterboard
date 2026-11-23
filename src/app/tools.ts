@@ -959,10 +959,9 @@ export class RailTools {
   convertToNote(el: Element) {
     const c = documentDoc(el);
     if (!c || !this.a.boardId) return;
-    // The doc title has no note field: fold it into the body (text and
-    // html) so it survives the swap.
+    // Title and caption have no note fields: fold both into the body
+    // (text and html) so they survive the swap.
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    // Title and caption have no note fields: fold both into the body.
     const head = [c.title, c.caption].filter(Boolean).join('\n');
     const text = head ? `${head}\n${c.text}` : c.text;
     const html =

@@ -189,7 +189,8 @@ export class Topbar {
         const ic = document.createElement('span');
         ic.className = 'crumb-ic';
         mountBoardIcon(ic, c.icon, c.title);
-        ic.title = t('toolIcon');        ic.setAttribute('role', 'button');
+        ic.title = t('toolIcon');
+        ic.setAttribute('role', 'button');
         ic.setAttribute('aria-label', t('toolIcon'));
         ic.addEventListener('click', (e) => {
           e.stopPropagation();

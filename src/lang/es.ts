@@ -463,7 +463,6 @@ const table: Partial<Record<StringKey, string>> = {
   backupStop: 'Desconectar carpeta',
   backupReconnect: 'Permitir acceso',
   backupHint: 'Refleja workspace.json y los medios en una carpeta en cada guardado. Una carpeta sincronizada sirve como sincronización entre dispositivos.',
-  backupUnsupported: 'La copia en carpeta necesita un navegador con la API File System Access (Chrome, Edge).',
   backupLast: 'Último reflejo {when}',
   backupDone: 'Carpeta de copia conectada',
   backupFail: 'Falló la copia en carpeta',

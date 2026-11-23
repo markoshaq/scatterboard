@@ -130,7 +130,7 @@ export async function writeBackup(
   let typesDirty = false;
   const live = new Set(blobRefsInDoc(doc));
   for (const ref of live) {
-    const blob = mirrored.has(ref) ? (types[ref] === undefined ? await getBlob(ref).catch(() => undefined) : undefined) : await getBlob(ref).catch(() => undefined);
+    const blob = mirrored.has(ref) && types[ref] !== undefined ? undefined : await getBlob(ref).catch(() => undefined);
     if (mirrored.has(ref)) {
       // A file mirrored without an index entry (primeMirrored marks
       // every listing) restores as octet-stream: repair its type.

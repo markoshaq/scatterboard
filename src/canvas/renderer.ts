@@ -1,4 +1,4 @@
-import { GRID, lineDoc, type Element, type LineMarker, type LineWeight } from '../state/schema';
+import { DEFAULT_LINE_WEIGHT, GRID, lineDoc, type Element, type LineMarker, type LineWeight } from '../state/schema';
 import { canvasColors, type CanvasColors } from '../ui/theme';
 import type { Pt } from './lines';
 import type { Rect, Viewport } from './viewport';
@@ -185,7 +185,7 @@ export class Renderer {
     const c = lineDoc(l.el);
     if (!c) return;
     ctx.globalAlpha = l.dim ? 0.15 : 1;
-    const w = LINE_W[c.weight ?? 'medium'];
+    const w = LINE_W[c.weight ?? DEFAULT_LINE_WEIGHT];
     const ink = l.el.color ?? this.cc.ink;
     const pts = l.pts;
     const stroke = () => {

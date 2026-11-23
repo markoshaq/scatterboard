@@ -1,5 +1,5 @@
 import type { Element, ID } from '../state/schema';
-import { columnMembers, columnTitle, lineDoc } from '../state/schema';
+import { columnMembers, columnTitle, DEFAULT_LINE_WEIGHT, lineDoc } from '../state/schema';
 import { memberCount, t } from '../strings';
 import type { CardView } from './note';
 import type { CardCtx } from './factory';
@@ -174,7 +174,7 @@ export class ColumnCard implements CardView {
     for (const l of lines) {
       const c = lineDoc(l.el);
       if (!c) continue;
-      const w = LINE_W[c.weight ?? 'medium'];
+      const w = LINE_W[c.weight ?? DEFAULT_LINE_WEIGHT];
       const ink = l.el.color ?? cc.ink;
       const pts = l.pts;
       for (let i = 0; i + 1 < pts.length; i++) {

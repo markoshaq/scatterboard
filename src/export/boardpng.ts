@@ -1,7 +1,7 @@
-import { GRID, lineDoc, type Element, type LineMarker, type LineWeight, type Stroke } from '../state/schema';
+import { DEFAULT_LINE_WEIGHT, GRID, lineDoc, type Element, type LineMarker, type Stroke } from '../state/schema';
 import { canvasColors, cardBg } from '../ui/theme';
 import type { Rect } from '../canvas/viewport';
-import type { SceneLine } from '../canvas/renderer';
+import { LINE_W, type SceneLine } from '../canvas/renderer';
 import { midpoint } from '../canvas/lines';
 
 // Board raster export: dot-grid backdrop + canvas line pass + the DOM
@@ -10,7 +10,6 @@ import { midpoint } from '../canvas/lines';
 // to a simple canvas card renderer: rounded rect + plain text.
 
 
-const LINE_W: Record<LineWeight, number> = { thin: 1, medium: 1.8, thick: 4 };
 const MAX_EDGE = 16000;
 
 export interface FallbackCard {
@@ -216,7 +215,7 @@ function drawMarker(ctx: CanvasRenderingContext2D, x: number, y: number, ang: nu
 function drawSceneLine(ctx: CanvasRenderingContext2D, l: SceneLine) {
   const c = lineDoc(l.el);
   if (!c) return;
-  const w = LINE_W[c.weight ?? 'medium'];
+  const w = LINE_W[c.weight ?? DEFAULT_LINE_WEIGHT];
   const ink = l.el.color ?? canvasColors().ink;
   ctx.strokeStyle = ink;
   ctx.lineWidth = w;

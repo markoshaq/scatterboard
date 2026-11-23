@@ -35,6 +35,7 @@
       "src/**",
       "test/**",
       "vite.config.ts",
+      "bridge/*.mjs",
       "!public/**"
     ]
   }

@@ -40,7 +40,7 @@ export function restoreSnapshotCardActions(
   return { actions: [{ type: 'element.create', el: clone }], id: clone.id };
 }
 
-export interface SnapBrowseOpts {
+interface SnapBrowseOpts {
   doc: Doc;
   snippetFor(el: Element): string;
   onRestoreBoard(boardId: ID): void;

@@ -92,6 +92,7 @@ interface SwatchDoc {
 
 export type LineMarker = 'none' | 'arrow' | 'dot';
 export type LineWeight = 'thin' | 'medium' | 'thick';
+export const DEFAULT_LINE_WEIGHT: LineWeight = 'medium';
 export type LineRoute = 'straight' | 'elbow';
 
 export interface LineEnd {
@@ -455,7 +456,7 @@ export function createLine(doc: Doc, boardId: ID, from: LineEnd, to: LineEnd): E
       fromMarker: 'none',
       toMarker: 'arrow',
       dashed: false,
-      weight: 'medium',
+      weight: DEFAULT_LINE_WEIGHT,
       label: '',
     },
   };

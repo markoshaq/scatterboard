@@ -117,11 +117,11 @@ export function compareCells(a: TableCell, b: TableCell, locale = 'en', sign = 1
     return a.text.localeCompare(b.text, locale) * sign;
   }
   if (type === 'datetime') {
-    const ta = a.text.trim() === '' ? NaN : Date.parse(a.text.trim());
-    const tb = b.text.trim() === '' ? NaN : Date.parse(b.text.trim());
-    const fa = !Number.isNaN(ta);
-    const fb = !Number.isNaN(tb);
-    if (fa && fb) return (ta - tb) * sign;
+    const da = a.text.trim() === '' ? NaN : Date.parse(a.text.trim());
+    const db = b.text.trim() === '' ? NaN : Date.parse(b.text.trim());
+    const fa = !Number.isNaN(da);
+    const fb = !Number.isNaN(db);
+    if (fa && fb) return (da - db) * sign;
     if (fa !== fb) return fa ? -1 : 1;
     return a.text.localeCompare(b.text, locale) * sign;
   }

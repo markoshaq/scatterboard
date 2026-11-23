@@ -334,7 +334,8 @@ export class LinkCard implements CardView {
     const host = hostOf(c.url);
     if (this.chipEl.textContent !== host) {
       this.chipEl.textContent = host;
-      this.chipEl.title = c.url;      this.chipEl.setAttribute('aria-label', c.url);
+      this.chipEl.title = c.url;
+      this.chipEl.setAttribute('aria-label', c.url);
     }
     if (!this.editing && c.title !== this.lastTitle) {
       this.titleEl.textContent = c.title;

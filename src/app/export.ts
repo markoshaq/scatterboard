@@ -249,7 +249,7 @@ export class BoardExport {
       }
       downloadBlob(`${this.exportFileBase()}.png`, blob);
       toast(t('exDone'), 'ok');
-    this.a.markExported();
+      this.a.markExported();
     } finally {
       done();
     }
@@ -273,7 +273,7 @@ export class BoardExport {
       const pdf = jpegToPdf(jpeg, cv.width, cv.height, (cv.width / scale) * 0.75, (cv.height / scale) * 0.75);
       downloadBlob(`${this.exportFileBase()}.pdf`, pdf);
       toast(t('exDone'), 'ok');
-    this.a.markExported();
+      this.a.markExported();
     } finally {
       done();
     }

@@ -319,13 +319,16 @@ export function openImageEditor(el: Element, mode: ImgMode, ctx: ImgEditorCtx): 
       const x0 = Math.max(0, Math.min(stage.width, (e.clientX - r.left) * k));
       const y0 = Math.max(0, Math.min(stage.height, (e.clientY - r.top) * k));
       crop = { x: x0, y: y0, w: 0, h: 0 };
+      const pid = e.pointerId;
       const move = (ev: PointerEvent) => {
+        if (ev.pointerId !== pid) return;
         const x1 = Math.max(0, Math.min(stage.width, (ev.clientX - r.left) * k));
         const y1 = Math.max(0, Math.min(stage.height, (ev.clientY - r.top) * k));
         crop = { x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) };
         render();
       };
-      const up = () => {
+      const up = (ev?: PointerEvent) => {
+        if (ev && ev.pointerId !== pid) return;
         dragEnd = null;
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);

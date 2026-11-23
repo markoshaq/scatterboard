@@ -307,7 +307,8 @@ export class Rail {
     this.well.name = 'board-color';
     this.well.type = 'color';
     this.well.className = 'rail-well';
-    this.well.title = t('boardColor');    this.well.setAttribute('aria-label', t('boardColor'));
+    this.well.title = t('boardColor');
+    this.well.setAttribute('aria-label', t('boardColor'));
     this.well.value = DEFAULT_WELL;
     this.well.addEventListener('input', () => this.events.onBoardColor(this.well.value));
     // Label the well: a bare colour input reads as decoration, not as
@@ -466,7 +467,8 @@ export class Rail {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'rail-item';
-    btn.title = item.label;    btn.setAttribute('aria-label', item.label);
+    btn.title = item.label;
+    btn.setAttribute('aria-label', item.label);
     btn.innerHTML = item.icon;
     const lab = document.createElement('span');
     lab.textContent = item.label;
@@ -518,7 +520,8 @@ export class Rail {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'rail-item rail-tool';
-    btn.title = label;    btn.setAttribute('aria-label', label);
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
     btn.innerHTML = icon;
     const lab = document.createElement('span');
     lab.textContent = label;
@@ -532,7 +535,8 @@ export class Rail {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'rail-item rail-tool';
-    btn.title = def.label;    btn.setAttribute('aria-label', def.label);
+    btn.title = def.label;
+    btn.setAttribute('aria-label', def.label);
     btn.innerHTML = def.icon;
     const lab = document.createElement('span');
     lab.textContent = def.label;

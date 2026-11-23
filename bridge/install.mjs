@@ -18,7 +18,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 // JSONC-tolerant parse: strips // and /* */ outside strings, then
 // trailing commas (a `,` before } or ] outside strings).
-function parseJsonc(text) {
+export function parseJsonc(text) {
   let out = '';
   let inStr = false;
   let esc = false;
@@ -89,7 +89,7 @@ export function installMcp({ local = false, cwd = process.cwd(), log = console.l
     }
     cfg.mcpServers.scatterboard = entry;
     mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
+    writeFileSync(file, `${JSON.stringify(cfg, null, 2)}\n`);
     log(`  wrote ${file}`);
   };
 

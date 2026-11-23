@@ -1,5 +1,5 @@
 import type { App } from '../app';
-import { migrateDoc, saneContent } from '../state/schema';
+import { migrateDoc, saneContent, UNSORTED } from '../state/schema';
 import { scrubContent } from '../ui/sanitize';
 import { choice, toast } from '../ui/toast';
 import { t } from '../strings';
@@ -211,6 +211,23 @@ export class FolderSync {
       for (const el of Object.values(doc.elements)) {
         if (!saneContent(el.content, el.type)) delete doc.elements[el.id];
         else scrubContent(el.content);
+      }
+      // Dropped elements leave dangling references: a child whose
+      // parentId names a missing or non-column element lands in a
+      // member bucket nothing renders, so it vanishes on the board.
+      // Re-home orphans to the canvas and detach dead anchors/line
+      // ends, same rule as the boardio import path.
+      for (const el of Object.values(doc.elements)) {
+        if (el.parentId !== null && el.parentId !== UNSORTED) {
+          const p = doc.elements[el.parentId];
+          if (!p || p.boardId !== el.boardId || p.type !== 'column') el.parentId = null;
+        }
+        if (el.anchorId !== undefined && doc.elements[el.anchorId]?.boardId !== el.boardId) delete el.anchorId;
+        if ('line' in el.content) {
+          for (const end of [el.content.line.from, el.content.line.to]) {
+            if (end.el !== undefined && doc.elements[end.el]?.boardId !== el.boardId) delete end.el;
+          }
+        }
       }
       await restoreMedia(this.handle, doc);
       await this.a.saveExternal({

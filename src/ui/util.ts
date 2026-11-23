@@ -22,6 +22,9 @@ export function dragGhost(
 ) {
   if (e.button !== 0) return;
   e.preventDefault();
+  // Every gesture filters its own pointer id: a second finger's move
+  // or release must not steer or end the drag it is not part of.
+  const pid = e.pointerId;
   let ghost: HTMLElement | null = null;
   let moved = false;
   let outside = false;
@@ -33,6 +36,7 @@ export function dragGhost(
     document.removeEventListener('pointerout', out);
   };
   const move = (ev: PointerEvent) => {
+    if (ev.pointerId !== pid) return;
     if (ev.buttons === 0) {
       // Released outside the window: no pointerup arrives, only
       // no-button moves. That is a cancel, but only after the pointer
@@ -56,15 +60,17 @@ export function dragGhost(
     onMove?.(ev);
   };
   const out = (ev: PointerEvent) => {
-    if (!ev.relatedTarget) outside = true;
+    if (ev.pointerId === pid && !ev.relatedTarget) outside = true;
   };
   const up = (ev: PointerEvent) => {
+    if (ev.pointerId !== pid) return;
     cleanup();
     ghost?.remove();
     onMove?.(null);
     onUp(ev, moved);
   };
-  const cancel = () => {
+  const cancel = (ev?: PointerEvent) => {
+    if (ev && ev.pointerId !== pid) return;
     cleanup();
     ghost?.remove();
     onMove?.(null);

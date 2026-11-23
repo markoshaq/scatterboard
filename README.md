@@ -6,6 +6,14 @@ grid. No accounts, no servers, no tracking; the workspace lives in
 the browser and works offline. MIT licensed, original code, copy, art,
 and icons.
 
+**[Try it live](https://markoshaq.github.io/scatterboard/)**: every
+visitor gets their own local workspace, nothing is uploaded.
+
+[![CI](https://github.com/markoshaq/scatterboard/actions/workflows/ci.yml/badge.svg)](https://github.com/markoshaq/scatterboard/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/markoshaq/scatterboard)](https://github.com/markoshaq/scatterboard/releases)
+[![License](https://img.shields.io/github/license/markoshaq/scatterboard)](LICENSE)
+[![Zero runtime dependencies](https://img.shields.io/badge/runtime%20deps-0-blue)](#architecture)
+
 ![The welcome board: cards, columns, drawings, and link cards on the dot grid](docs/screenshot.png)
 
 ```
@@ -298,7 +306,8 @@ builds only) precaches the shell and walks the script bundle, so the
 whole app works offline after one visit.
 
 - [AGENTS.md](AGENTS.md): current source layout and conventions
-- [ARCHITECTURE.md](ARCHITECTURE.md): the original design proposal,
+- [DESIGN.md](DESIGN.md): the trade-offs behind the main pieces
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md): the original design proposal,
   kept for context
 - [CHANGELOG.md](CHANGELOG.md): release history
 - [CONTRIBUTING.md](CONTRIBUTING.md): ground rules and PR checklist

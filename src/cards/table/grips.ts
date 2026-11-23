@@ -83,16 +83,14 @@ export class TableGrips {
       this.bindColDrag(grip, ci);
       this.grips.appendChild(grip);
 
-      if (ci < cols) {
-        const edge = document.createElement('div');
-        edge.className = 'tb-edge';
-        // Grip widths counter-scale with zoom, so the offset does too.
-        edge.style.left = `${x + w - 3 / this.scale()}px`;
-        edge.style.height = `${h}px`;
-        edge.dataset.noclick = '1';
-        this.bindColResize(edge, ci, w);
-        this.grips.appendChild(edge);
-      }
+      const edge = document.createElement('div');
+      edge.className = 'tb-edge';
+      // Grip widths counter-scale with zoom, so the offset does too.
+      edge.style.left = `${x + w - 3 / this.scale()}px`;
+      edge.style.height = `${h}px`;
+      edge.dataset.noclick = '1';
+      this.bindColResize(edge, ci, w);
+      this.grips.appendChild(edge);
     }
     // Row grips mirror the column grips on the left edge.
     for (let ri = 0; ri < this.host.cellEls.length; ri++) {

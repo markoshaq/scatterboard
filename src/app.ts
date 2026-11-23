@@ -1122,8 +1122,6 @@ export class App {
   }
 
 
-
-
   // --- actions ---
 
   // Board accent colour: new cards inherit board.color when set.

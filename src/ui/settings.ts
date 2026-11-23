@@ -214,7 +214,8 @@ function openToolbarEditor(anchor: HTMLElement, api: SettingsApi) {
       hide.className = 'tbe-mini tbe-hide';
       hide.innerHTML = ICONS.close;
       const hideLbl = it.hidden ? t('toolShow') : t('toolHide');
-      hide.title = hideLbl;      hide.setAttribute('aria-label', hideLbl);
+      hide.title = hideLbl;
+      hide.setAttribute('aria-label', hideLbl);
       hide.addEventListener('click', () => {
         api.onRailHide(it.key, !it.hidden);
         render();

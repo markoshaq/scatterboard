@@ -120,6 +120,16 @@ describe('hitLines', () => {
     expect(hitLines([rt], new Set(), { x: 50, y: 1.9 }, 4)?.id).toBe(thick.id);
   });
 
+  it('treats a missing weight as the rendered medium default', () => {
+    const d = doc();
+    const line = createLine(d, 'home', { x: 0, y: 0 }, { x: 100, y: 0 });
+    delete (line.content as { line: { weight?: string } }).line.weight;
+    const rl = resolveLine(line, d, rectOf)!;
+    // At z=8 the pointer corridor is 6/8=0.75: medium widens it to 0.9
+    // so 0.8 hits, while a thin default would narrow it to 0.5 and miss.
+    expect(hitLines([rl], new Set(), { x: 50, y: 0.8 }, 8)?.id).toBe(line.id);
+  });
+
   it('returns null away from every line and on a zero-length line', () => {
     const d = doc();
     const line = createLine(d, 'home', { x: 0, y: 0 }, { x: 100, y: 0 });

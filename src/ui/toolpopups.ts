@@ -122,7 +122,8 @@ export function openColorPopup(anchor: HTMLElement | DOMRect, onPick: (color: st
     b.type = 'button';
     b.className = 'cp-swatch';
     b.style.background = c;
-    b.title = c;    b.setAttribute('aria-label', c);
+    b.title = c;
+    b.setAttribute('aria-label', c);
     b.setAttribute('role', 'option');
     b.setAttribute('aria-selected', 'false');
     b.addEventListener('click', () => onPick(c));
@@ -132,7 +133,8 @@ export function openColorPopup(anchor: HTMLElement | DOMRect, onPick: (color: st
   custom.className = 'cp-swatch cp-custom';
   custom.setAttribute('role', 'option');
   custom.setAttribute('aria-selected', 'false');
-  custom.title = t('colorCustom');  custom.setAttribute('aria-label', t('colorCustom'));
+  custom.title = t('colorCustom');
+  custom.setAttribute('aria-label', t('colorCustom'));
   const well = document.createElement('input');
   well.type = 'color';
   well.name = 'custom-color';
@@ -189,7 +191,8 @@ export function openLabelsPopup(anchor: HTMLElement | DOMRect, api: LabelsApi): 
       del.type = 'button';
       del.className = 'lp-del';
       del.innerHTML = ICONS.close;
-      del.title = t('deleteLabel');      del.setAttribute('aria-label', t('deleteLabel'));
+      del.title = t('deleteLabel');
+      del.setAttribute('aria-label', t('deleteLabel'));
       del.addEventListener('click', (e) => {
         e.preventDefault();
         api.onDelete(label.id);
@@ -293,7 +296,8 @@ export function openReactionsPopup(
     b.type = 'button';
     b.className = 'rp-tone';
     b.textContent = m ? `👋${m}` : '👋';
-    b.title = t('reactTone');    b.setAttribute('aria-label', t('reactTone'));
+    b.title = t('reactTone');
+    b.setAttribute('aria-label', t('reactTone'));
     b.setAttribute('role', 'radio');
     b.setAttribute('aria-checked', String(m === tone));
     b.classList.toggle('on', m === tone);
@@ -414,7 +418,8 @@ function swatchRow(colors: (string | null)[], onPick: (c: string | null) => void
     b.className = 'cp-swatch';
     if (c === null) b.classList.add('cp-none');
     else b.style.background = c;
-    b.title = c ?? t('colorDefault');    b.setAttribute('aria-label', c ?? t('colorDefault'));
+    b.title = c ?? t('colorDefault');
+    b.setAttribute('aria-label', c ?? t('colorDefault'));
     b.setAttribute('role', 'option');
     b.setAttribute('aria-selected', 'false');
     b.addEventListener('click', () => onPick(c));
@@ -561,7 +566,8 @@ export function openLinkInfoPopup(anchor: HTMLElement | DOMRect, url: string, on
   const text = document.createElement('div');
   text.className = 'li-url';
   text.textContent = url;
-  text.title = url;  text.setAttribute('aria-label', url);
+  text.title = url;
+  text.setAttribute('aria-label', url);
   const copy = document.createElement('button');
   copy.type = 'button';
   copy.className = 'pop-row';

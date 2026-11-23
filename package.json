@@ -28,12 +28,14 @@
     "typecheck": "tsc --noEmit",
     "agent:setup": "node bridge/setup.mjs",
     "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "prebuild": "npm run typecheck && npm test",
-    "lint": "biome lint src test vite.config.ts",
+    "lint": "biome lint src test vite.config.ts bridge/agent.mjs bridge/install.mjs bridge/setup.mjs",
     "version": "node scripts/sync-bridge-version.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
+    "@vitest/coverage-v8": "~4.1.12",
     "happy-dom": "^21.0.4",
     "typescript": "~5.9.3",
     "vite": "^7.1.7",

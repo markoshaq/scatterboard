@@ -463,7 +463,6 @@ const table: Partial<Record<StringKey, string>> = {
   backupStop: 'Ordner trennen',
   backupReconnect: 'Zugriff erlauben',
   backupHint: 'Spiegelt workspace.json und Medien bei jedem Speichern in einen Ordner. Ein synchronisierter Ordner dient als Gerätesync.',
-  backupUnsupported: 'Ordnersicherung braucht einen Browser mit File System Access API (Chrome, Edge).',
   backupLast: 'Zuletzt gespiegelt {when}',
   backupDone: 'Sicherungsordner verbunden',
   backupFail: 'Ordnersicherung fehlgeschlagen',

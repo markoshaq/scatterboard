@@ -120,3 +120,101 @@ describe('tilt-wheel suppression', () => {
     expect(panBy).toHaveBeenCalledTimes(1);
   });
 });
+
+function pointerApp() {
+  return {
+    vp: { zoomAt: vi.fn(), panBy: vi.fn() },
+    startPan: vi.fn(),
+    boardPoint: (e: PointerEvent) => ({ x: e.clientX, y: e.clientY }),
+    lineHit: () => null,
+    cardIdAt: () => null,
+    editingId: null,
+    spaceDown: false,
+    sel: new Set(),
+    doc: { elements: {} },
+    gestures: { trackGesture: vi.fn(() => vi.fn()) },
+    setMarquee: vi.fn(),
+    marqueeSelect: vi.fn(),
+    clearSelection: vi.fn(),
+    selectOnly: vi.fn(),
+    toggleSelect: vi.fn(),
+    startLineDrag: vi.fn(),
+    startEndpointGesture: vi.fn(),
+    endEdit: vi.fn(),
+    isTextTarget: () => false,
+    layer: { view: () => undefined },
+    pointerClient: null,
+    ingestFileList: vi.fn(),
+    pasteExternal: vi.fn(),
+    createNoteAt: vi.fn(),
+    cardDblClick: vi.fn(),
+    boardUrl: vi.fn(),
+    cloneForDrag: vi.fn(),
+    cardOrigin: vi.fn(),
+    dragMove: vi.fn(),
+    abortDrag: vi.fn(),
+    endDrag: vi.fn(),
+    clickEdits: () => false,
+    beginEdit: vi.fn(),
+    store: { beginGroup: vi.fn(), endGroup: vi.fn() },
+    tools: { contextMenu: vi.fn() },
+    overlays: {},
+  } as unknown as App;
+}
+
+describe('pointer gestures', () => {
+  it('middle button starts a pan; right button is ignored', () => {
+    const root = document.createElement('div');
+    const app = pointerApp();
+    attachPointer(root, app);
+    root.dispatchEvent(new PointerEvent('pointerdown', { button: 1, pointerId: 1, buttons: 4 }));
+    expect(app.startPan).toHaveBeenCalledTimes(1);
+    window.dispatchEvent(new PointerEvent('pointerup', { button: 1, pointerId: 1, buttons: 0 }));
+    root.dispatchEvent(new PointerEvent('pointerdown', { button: 2, pointerId: 2, buttons: 2 }));
+    expect(app.startPan).toHaveBeenCalledTimes(1);
+    expect(app.gestures.trackGesture).not.toHaveBeenCalled();
+  });
+
+  it('a second non-touch pointer cannot start a parallel gesture', () => {
+    const root = document.createElement('div');
+    const app = pointerApp();
+    attachPointer(root, app);
+    root.dispatchEvent(new PointerEvent('pointerdown', { button: 0, pointerId: 1, buttons: 1, clientX: 10, clientY: 10 }));
+    expect(app.gestures.trackGesture).toHaveBeenCalledTimes(1);
+    root.dispatchEvent(new PointerEvent('pointerdown', { button: 0, pointerId: 2, buttons: 1, clientX: 50, clientY: 50 }));
+    expect(app.gestures.trackGesture).toHaveBeenCalledTimes(1);
+    window.dispatchEvent(new PointerEvent('pointerup', { button: 0, pointerId: 1, buttons: 0 }));
+    // Once the first pointer lifts, a new one may start a gesture.
+    root.dispatchEvent(new PointerEvent('pointerdown', { button: 0, pointerId: 2, buttons: 1, clientX: 50, clientY: 50 }));
+    expect(app.gestures.trackGesture).toHaveBeenCalledTimes(2);
+    window.dispatchEvent(new PointerEvent('pointerup', { button: 0, pointerId: 2, buttons: 0 }));
+  });
+
+  it('dragging empty canvas runs a marquee and selects on release', () => {
+    const root = document.createElement('div');
+    const app = pointerApp();
+    attachPointer(root, app);
+    root.dispatchEvent(new PointerEvent('pointerdown', { button: 0, pointerId: 9, buttons: 1, clientX: 10, clientY: 10 }));
+    window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 9, buttons: 1, clientX: 40, clientY: 40 }));
+    expect(app.setMarquee).toHaveBeenCalledWith({ x1: 10, y1: 10, x2: 40, y2: 40 });
+    window.dispatchEvent(new PointerEvent('pointerup', { button: 0, pointerId: 9, buttons: 0 }));
+    expect(app.marqueeSelect).toHaveBeenCalledWith(false);
+    expect(app.setMarquee).toHaveBeenLastCalledWith(null);
+  });
+
+  it('a second finger switches the session into pinch zoom + pan', () => {
+    const root = document.createElement('div');
+    const app = pointerApp();
+    attachPointer(root, app);
+    root.dispatchEvent(new PointerEvent('pointerdown', { button: 0, pointerId: 1, pointerType: 'touch', buttons: 1, clientX: 100, clientY: 100 }));
+    expect(app.gestures.trackGesture).toHaveBeenCalledTimes(1);
+    // Second finger cancels finger 1's pan session and arms the pinch.
+    root.dispatchEvent(new PointerEvent('pointerdown', { button: 0, pointerId: 2, pointerType: 'touch', buttons: 1, clientX: 100, clientY: 200 }));
+    root.dispatchEvent(new PointerEvent('pointermove', { pointerId: 2, pointerType: 'touch', buttons: 1, clientX: 100, clientY: 300 }));
+    // Span doubled 100 -> 200 around the new midpoint (100, 200).
+    expect(app.vp.zoomAt).toHaveBeenCalledWith(2, 100, 200);
+    expect(app.vp.panBy).toHaveBeenCalledWith(0, 50);
+    window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, pointerType: 'touch', buttons: 0 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 2, pointerType: 'touch', buttons: 0 }));
+  });
+});

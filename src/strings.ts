@@ -360,7 +360,6 @@ const en = {
   backupStop: 'Disconnect folder',
   backupReconnect: 'Allow access',
   backupHint: 'Mirrors workspace.json and media into a folder on every save. Point it at a synced folder for device sync.',
-  backupUnsupported: 'Folder backup needs a browser with the File System Access API (Chrome, Edge).',
   backupExportNow: 'Export a backup',
   backupHintFallback: 'Download a board backup file periodically to keep a copy outside this browser.',
   backupNag: 'It has been a while since your last backup.',

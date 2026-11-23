@@ -463,7 +463,6 @@ const table: Partial<Record<StringKey, string>> = {
   backupStop: 'Desconectar pasta',
   backupReconnect: 'Permitir acesso',
   backupHint: 'Espelha workspace.json e as mídias numa pasta a cada gravação. Uma pasta sincronizada serve como sincronização entre dispositivos.',
-  backupUnsupported: 'A cópia em pasta precisa de um navegador com a API File System Access (Chrome, Edge).',
   backupLast: 'Último espelho {when}',
   backupDone: 'Pasta de cópia conectada',
   backupFail: 'Falha na cópia em pasta',

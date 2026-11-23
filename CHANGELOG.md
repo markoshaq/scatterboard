@@ -4,6 +4,21 @@ Notable changes per release, newest first. Sections: Added, Changed, Fixed, Remo
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-23
+
+### Fixed
+
+- Restoring a folder backup no longer loses cards whose parent or
+  anchor was deleted: they re-home to the canvas, same rule as
+  imported boards.
+- When another open tab saves a newer workspace, a tab with queued
+  writes now holds its save until you answer the reload prompt
+  instead of writing over the newer copy.
+- Dragging a card, grip or ghost no longer reacts to a second
+  finger's movement or release mid-drag.
+- Lines saved before line weights existed hit-test as medium, the
+  same width they render.
+
 ## [0.3.0] - 2026-11-06
 
 Workspace encryption, repeating and reminded due dates, table CSV,

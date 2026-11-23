@@ -39,6 +39,11 @@ export class Saver {
 
   private foreignSaveAsked = false;
 
+  // Another tab saved a newer doc while this one still had queued
+  // writes. Doc writes hold until the user answers the reload prompt:
+  // landing one mid-prompt would clobber the foreign doc silently.
+  private foreignNewer = false;
+
   private tabSync: { notifySaved(): void } | null = null;
 
   constructor(private a: App) {}
@@ -107,6 +112,10 @@ export class Saver {
 
   private async writeSave() {
     const kind = this.saveKind;
+    if (kind === 2 && this.foreignNewer) {
+      this.savePending--;
+      return;
+    }
     this.saveKind = 0;
     const board = this.a.board();
     if (board) board.position = this.a.vp.snapshot();
@@ -153,6 +162,7 @@ export class Saver {
   // a dirty or busy one asks first because the reload drops in-flight
   // work. skipFlush guards the stale doc on the way out either way.
   private onForeignSave() {
+    this.foreignNewer = true;
     if (this.saveState === 'saved' && !this.a.editingId && !this.a.overlayOpen && !this.a.presenting) {
       this.reloadDiscarding();
       return;
@@ -165,6 +175,10 @@ export class Saver {
       () => this.reloadDiscarding(),
       () => {
         this.foreignSaveAsked = false;
+        // Keep-local is the informed choice now: release the held doc
+        // save so this tab's work still persists.
+        this.foreignNewer = false;
+        this.scheduleSave();
       },
       0,
     );

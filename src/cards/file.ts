@@ -72,7 +72,8 @@ export class FileCard implements CardView {
     if (!c) return;
     if (c.name !== this.lastName) {
       this.nameEl.textContent = c.name;
-      this.nameEl.title = c.name;      this.nameEl.setAttribute('aria-label', c.name);
+      this.nameEl.title = c.name;
+      this.nameEl.setAttribute('aria-label', c.name);
       this.lastName = c.name;
     }
     if (c.size !== this.lastSize) {

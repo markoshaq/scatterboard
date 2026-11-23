@@ -463,7 +463,6 @@ const table: Partial<Record<StringKey, string>> = {
   backupStop: 'Déconnecter le dossier',
   backupReconnect: 'Autoriser l’accès',
   backupHint: 'Reflète workspace.json et les médias dans un dossier à chaque enregistrement. Un dossier synchronisé sert de synchro entre appareils.',
-  backupUnsupported: 'La sauvegarde dans un dossier requiert un navigateur avec l’API File System Access (Chrome, Edge).',
   backupLast: 'Dernier reflet {when}',
   backupDone: 'Dossier de sauvegarde connecté',
   backupFail: 'Échec de la sauvegarde dans le dossier',

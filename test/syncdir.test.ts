@@ -378,6 +378,11 @@ describe('FolderSync restore flow', () => {
       modifiedAt: 1,
       content: { bogus: 42 } as unknown as Element['content'],
     };
+    // A child of the dropped element would otherwise keep a dead
+    // parentId and land in a member bucket nothing renders.
+    const orphan = createNote(backupDoc, 'home', 40, 40, 'child of junk');
+    orphan.parentId = 'junk';
+    backupDoc.elements[orphan.id] = orphan;
     await seedBlobs();
     await writeBackup(dir as unknown as FileSystemDirectoryHandle, backupDoc, { theme: 'dark' }, new Set());
     await clearBlobs();
@@ -397,7 +402,8 @@ describe('FolderSync restore flow', () => {
     const doc = saved[0]!.doc;
     expect(doc.boards.home?.title).toBe('Home');
     expect(doc.elements.junk).toBeUndefined();
-    expect(Object.keys(doc.elements)).toHaveLength(3);
+    expect(Object.keys(doc.elements)).toHaveLength(4);
+    expect(doc.elements[orphan.id]?.parentId).toBeNull();
     expect(saved[0]!.prefs).toEqual({ theme: 'dark' });
     expect(calls.notify).toBe(1);
     expect(sync.state).toBe('on');

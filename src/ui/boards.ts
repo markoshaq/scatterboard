@@ -140,7 +140,8 @@ export function openBoardsPanel(api: BoardsApi): BoardsPanel {
     if (r.boards) {
       (caret as HTMLButtonElement).type = 'button';
       if (!r.collapsed) caret.classList.add('bpl-open');
-      caret.title = r.collapsed ? t('expandRow') : t('collapseRow');      caret.setAttribute('aria-label', r.collapsed ? t('expandRow') : t('collapseRow'));
+      caret.title = r.collapsed ? t('expandRow') : t('collapseRow');
+      caret.setAttribute('aria-label', r.collapsed ? t('expandRow') : t('collapseRow'));
       caret.innerHTML =
         '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2.5 6.5 5 3.5 7.5"/></svg>';
       caret.addEventListener('click', (e) => {
@@ -155,7 +156,8 @@ export function openBoardsPanel(api: BoardsApi): BoardsPanel {
     ic.className = 'sp-ricon';
     if (r.editable) {
       (ic as HTMLButtonElement).type = 'button';
-      ic.title = t('toolIcon');      ic.setAttribute('aria-label', t('toolIcon'));
+      ic.title = t('toolIcon');
+      ic.setAttribute('aria-label', t('toolIcon'));
       ic.addEventListener('click', (e) => {
         e.stopPropagation();
         api.onIcon(r.id, ic as HTMLButtonElement);
@@ -187,7 +189,8 @@ export function openBoardsPanel(api: BoardsApi): BoardsPanel {
       ed.type = 'button';
       ed.className = 'bpl-mini';
       ed.innerHTML = ICONS.draw;
-      ed.title = t('boardRename');      ed.setAttribute('aria-label', t('boardRename'));
+      ed.title = t('boardRename');
+      ed.setAttribute('aria-label', t('boardRename'));
       ed.addEventListener('click', (e) => {
         e.stopPropagation();
         rename(row, r);
@@ -199,7 +202,8 @@ export function openBoardsPanel(api: BoardsApi): BoardsPanel {
       del.type = 'button';
       del.className = 'bpl-mini';
       del.innerHTML = ICONS.trash;
-      del.title = t('boardDelete');      del.setAttribute('aria-label', t('boardDelete'));
+      del.title = t('boardDelete');
+      del.setAttribute('aria-label', t('boardDelete'));
       del.addEventListener('click', (e) => {
         e.stopPropagation();
         confirmDelete(row, r);

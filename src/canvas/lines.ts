@@ -1,5 +1,5 @@
 import type { Doc, Element, ID, LineEnd, LineRoute } from '../state/schema';
-import { lineDoc } from '../state/schema';
+import { DEFAULT_LINE_WEIGHT, lineDoc } from '../state/schema';
 import { LINE_W } from './renderer';
 import type { Rect } from './viewport';
 
@@ -228,7 +228,7 @@ export function hitLines(
   // A thick stroke's visible edge beats the pointer tolerance: at high
   // zoom 6/z shrinks below the half-width and the rim becomes a dead zone.
   for (const l of sorted) {
-    const w = LINE_W[lineDoc(l.el)?.weight ?? 'thin'];
+    const w = LINE_W[lineDoc(l.el)?.weight ?? DEFAULT_LINE_WEIGHT];
     const tol = Math.max(6 / zoom, w / 2);
     const pts = l.pts;
     for (let i = 0; i + 1 < pts.length; i++) {

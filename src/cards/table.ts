@@ -654,7 +654,6 @@ export class TableCard implements CardView, GripHost, FxHost {
     });
   }
 
-
   // Rail Formula tool: focus a cell, make sure it starts with '=' and
   // open the function autocomplete.
   insertFormula() {
