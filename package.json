@@ -34,12 +34,12 @@
     "version": "node scripts/sync-bridge-version.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.14",
-    "@vitest/coverage-v8": "~4.1.12",
+    "@biomejs/biome": "^2.6.8",
+    "@vitest/coverage-v8": "~5.1.1",
     "happy-dom": "^21.0.4",
-    "typescript": "~5.9.3",
-    "vite": "^7.1.7",
-    "vitest": "^4.1.12"
+    "typescript": "~7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
   },
   "engines": {
     "node": ">=20.19"
